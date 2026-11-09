@@ -35,6 +35,10 @@
 
 [独立条目列表](../../presets/snapcompact.yml) 是人工维护的源；构建脚本将它缩进为 [bundle patch](../../cordis.patch.yml) 的字面声明。生成文件不手工编辑，不使用依赖运行时 base URL 的相对 include。这样既方便阅读条目，也能让插件管理器直接校验和挂载声明。
 
+## 为什么是独立 preset
+
+DSH 把 Agent 的压缩后端和它的消费者放在同一个 `cordis:group` 隔离域里。profile 平面的插件无法把后端发布进这个域；而用户覆盖内置 preset 时只能整表替换子列表，不能只改其中一个嵌套行。因此，在 `standard` 里替换 `compaction-basic` 就等于复制整份内置组合，并随每个 DSH 版本漂移。独立的 opt-in preset 是受支持的边界；选中后，`/compact` 和自动压缩都会解析到该 preset 挂载的后端。
+
 ## 发布流水线
 
 `package.json` 里的版本号是唯一的发布开关。[publish.yml](../../.github/workflows/publish.yml) 只在 registry 还没有该版本时发布它，走 npm trusted publishing，仓库里因此没有长期令牌。有三点保证它不会被绕过：registry 地址来自 `publishConfig` 并在整个 job 里固定，别人 `.npmrc` 里的镜像既改不了发布目标也改不了校验目标；plan 步骤在 `pnpm install` 之前运行且用 `fetch` 读 registry，判定不依赖已安装状态；tag 和 GitHub Release 在发布成功后立刻创建，因为它们才是交付物。

@@ -2,6 +2,8 @@
 
 插件配置属于 **Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。插件页的设置卡管理常用项，其余项用 preset/配置编辑器或下面的 YAML。两者都通过当前 profile 的配置补丁持久化，不要手工重写 profile 文件。
 
+手动压缩统一用 `/compact`，它解析到 preset 挂载的后端；`/snapcompact status` 只是只读诊断，不是压缩入口。
+
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
 policy:

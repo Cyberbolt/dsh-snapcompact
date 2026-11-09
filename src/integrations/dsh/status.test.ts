@@ -145,7 +145,7 @@ describe('status command text', () => {
     expect(text).not.toContain('图片路径：可尝试');
   });
 
-  it('marks automatic compaction as off while keeping manual runs available', async () => {
+  it('marks automatic compaction as off while keeping /compact available', async () => {
     const fixture = await createHarness();
     cleanups.push(fixture.dispose);
     const text = await formatStatus(
@@ -156,7 +156,7 @@ describe('status command text', () => {
       fixture.agent,
       new AbortController().signal,
     );
-    expect(text).toContain('自动压缩：关闭；可用 /snapcompact run 手动触发');
+    expect(text).toContain('自动压缩：关闭；可用 /compact 手动触发');
     expect(text).toContain('状态：未越过阈值；自动压缩已关闭');
   });
 });

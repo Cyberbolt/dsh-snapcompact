@@ -4,6 +4,8 @@
 
 Configure the **dsh-snapcompact row inside the Snapcompact preset's isolated compaction group**, not a second global compaction service. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
 
+Manual compaction is `/compact`; it resolves to whichever backend the preset mounts. `/snapcompact status` is read-only diagnostics, not a compaction entry point.
+
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
 policy:

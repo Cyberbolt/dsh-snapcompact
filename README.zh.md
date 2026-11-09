@@ -92,7 +92,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
 2. 填写 `dsh-snapcompact@0.4.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
-4. 新建会话，在 preset 选择器中选择 **Snapcompact**。
+4. 新建会话，在 preset 选择器中选择 **Snapcompact**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
 
 建议带版本号安装，确保拿到的是这个确切版本；不带版本号时，包管理器会解析到最新发布版本。
 
@@ -122,14 +122,15 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ### 启用 preset
 
-安装只会新增一个**可选 preset**，不会修改默认 preset 或任何运行中的会话。请新建会话并选择 **Snapcompact**。该 preset 把 Snapcompact 挂载在独立的压缩分组中，因此默认会话仍使用原生压缩行为。
+安装只会新增一个**可选 preset**，不会修改默认 preset 或任何运行中的会话。请新建会话并选择 **Snapcompact**。
+
+选中它就是启用动作：DSH 把每个会话的压缩后端放在 preset 的隔离分组里，profile 平面的插件无法全局替换它。选中 **Snapcompact** 后，原生 `compaction-basic` 不再挂载，`/compact` 和自动压缩都由 Snapcompact 链处理。这是 DSH 的隔离边界，不是每轮都要操心的额外模式。
 
 ## 使用
 
 | 入口                     | 作用                                                                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH 标准手动压缩命令，已包含在该 preset 中。                                                  |
-| `/snapcompact run`       | 空闲时立即压缩。                                                                              |
+| `/compact`               | DSH 标准手动压缩命令；在 Snapcompact preset 内由 Snapcompact 链执行。                         |
 | `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值 tokens、每个方法的可用性，以及归档数量。 |
 | `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                            |
 | `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                |
