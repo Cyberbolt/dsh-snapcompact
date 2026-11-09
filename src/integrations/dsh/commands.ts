@@ -15,19 +15,16 @@ export function registerCommands(
 ): void {
   ctx.commands.register({
     name: 'snapcompact',
-    description: '检查压缩状态、立即压缩，或运行会产生模型调用费用的合成语料对照评测。',
-    input: { hint: 'status | run | benchmark（最多四次辅助模型调用）' },
-    handler: async ({ agent, rawInput, signal: requestSignal, commandId }) => {
+    description: '查看压缩状态，或运行合成语料对照评测；手动压缩请用 /compact。',
+    input: { hint: 'status | benchmark（最多四次辅助模型调用）' },
+    handler: async ({ agent, rawInput, signal: requestSignal }) => {
       const signal = AbortSignal.any([requestSignal, lifetime]);
       const action = rawInput.trim() || 'status';
       signal.throwIfAborted();
       if (action === 'run') {
-        const result = await engine.compactNow(agent, signal, commandId);
         return {
-          kind: 'success',
-          text: result
-            ? `已压缩 ${result.shadowedSeqs.length} 个历史节点。原文可通过 snapcompact_recall 回查；节省量为估算，非计费测量。`
-            : '没有可以安全压缩的历史区间。',
+          kind: 'error',
+          text: '手动压缩请直接使用 /compact；/snapcompact 只提供 status 和 benchmark。',
         };
       }
       if (action === 'status') {
@@ -53,7 +50,7 @@ export function registerCommands(
       }
       return {
         kind: 'error',
-        text: '用法：/snapcompact status | run | benchmark。benchmark 使用合成语料，最多产生四次模型调用费用。',
+        text: '用法：/snapcompact status | benchmark。手动压缩请用 /compact；benchmark 使用合成语料，最多产生四次模型调用费用。',
       };
     },
   });

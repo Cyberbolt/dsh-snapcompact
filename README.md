@@ -90,16 +90,16 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.4.0` and click **Install**.
+2. Paste `dsh-snapcompact@0.4.1` and click **Install**.
 3. Follow the page's restart prompt if one appears.
-4. Start a **new session** and select **Snapcompact** in the preset picker.
+4. Start a **new session** and select **Snapcompact** in the preset picker. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
 Pin the version to install exactly this release. Without a version, the package manager resolves the newest published release.
 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.4.0
+dsh plugin --profile web add dsh-snapcompact@0.4.1
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -111,25 +111,26 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.1.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.1.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
 
 ### Enable the preset
 
-Installation adds an **opt-in preset**; it does not change the default preset or any running session. Create a new session, choose **Snapcompact**, and continue there. The preset mounts Snapcompact in an isolated compaction group, so the default sessions keep their native compaction behavior.
+Installation adds an **opt-in preset**; it does not change the default preset or any running session. Create a new session, choose **Snapcompact**, and continue there.
+
+Selecting it is the enable action. DSH mounts each agent's compaction backend inside the preset's isolated group, so a profile-plane plugin cannot replace the native backend globally. Once **Snapcompact** is selected, `compaction-basic` is not mounted and both `/compact` and automatic compaction resolve to the Snapcompact chain. This is a DSH isolation boundary, not an extra per-turn mode.
 
 ## Use it
 
 | Entry point              | What it does                                                                                                                                             |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH's standard manual compaction command, included in the preset.                                                                                        |
-| `/snapcompact run`       | Compact an idle session immediately.                                                                                                                     |
+| `/compact`               | DSH's standard manual compaction command; inside the Snapcompact preset it runs the Snapcompact chain.                                                   |
 | `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold in tokens, per-method availability and the archive count. |
 | `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                         |
 | `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                             |

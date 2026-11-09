@@ -13,6 +13,17 @@ describe('plugin configuration', () => {
     const planMode = planning?.config?.find((entry) => entry.id === 'plan-mode');
     expect(planMode?.config?.section?.trim().length).toBeGreaterThan(0);
   });
+  it('mounts /compact without the native compaction backend', () => {
+    const preset = parse(
+      readFileSync(new URL('../presets/snapcompact.yml', import.meta.url), 'utf8'),
+      { logLevel: 'silent' },
+    ) as { id: string; config?: { id: string }[] }[];
+    const compaction = preset.find((entry) => entry.id === 'compaction');
+    const ids = (compaction?.config ?? []).map((entry) => entry.id);
+    expect(ids).toContain('snapcompact');
+    expect(ids).toContain('command-compact');
+    expect(ids).not.toContain('compaction-basic');
+  });
   it('defaults to the compaction role and accepts the UI carrier role', () => {
     expect(resolveConfig({}).role).toBe('plugin');
     expect(resolveConfig({ role: 'ui' }).role).toBe('ui');

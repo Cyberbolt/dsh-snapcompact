@@ -160,7 +160,7 @@ export async function formatStatus(
   const lines: string[] = [
     `方法链：${settings.methodOrder.join(' → ')}`,
     `链预设：${describeChain(settings.methodOrder).label}`,
-    `自动压缩：${config.auto ? '开启' : '关闭；可用 /snapcompact run 手动触发'}`,
+    `自动压缩：${config.auto ? '开启' : '关闭；可用 /compact 手动触发'}`,
     `路由：${provider || '未选择'}/${model || '未选择'}`,
   ];
 

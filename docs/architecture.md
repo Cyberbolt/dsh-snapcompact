@@ -37,6 +37,10 @@ Read the composition root, configuration, engine and method contract first. Then
 
 The [standalone entry list](../presets/snapcompact.yml) is human-maintained. The build script emits a literal declaration into the [bundle patch](../cordis.patch.yml). Do not edit generated output. A literal patch avoids a runtime include's ambiguous relative base URL while keeping the source list readable.
 
+## Why a separate preset
+
+DSH mounts an agent's compaction backend and its consumers in one `cordis:group` isolation realm. A profile-plane plugin cannot publish a backend into that realm, and a user override of a shipped preset replaces its complete child list rather than patching one nested row. Swapping `compaction-basic` inside `standard` would therefore copy the whole built-in composition and drift with every DSH release. The standalone opt-in preset is the supported boundary; once selected, `/compact` and automatic compaction resolve to the backend that preset mounts.
+
 ## Release pipeline
 
 The version in `package.json` is the only release switch. [publish.yml](../.github/workflows/publish.yml) publishes exactly that version when the registry does not have it yet, through npm trusted publishing, so no long-lived token exists in the repository. Three properties keep that honest: the registry address comes from `publishConfig` and is pinned for the whole job, so a mirror in someone's `.npmrc` cannot redirect a publish or a check; the plan step runs before `pnpm install` and reads the registry with `fetch`, so the decision cannot depend on installed state; and the tag and GitHub release are created immediately after a successful publish, because they are the deliverable.
