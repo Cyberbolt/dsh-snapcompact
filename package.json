@@ -1,6 +1,6 @@
 {
   "name": "dsh-snapcompact",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness plugin for recoverable visual and text conversation compaction with exact-history recall and explicit benchmarks",
   "type": "module",
   "license": "MIT",
@@ -72,6 +72,7 @@
     "check:package": "node --experimental-strip-types scripts/check-package.ts",
     "check:install": "node --experimental-strip-types scripts/check-install.ts",
     "check": "node --experimental-strip-types scripts/check.ts",
+    "release:plan": "node --experimental-strip-types scripts/release.ts",
     "prepublishOnly": "pnpm run check"
   },
   "dependencies": {

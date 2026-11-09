@@ -18,6 +18,18 @@ const manifest = z
   .passthrough()
   .parse(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')));
 
+// Install instructions pin the release version, so a stable release must keep
+// both READMEs in step with package.json. Prereleases are not announced there.
+if (!manifest.version.includes('-')) {
+  for (const readme of ['README.md', 'README.zh.md']) {
+    const text = await readFile(resolve(root, readme), 'utf8');
+    assert(
+      text.includes(`dsh-snapcompact@${manifest.version}`),
+      `${readme} must reference dsh-snapcompact@${manifest.version}`,
+    );
+  }
+}
+
 const required = [
   'dist/index.js',
   'dist/index.d.ts',

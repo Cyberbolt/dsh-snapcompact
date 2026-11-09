@@ -81,7 +81,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.1.1` and click **Install**.
+2. Paste `dsh-snapcompact@0.1.2` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker.
 
@@ -90,7 +90,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.1.1
+dsh plugin --profile web add dsh-snapcompact@0.1.2
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -102,11 +102,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.1.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.1.2.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.1.1.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.1.2.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -234,6 +234,7 @@ This release supports DSH `0.2.2-rc.1` only. Upgrade or switch the host to that 
 pnpm install --ignore-scripts
 pnpm run check          # types, lint, formatting, build, preset, tests, package resources
 pnpm run check:install  # install the packed tarball into a throwaway DSH profile
+pnpm run release:plan   # preview whether the current version would publish
 pnpm pack
 ```
 
