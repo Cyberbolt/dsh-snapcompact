@@ -16,13 +16,13 @@
 
 ## Highlights
 
-| What you need                                                 | What Snapcompact provides                                                                                                             |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                                                 |
-| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                         |
-| A safe failure mode                                           | `snapcompact → handoff → shake → soft`; a candidate that cannot prove a smaller, readable checkpoint is skipped.                      |
-| Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                        |
-| Evidence instead of a slogan                                  | `/snapcompact benchmark` reports recall, one-time generation cost and per-turn checkpoint size for the text, summary and visual arms. |
+| What you need                                                 | What Snapcompact provides                                                                                                                                      |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                                                                          |
+| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                                                  |
+| A safe failure mode                                           | Default chain `snapcompact → handoff → shake → soft`, configurable as a subset/order; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
+| Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                                                 |
+| Evidence instead of a slogan                                  | `/snapcompact benchmark` reports recall, one-time generation cost and per-turn checkpoint size for the text, summary and visual arms.                          |
 
 ## How it works
 
@@ -89,7 +89,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.2.0` and click **Install**.
+2. Paste `dsh-snapcompact@0.3.0` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker.
 
@@ -98,7 +98,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.2.0
+dsh plugin --profile web add dsh-snapcompact@0.3.0
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -110,11 +110,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.2.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.3.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.2.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.3.0.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -125,13 +125,13 @@ Installation adds an **opt-in preset**; it does not change the default preset or
 
 ## Use it
 
-| Entry point              | What it does                                                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH's standard manual compaction command, included in the preset.                                                                |
-| `/snapcompact run`       | Compact an idle session immediately.                                                                                             |
-| `/snapcompact status`    | Show the method chain, automatic-compaction setting, current route, whether a visual attempt is possible, and the archive count. |
-| `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                 |
-| `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                     |
+| Entry point              | What it does                                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/compact`               | DSH's standard manual compaction command, included in the preset.                                                                                        |
+| `/snapcompact run`       | Compact an idle session immediately.                                                                                                                     |
+| `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold in tokens, per-method availability and the archive count. |
+| `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                         |
+| `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                             |
 
 Recall examples:
 
@@ -151,6 +151,10 @@ Configuration lives on the `snapcompact` row inside the Snapcompact preset's iso
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
+policy:
+  auto: true
+  # Trigger at 80% of the window; /snapcompact status shows the effective token count.
+  thresholdRatio: 0.8
 minCompressionRatio: 2
 rendering:
   width: 2048
@@ -169,6 +173,22 @@ serialization:
 ```
 
 Defaults use 2048×2048 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
+
+### Custom method chains and thresholds
+
+`methodOrder` is a priority list: the engine tries methods in order and **the first candidate that succeeds within its compression constraint wins**, so the order is the fallback order. The final method must be `soft`. Subsets are allowed:
+
+| Preset                 | `methodOrder`                         | Behavior                                                    |
+| ---------------------- | ------------------------------------- | ----------------------------------------------------------- |
+| Visual-first (default) | `[snapcompact, handoff, shake, soft]` | Local visuals first, then handoff, excerpts, native summary |
+| Visual + native        | `[snapcompact, soft]`                 | Skip handoff/shake; native summary when visuals fail        |
+| Local-first            | `[snapcompact, shake, soft]`          | Call the native summarizer only after both local paths fail |
+| Text-first             | `[handoff, shake, soft]`              | Spend one model call on a structured handoff first          |
+| Native-only            | `[soft]`                              | Back to the DSH native summary; archive and recall remain   |
+
+Two easy misreadings: `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so putting it first preempts the visual path; `minCompressionRatio` only constrains `snapcompact`, while every other method merely has to shrink the source.
+
+The trigger is still the native `policy.thresholdRatio` (a window fraction, default 0.8). `/snapcompact status` converts it into tokens for the current route and explains whether each method will run or be skipped.
 
 If a model genuinely has image input and a known price but DSH's adapter exposes no image pricing, DeepSeek model IDs use a labelled 1024-token/frame conservative estimate. Other models can declare a conservative ceiling explicitly:
 
