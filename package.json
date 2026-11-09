@@ -51,6 +51,7 @@
     "test": "node --experimental-strip-types scripts/check.ts --test-only",
     "test:watch": "vitest",
     "check:package": "node --experimental-strip-types scripts/check-package.ts",
+    "check:install": "node --experimental-strip-types scripts/check-install.ts",
     "check": "node --experimental-strip-types scripts/check.ts"
   },
   "dependencies": {

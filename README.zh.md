@@ -14,7 +14,10 @@
 pnpm install --ignore-scripts
 pnpm run check
 pnpm pack
+pnpm run check:install   # 可选：安装到一次性 DSH profile
 ```
+
+`check:install` 会构建并打包当前代码，安装到 `.artifacts/` 下的临时 DSH profile，并断言宿主接受该 bundle：patch 能组合出独立的 Snapcompact preset、DSH 兼容性通过、没有 bundle 被跳过。运行需要本机 DSH 与包管理器网络访问；不会触碰真实 profile，`--keep` 可保留临时目录用于排查。
 
 DSH 包作为 peer dependency 由宿主提供，开发时安装到项目内供类型检查和测试。本包不需要安装脚本。
 

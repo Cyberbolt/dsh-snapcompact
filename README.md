@@ -14,7 +14,10 @@ Node.js 24+, pnpm 11.28.5, DSH **0.2.2-rc.1**. Compatibility with other DSH vers
 pnpm install --ignore-scripts
 pnpm run check
 pnpm pack
+pnpm run check:install   # optional: install into a throwaway DSH profile
 ```
+
+`check:install` builds and packs the current tree, installs the tarball into a throwaway DSH profile under `.artifacts/`, and asserts the host accepts the bundle: the patch composes the standalone Snapcompact preset, DSH compatibility passes and no bundle is skipped. It needs a local DSH installation and network access for the package manager, never touches your real profiles, and keeps the throwaway home for debugging with `--keep`.
 
 DSH packages are host-provided peers; development installs provide local types and integration-test modules. No install scripts are required by this package.
 
