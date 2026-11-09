@@ -73,7 +73,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     paths: [['policy', 'thresholdRatio']],
     kind: 'number',
     group: 'trigger',
-    min: 0.5,
+    min: 0.2,
     max: 0.95,
     step: 0.01,
     description:

@@ -44,7 +44,7 @@ export const Config = schema.object({
   thresholdRatio: schema
     .number()
     .step(0.01)
-    .min(0.5)
+    .min(0.2)
     .max(0.95)
     .description(descriptionOf('thresholdRatio'))
     .volatile(),

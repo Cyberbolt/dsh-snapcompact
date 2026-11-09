@@ -59,12 +59,14 @@ describe('settings entry', () => {
       handoffMaxTokens: 1024,
       shakeThresholdChars: 2048,
     });
+    expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
   });
 
   it.each([
     { methodOrder: [] },
     { methodOrder: ['remote', 'soft'] },
     { thresholdRatio: 1.2 },
+    { thresholdRatio: 0.19 },
     { frameSize: 4096 },
     { maxFrames: 21 },
     { minCompressionRatio: 1 },
