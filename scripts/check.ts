@@ -24,6 +24,10 @@ const checks: readonly Check[] = [
   },
   { label: 'Preset declaration', args: ['--experimental-strip-types', 'scripts/build-preset.ts'] },
   {
+    label: 'Client bundle up to date',
+    args: ['--experimental-strip-types', 'scripts/build-client.ts', '--check'],
+  },
+  {
     label: 'Unit and native-integration tests',
     args: ['node_modules/vitest/vitest.mjs', 'run', ...testArgs],
   },

@@ -43,6 +43,12 @@ const policyFields = {
 
 const configSchema = z
   .strictObject({
+    /**
+     * How this row is hosted. `ui` marks the profile-plane carrier row that
+     * makes the browser half discoverable; it renders the plugin page card and
+     * must not register compaction, tools or commands.
+     */
+    role: z.enum(['plugin', 'ui']).default('plugin'),
     policy: z
       .strictObject({
         ...policyFields,
@@ -64,8 +70,8 @@ const configSchema = z
       .default([...DEFAULT_METHOD_ORDER]),
     rendering: z
       .strictObject({
-        width: z.number().int().min(256).max(2048).default(2048),
-        height: z.number().int().min(256).max(2048).default(2048),
+        width: z.number().int().min(256).max(2048).default(1568),
+        height: z.number().int().min(256).max(2048).default(1568),
         maxFrames: z.number().int().min(1).max(20).default(20),
         lineHeight: z.number().int().min(16).max(32).default(20),
         minGlyphPx: z.number().int().min(8).max(16).default(12),
@@ -219,6 +225,12 @@ const loaderMethodName = schema.union([
 
 /** Loader-facing form; the strict parser above supplies defaults and cross-field validation. */
 export const Config: ReturnType<typeof schema.object> = schema.object({
+  role: schema
+    .union([schema.const('plugin'), schema.const('ui')])
+    .default('plugin')
+    .description(
+      'plugin = 正常压缩插件；ui = profile 平面的 UI 载体行，只用于让插件页加载客户端配置卡，不注册压缩、工具或命令。',
+    ),
   policy: BasicCompactionEngine.Config,
   methodOrder: schema
     .array(loaderMethodName)
@@ -229,8 +241,8 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       '按优先级排列的压缩方法：第一个成功的候选会被采用，因此顺序就是回退顺序；最后必须是 soft 兜底。可只列子集，例如 [snapcompact, soft] 或 [soft]。',
     ),
   rendering: schema.object({
-    width: schema.number().step(1).min(256).max(2048).default(2048),
-    height: schema.number().step(1).min(256).max(2048).default(2048),
+    width: schema.number().step(1).min(256).max(2048).default(1568),
+    height: schema.number().step(1).min(256).max(2048).default(1568),
     maxFrames: schema.number().step(1).min(1).max(20).default(20),
     lineHeight: schema.number().step(1).min(16).max(32).default(20),
     minGlyphPx: schema.number().step(1).min(8).max(16).default(12),

@@ -13,12 +13,18 @@ describe('plugin configuration', () => {
     const planMode = planning?.config?.find((entry) => entry.id === 'plan-mode');
     expect(planMode?.config?.section?.trim().length).toBeGreaterThan(0);
   });
+  it('defaults to the compaction role and accepts the UI carrier role', () => {
+    expect(resolveConfig({}).role).toBe('plugin');
+    expect(resolveConfig({ role: 'ui' }).role).toBe('ui');
+    expect(Config({}).role).toBe('plugin');
+    expect(() => resolveConfig({ role: 'ui-carrier' })).toThrow();
+  });
   it('supplies conservative detached defaults', () => {
     const config = resolveConfig({});
     expect(config.methodOrder).toEqual(['snapcompact', 'handoff', 'shake', 'soft']);
     expect(config.rendering).toMatchObject({
-      width: 2048,
-      height: 2048,
+      width: 1568,
+      height: 1568,
       maxFrames: 20,
       lineHeight: 20,
       minGlyphPx: 12,

@@ -6,3 +6,4 @@ pnpm-lock.yaml
 cordis.patch.yml
 assets/fonts/
 AGENTS.md
+client/client.js

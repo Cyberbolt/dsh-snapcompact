@@ -1,6 +1,6 @@
 # 配置
 
-插件配置属于 **Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。通过 DSH 的 preset/config 编辑能力管理，不手工改活动 profile 文件。
+插件配置属于 **Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。插件页的设置卡管理常用项，其余项用 preset/配置编辑器或下面的 YAML。两者都通过当前 profile 的配置补丁持久化，不要手工重写 profile 文件。
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -11,8 +11,8 @@ policy:
   # Smaller model windows need less headroom; native validation applies.
   headroomTokens: 65536
 rendering:
-  width: 2048
-  height: 2048
+  width: 1568
+  height: 1568
   maxFrames: 20
   lineHeight: 20
   minGlyphPx: 12
@@ -34,6 +34,34 @@ handoffMaxTokens: 4096
 shakeThresholdChars: 8192
 routePolicies: []
 ```
+
+## 在应用内配置
+
+**插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次。
+
+卡片管理 8 个键：
+
+| 界面项         | 配置路径                                | 默认                                  |
+| -------------- | --------------------------------------- | ------------------------------------- |
+| 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
+| 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
+| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
+| 最多帧数       | `rendering.maxFrames`                   | 20                                    |
+| 最小压缩比     | `minCompressionRatio`                   | 2                                     |
+| 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
+| 交接预算       | `handoffMaxTokens`                      | 4096                                  |
+| 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
+
+持久化与优先级：
+
+- 写入走 DSH 的设置服务，落到 profile 的配置补丁；重启后仍在，“恢复默认”（单字段或整卡）会移除覆盖。
+- 卡片保存的值覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：未开启自定义阈值时该键不存在，所以 preset 里的 `policy.thresholdRatio` 仍然生效。
+- 引擎在会话挂载 preset 时构造，因此改动对**新会话**生效；已有会话里 `/snapcompact status` 仍显示它启动时的配置。
+- 设置 schema 无法表达方法链顺序，所以为空、重复或不以 `soft` 结尾的已存值会被插件忽略；严格解析器仍是最后一道校验。
+
+bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模块 `dsh-snapcompact`），配置是 `role: ui`。DSH 的浏览器模块扫描只读取「裸包名」Loader 行的 `dsh.client`，这一行就是让配置卡能被加载的入口；它不注册压缩、工具或命令。请保持启用：禁用后插件页不再显示设置卡（preset 本身仍然可用）。
+
+8 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
 
 ## 原生策略
 

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Snapcompact 上下文归档",
-    "description": "位图帧压缩、原文回查、文本回退与实测对比。"
+    "title": "Snapcompact",
+    "description": "一个 DeepSeek Harness 插件：把长对话中被丢弃的历史渲染成视觉模型可直接阅读的位图帧来压缩上下文，本地、确定性、图片路径不调用摘要模型；同时保留精确头尾文本与可检索归档。"
   }
 }

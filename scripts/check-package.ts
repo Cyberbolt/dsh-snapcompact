@@ -33,9 +33,12 @@ if (!manifest.version.includes('-')) {
 const required = [
   'dist/index.js',
   'dist/index.d.ts',
+  'dist/settings-entry.js',
+  'dist/settings-entry.d.ts',
   'dist/rendering/worker.js',
   manifest.dsh.bundle.patch,
   'presets/snapcompact.yml',
+  'client/client.js',
   'locale/en.json',
   'locale/zh.json',
   'icon.svg',
@@ -77,6 +80,16 @@ assert(
   Buffer.byteLength(svg) <= 256 * 1024 && svg.includes('<svg') && svg.includes('viewBox='),
   'Invalid SVG icon',
 );
+const clientBundle = await readFile(resolve(root, 'client/client.js'), 'utf8');
+assert(
+  !clientBundle.includes('__SNAPCOMPACT_SETTINGS_FIELDS__'),
+  'client/client.js still contains the generated-field marker; run pnpm build',
+);
+assert(
+  clientBundle.includes('plugins.bundle.config') && clientBundle.includes("'snapcompact-settings'"),
+  'client/client.js must register the plugin-page settings card',
+);
+
 const font = await readFile(resolve(root, 'assets/fonts/unifont_all-18.0.01.hex.gz'));
 assert.equal(
   createHash('sha256').update(font).digest('hex'),

@@ -114,7 +114,7 @@ describe('truthful evaluation accounting', () => {
     expect(report.arms[2]?.estimatedCheckpointTokens).toBeGreaterThan(0);
   });
 
-  it('renders the default 2048 visual arm for the long fixture instead of skipping it', async () => {
+  it('renders the default 1568 visual arm for the long fixture instead of skipping it', async () => {
     const fixture = await setup('vision');
     const client = await import(
       /* @vite-ignore */ new URL('../../dist/rendering/worker-client.js', import.meta.url).href
@@ -144,7 +144,7 @@ describe('truthful evaluation accounting', () => {
       correct: Object.keys(fixtureAnswers).length,
     });
     expect(report.arms[2]?.frames).toBeGreaterThan(0);
-    expect(report.frames?.[0]?.width).toBe(2048);
+    expect(report.frames?.[0]?.width).toBe(1568);
   });
 
   it('honors cancellation before starting any model call', async () => {
