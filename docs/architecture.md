@@ -53,4 +53,6 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 
 The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot satisfy the reduction ratio, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
 
+It has no generation call, so the first compaction is cheaper in model tokens; its steady-state checkpoint is larger than a terse summary, so the advantage depends on the turn horizon and on cache/image pricing.
+
 Estimated size, reading accuracy and actual monetary cost are different measurements. An explicit benchmark helps calibrate a route, but never silently changes user configuration or establishes universal savings.

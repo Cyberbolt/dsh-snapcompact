@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "Recoverable visual and text conversation compaction with exact-history recall and measured evaluation."
+    "description": "Bitmap-frame compaction with exact-history recall, text fallbacks and measured evaluation."
   }
 }
