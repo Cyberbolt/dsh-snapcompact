@@ -2,9 +2,9 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ArchiveService } from '../../archives/service.js';
 import type { SnapcompactEngine } from '../../compaction/engine.js';
 import type { ArchiveIndex } from './archive-projection.js';
-import { resolveImageRoute } from '../../budgeting/capabilities.js';
 import { evaluate } from '../../evaluation/runner.js';
 import { renderEvaluationReport } from '../../evaluation/report.js';
+import { formatStatus } from './status.js';
 
 export function registerCommands(
   ctx: Context,
@@ -31,38 +31,9 @@ export function registerCommands(
         };
       }
       if (action === 'status') {
-        const route = agent.session.requestHeader()?.config ?? agent.options;
-        const imageRoute =
-          route.provider && route.model
-            ? await resolveImageRoute(
-                ctx.llm,
-                { provider: route.provider, model: route.model },
-                engine.settings.routePolicies,
-                signal,
-              )
-            : null;
         return {
           kind: 'success',
-          text: [
-            `方法链：${engine.settings.methodOrder.join(' → ')}`,
-            `自动压缩：${engine.config.auto ? '开启' : '关闭'}`,
-            `路由：${route.provider ?? '未选择'}/${route.model ?? '未选择'}`,
-            `帧尺寸：${engine.settings.rendering.width}×${engine.settings.rendering.height}，最多 ${engine.settings.rendering.maxFrames} 帧`,
-            `压缩比：${engine.settings.minCompressionRatio}×；最小可读字高：${engine.settings.rendering.minGlyphPx}px`,
-            `图片路径：${
-              imageRoute
-                ? `可尝试（${
-                    imageRoute.pricingSource === 'deepseek-estimate'
-                      ? 'DeepSeek 保守估算 1024 token/帧，非账单'
-                      : imageRoute.pricingSource === 'configured-ceiling'
-                        ? '配置上限，非账单'
-                        : '适配器声明计价'
-                  }，仍需收益/预算校验）`
-                : '使用文本回退（图片能力或计价未明确）'
-            }`,
-            `已完成归档：${index.entries(agent.session).length}`,
-            '图片不是唯一任务信息副本；精确字符串请回查原文。',
-          ].join('\n'),
+          text: await formatStatus(ctx, engine.settings, engine.config, index, agent, signal),
         };
       }
       if (action === 'benchmark') {

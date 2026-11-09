@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
-import { resolveConfig } from './config.js';
+import { Config, DEFAULT_METHOD_ORDER, resolveConfig } from './config.js';
 
 describe('plugin configuration', () => {
   it('keeps the shipped plan-mode section non-empty', () => {
@@ -32,6 +32,16 @@ describe('plugin configuration', () => {
     expect(config.routePolicies).toEqual([]);
     config.methodOrder.pop();
     expect(resolveConfig({}).methodOrder).toHaveLength(4);
+  });
+  it('keeps the loader schema default aligned with the strict parser', () => {
+    expect(Config({}).methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
+  });
+  it('accepts explicit subsets that still end with soft', () => {
+    expect(resolveConfig({ methodOrder: ['snapcompact', 'soft'] }).methodOrder).toEqual([
+      'snapcompact',
+      'soft',
+    ]);
+    expect(resolveConfig({ methodOrder: ['soft'] }).methodOrder).toEqual(['soft']);
   });
   it.each([
     { methodOrder: [] },

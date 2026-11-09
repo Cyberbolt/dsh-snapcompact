@@ -20,11 +20,28 @@ function characterBoundary(text: string, index: number): number {
     : index;
 }
 
+/** One serialized message that shake would externalize at this threshold. */
+function isExternalizable(message: Message, text: string, thresholdChars: number): boolean {
+  return message.role === 'tool' && text.length > thresholdChars;
+}
+
+/** Count the tool outputs that a shake attempt would externalize, using the same serialization. */
+export function countExternalizableOutputs(
+  messages: readonly Message[],
+  thresholdChars: number,
+): number {
+  let count = 0;
+  for (const message of messages) {
+    if (isExternalizable(message, messageText(message), thresholdChars)) count += 1;
+  }
+  return count;
+}
+
 export const shake: CompactionMethod = async (context) => {
   let changed = false;
   const chunks = context.sourceMessages.map((message) => {
     const text = messageText(message);
-    if (message.role !== 'tool' || text.length <= context.config.shakeThresholdChars) return text;
+    if (!isExternalizable(message, text, context.config.shakeThresholdChars)) return text;
     changed = true;
     return (
       `${text.slice(0, characterBoundary(text, 4096))}\n\n[Large tool output archived; exact content is available through ` +

@@ -16,13 +16,13 @@
 
 ## 亮点
 
-| 你的需求                     | Snapcompact 提供的能力                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                                                    |
-| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                                          |
-| 失败时不冒险                 | `snapcompact → handoff → shake → soft`；无法证明“更小且可读”的候选会被跳过。                      |
-| 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                                                |
-| 用数据而不是口号说明效果     | `/snapcompact benchmark` 报告文本、摘要和图片三组的召回率、一次性生成成本和每轮 checkpoint 大小。 |
+| 你的需求                     | Snapcompact 提供的能力                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                                                      |
+| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                                            |
+| 失败时不冒险                 | 默认链 `snapcompact → handoff → shake → soft` 可配置子集/顺序；无法证明“更小且可读”的候选会被跳过。 |
+| 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                                                  |
+| 用数据而不是口号说明效果     | `/snapcompact benchmark` 报告文本、摘要和图片三组的召回率、一次性生成成本和每轮 checkpoint 大小。   |
 
 ## 工作原理
 
@@ -89,7 +89,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.2.0`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.3.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，在 preset 选择器中选择 **Snapcompact**。
 
@@ -98,7 +98,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.2.0
+dsh plugin --profile web add dsh-snapcompact@0.3.0
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -110,11 +110,11 @@ dsh plugin --profile web add dsh-snapcompact@0.2.0
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.2.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.3.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.2.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.3.0.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
@@ -125,13 +125,13 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ## 使用
 
-| 入口                     | 作用                                                                     |
-| ------------------------ | ------------------------------------------------------------------------ |
-| `/compact`               | DSH 标准手动压缩命令，已包含在该 preset 中。                             |
-| `/snapcompact run`       | 空闲时立即压缩。                                                         |
-| `/snapcompact status`    | 查看方法链、自动压缩开关、当前路由、是否可以尝试图片路径，以及归档数量。 |
-| `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。       |
-| `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                           |
+| 入口                     | 作用                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `/compact`               | DSH 标准手动压缩命令，已包含在该 preset 中。                                                  |
+| `/snapcompact run`       | 空闲时立即压缩。                                                                              |
+| `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值 tokens、每个方法的可用性，以及归档数量。 |
+| `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                            |
+| `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                |
 
 回查示例：
 
@@ -151,6 +151,10 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
+policy:
+  auto: true
+  # 窗口使用到 80% 时触发；/snapcompact status 会显示等价的 token 数。
+  thresholdRatio: 0.8
 minCompressionRatio: 2
 rendering:
   width: 2048
@@ -169,6 +173,22 @@ serialization:
 ```
 
 默认使用 2048×2048 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
+
+### 自定义方法链与阈值
+
+`methodOrder` 决定候选方法的优先级：引擎按顺序尝试，**第一个成功且满足压缩约束的方法会被采用**，所以顺序就是回退顺序；最后必须是 `soft` 兜底。可以只列子集，常用组合：
+
+| 预设             | `methodOrder`                         | 特点                                      |
+| ---------------- | ------------------------------------- | ----------------------------------------- |
+| 视觉优先（默认） | `[snapcompact, handoff, shake, soft]` | 先试本地视觉，失败再交接、摘录、原生摘要  |
+| 视觉 + 原生      | `[snapcompact, soft]`                 | 跳过 handoff/shake，视觉失败直接原生摘要  |
+| 本地优先         | `[snapcompact, shake, soft]`          | 两个本地方法都失败才调用原生摘要          |
+| 文本优先         | `[handoff, shake, soft]`              | 先花一次模型调用生成结构化交接            |
+| 仅原生摘要       | `[soft]`                              | 完全回到 DSH 原生摘要；归档与回查仍然可用 |
+
+两点容易误解：`shake` 只要存在一个超过 `shakeThresholdChars` 的工具输出就会成功，放在前面会抢先于视觉路径；`minCompressionRatio` 只约束 `snapcompact`，其它方法只要求 checkpoint 比源历史小。
+
+触发阈值仍是原生 `policy.thresholdRatio`（窗口百分比，默认 0.8）。`/snapcompact status` 会把它换算成当前路由上的具体 token 数，并显示每个方法是会尝试还是会跳过。
 
 如果模型确实支持图片输入且有已知价格，但 DSH 适配器没有暴露图片计价：DeepSeek 模型会使用带标签的 1024 token/帧保守估算；其他模型可以显式声明一个保守上限：
 
