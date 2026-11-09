@@ -16,6 +16,7 @@ export function renderEvaluationReport(report: EvaluationReport): string {
     ...rows,
     '',
     `摘要调用额外 usage：${JSON.stringify(report.summaryUsage ?? '未提供')}`,
+    `视觉帧数：${report.arms.find((arm) => arm.name === 'snapcompact')?.frames ?? '未生成'}；计价来源：${report.pricingSource ?? '未测量'}`,
     '',
     report.warning,
   ].join('\n');

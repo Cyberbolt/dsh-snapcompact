@@ -18,6 +18,7 @@ export function validateOptions(options: RenderOptions): RenderOptions {
     ['maxTotalBytes', 1, 256 * 1024 * 1024],
     ['maxSourceBytes', 1, MAX_SOURCE_BYTES],
     ['timeoutMs', 1, MAX_TIMEOUT_MS],
+    ['lineHeight', 16, 32],
   ];
   for (const [key, minimum, maximum] of bounds) {
     const value = options[key];
@@ -36,6 +37,7 @@ export function validateOptions(options: RenderOptions): RenderOptions {
     maxTotalBytes: options.maxTotalBytes,
     maxSourceBytes: options.maxSourceBytes,
     timeoutMs: options.timeoutMs,
+    lineHeight: options.lineHeight,
   };
 }
 

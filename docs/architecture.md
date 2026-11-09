@@ -24,14 +24,14 @@ Read the composition root, configuration, engine and method contract first. Then
 
 ## Invariants
 
-1. Images are never the only task-state copy. A standalone text handoff and recall reference remain.
+1. Images are never the only task-state copy. Exact head/tail text plus the archive and recall reference remain.
 2. Checkpoint references point to persisted bytes; archive schema, size, SHA-256, UTF-8 and reconstructed transcript must agree.
 3. Native replay/signature blobs are not copied to portable archives. Message content, raw tool arguments and attachment identities are retained.
 4. Cancellation remains authoritative and does not enter ordinary method fallback. Candidate failures have not changed the surface.
 5. Only successfully closed native compactions grant recall access. The index derives from the log and survives replay/inheritance.
-6. Image reference metadata is not visual-token pricing. Unknown capabilities or prices fail closed.
+6. Image reference metadata is not visual-token pricing. Unknown capabilities fail closed; unknown prices are estimated only for DeepSeek model IDs and labelled as estimates.
 7. Missing glyphs, unsupported shaping, page limits and unreadable resizing cannot silently omit content.
-8. Existing image descriptors are not their original visual content. Repeated compaction retains parent archive references.
+8. Existing images are carried into the next checkpoint when slots allow; attachment descriptors are not re-rendered as their original pixels. Repeated compaction retains parent archive references.
 
 ## Preset source of truth
 
@@ -45,6 +45,6 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 
 ## Deliberate tradeoffs
 
-The first release is hybrid archival, not zero-model-call compression. When images are offloaded or a text-only model is selected, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
+The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot satisfy the reduction ratio, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
 
 Estimated size, reading accuracy and actual monetary cost are different measurements. An explicit benchmark helps calibrate a route, but never silently changes user configuration or establishes universal savings.

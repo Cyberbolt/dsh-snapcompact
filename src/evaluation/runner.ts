@@ -29,6 +29,8 @@ export interface EvaluationArm {
   promptTokens?: number;
   usage?: TokenUsage;
   estimatedCheckpointTokens?: number;
+  frames?: number;
+  pricedBy?: string;
   reason?: string;
 }
 export interface EvaluationReport {
@@ -41,6 +43,7 @@ export interface EvaluationReport {
   summaryElapsedMs?: number;
   visualPreparationElapsedMs?: number;
   frames?: { width: number; height: number; bytes: number }[];
+  pricingSource?: string;
   arms: EvaluationArm[];
   warning: string;
 }
@@ -70,16 +73,38 @@ export async function evaluate(
   if (!target.provider || !target.model)
     throw new Error('Route a model before running the benchmark.');
   const route = { provider: target.provider, model: target.model };
-  const padding = Array.from(
-    { length: fixture.paddingLines },
-    (_, index) => `Observation ${index}: historical build log; no change to user constraints.`,
-  ).join('\n');
-  const source = createUserMessage({
+  const paddingLines = Array.from({ length: fixture.paddingLines }, (_, index) =>
+    index === fixture.paddingLines - 1
+      ? `Observation ${index}: SNAP_PADDING_42 is the last synthetic history marker.`
+      : `Observation ${index}: historical build log; no change to user constraints.`,
+  );
+  // Keep each message under the compact-format per-message cap so the exact
+  // facts at the newest edge actually reach the bitmap middle.
+  const chunkSize = Math.max(1, Math.ceil(fixture.paddingLines / 10));
+  const paddingMessages = Array.from(
+    { length: Math.ceil(paddingLines.length / chunkSize) },
+    (_, index) =>
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [
+          {
+            type: 'text',
+            text: paddingLines.slice(index * chunkSize, (index + 1) * chunkSize).join('\n'),
+          },
+        ],
+      }),
+  );
+  const factMessage = createUserMessage({
     source: { kind: 'user' },
-    content: [{ type: 'text', text: `${fixture.text}\n${padding}\n${fixture.suffix}` }],
+    content: [{ type: 'text', text: `${fixture.text}\n${fixture.suffix}` }],
   });
-  const input = { messages: [source] };
-  const archive = await archives.create({ sessionId: agent.id, messages: [source] }, signal);
+  const messages = [...paddingMessages, factMessage];
+  const input = { messages };
+  const archive = await archives.create({ sessionId: agent.id, messages }, signal);
+  const sourceTokens = messages.reduce(
+    (total, message) => total + ctx.tokenMeter.estimateMessage(message),
+    0,
+  );
   const report: EvaluationReport = {
     version: 1,
     fixture: fixture.id,
@@ -105,7 +130,7 @@ export async function evaluate(
       for await (const chunk of ctx.llm.stream({
         ...route,
         messages: [{ role: 'user', content: [...content, { type: 'text', text: questions }] }],
-        maxTokens: 2048,
+        maxTokens: 8192,
         sessionId: agent.id,
         purpose: 'compaction',
         signal,
@@ -156,7 +181,12 @@ export async function evaluate(
     }
   }
 
-  report.arms.push(await run('original', source.content));
+  report.arms.push(
+    await run(
+      'original',
+      messages.flatMap((message) => message.content),
+    ),
+  );
   const summaryStart = performance.now();
   let baseline: CompactionSummary;
   try {
@@ -187,13 +217,18 @@ export async function evaluate(
     const visualStart = performance.now();
     const candidate = await snapcompact({
       input,
-      sourceMessages: [source],
+      sourceMessages: messages,
+      sourceTokens,
+      meter: ctx.tokenMeter,
       archive,
       config: settings,
       route,
       llm: ctx.llm,
       attachments: ctx.attachments,
-      imageSlots: settings.rendering.maxFrames,
+      imageSlots: Math.min(
+        settings.rendering.maxFrames,
+        ctx.attachments.imageLimits.maxImagesPerMessage,
+      ),
       signal,
       render,
       handoff: async () => baseline,
@@ -221,6 +256,11 @@ export async function evaluate(
           : [],
       );
       const arm = await run('snapcompact', candidate.result.summary);
+      arm.frames = report.frames.length;
+      if (candidate.imageRoute !== undefined) {
+        arm.pricedBy = candidate.imageRoute.pricingSource;
+        report.pricingSource = candidate.imageRoute.pricingSource;
+      }
       arm.estimatedCheckpointTokens = estimateCheckpoint(
         candidate.result.summary,
         ctx.tokenMeter,

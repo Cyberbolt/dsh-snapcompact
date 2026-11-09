@@ -54,15 +54,24 @@ export function renderArchive(
   let totalBytes = 0;
   for (const [pageIndex, page] of layout.pages.entries()) {
     assertDeadline(deadline);
-    const image = new PNG({ width: options.width, height: options.height });
+    // Hug the rows actually printed; a sparse final page must not be priced and
+    // transmitted as a full-height frame.
+    const height = Math.max(
+      64,
+      Math.min(
+        options.height,
+        GRID.margin * 2 + GRID.header + GRID.footer + page.rows.length * options.lineHeight,
+      ),
+    );
+    const image = new PNG({ width: options.width, height });
     const pixels = image.data;
     pixels.fill(255);
     for (const [rowIndex, row] of page.rows.entries()) {
       assertDeadline(deadline);
-      const y = GRID.margin + GRID.header + rowIndex * GRID.lineHeight;
+      const y = GRID.margin + GRID.header + rowIndex * options.lineHeight;
       // Subtle row rules retain visible blank rows without changing source data.
       if (rowIndex % 2 === 1) {
-        for (let dy = 0; dy < GRID.lineHeight; dy += 1) {
+        for (let dy = 0; dy < options.lineHeight; dy += 1) {
           for (let x = GRID.margin; x < options.width - GRID.margin; x += 1) {
             const offset = ((y + dy) * options.width + x) * 4;
             pixels[offset] = 246;
@@ -81,13 +90,13 @@ export function renderArchive(
       options.width,
       font,
       `L${page.firstLine}-${page.lastLine}`,
-      options.height - GRID.margin - 16,
+      height - GRID.margin - 16,
     );
     const encoded = PNG.sync.write(image, {
       colorType: 0,
       inputColorType: 6,
       bitDepth: 8,
-      deflateLevel: 9,
+      deflateLevel: 6,
     });
     assertDeadline(deadline);
     totalBytes += encoded.byteLength;
@@ -98,10 +107,11 @@ export function renderArchive(
     frames.push({
       data: Uint8Array.from(encoded),
       width: options.width,
-      height: options.height,
+      height,
       firstLine: page.firstLine,
       lastLine: page.lastLine,
+      chars: page.chars,
     });
   }
-  return { frames, lineCount: layout.lineCount };
+  return { frames, lineCount: layout.lineCount, unrenderableChars: layout.unrenderableChars };
 }

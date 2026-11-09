@@ -38,6 +38,8 @@ describe('recoverable local tool-output externalization', () => {
     const result = await shake({
       input: { messages },
       sourceMessages: messages,
+      sourceTokens: 1_000,
+      meter: fixture.ctx.tokenMeter,
       archive,
       config: resolveConfig({}),
       route: { provider: 'test', model: 'vision' },
@@ -62,6 +64,8 @@ describe('recoverable local tool-output externalization', () => {
     const skipped = await shake({
       input: { messages: messages.slice(0, 1) },
       sourceMessages: messages.slice(0, 1),
+      sourceTokens: 1_000,
+      meter: fixture.ctx.tokenMeter,
       archive,
       config: resolveConfig({}),
       route: { provider: 'test', model: 'vision' },

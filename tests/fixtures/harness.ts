@@ -7,7 +7,11 @@ import type {
   LlmResolvedModelInfo,
   StreamChunk,
 } from '@deepseek-ai/dsh-llm';
-import type { ImageAttachmentRef, FileAttachmentRef } from '@deepseek-ai/dsh-attachment';
+import type {
+  ImageAttachmentRef,
+  FileAttachmentRef,
+  ImageRequestTarget,
+} from '@deepseek-ai/dsh-attachment';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -72,6 +76,8 @@ export class TestAdapter extends LlmAdapter {
     '## Goal\nGoal: continue the requested implementation.\n## Constraints\nPreserve exact commands.\n## Decisions\nUse the approved design.\n## Files and exact commands\npnpm test\n## Completed work\n(none)\n## Unfinished work\nIntegration tests.\n## Next action\nRun integration tests.\n## Critical facts\nNever infer exact code from uncertain OCR.';
   reject = false;
   pricingAvailable = true;
+  visualTokens = 100;
+  targetScale = 1;
   beforeStream: (() => Promise<void>) | undefined;
 
   override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
@@ -86,7 +92,19 @@ export class TestAdapter extends LlmAdapter {
   override imageRequestPricing(): LlmImageRequestPricing | undefined {
     if (!this.pricingAvailable) return undefined;
     return {
-      priceImages: (images) => images.map(() => ({ visualTokens: 100, text: 'test image' })),
+      priceImages: (images) =>
+        images.map(() => ({ visualTokens: this.visualTokens, text: 'test image' })),
+    };
+  }
+  override imageRequestTarget(
+    _provider: string,
+    _model: string,
+    image: ImageAttachmentRef,
+  ): ImageRequestTarget {
+    return {
+      width: Math.max(1, Math.round(image.width * this.targetScale)),
+      height: Math.max(1, Math.round(image.height * this.targetScale)),
+      maxBytes: 1024 * 1024,
     };
   }
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {

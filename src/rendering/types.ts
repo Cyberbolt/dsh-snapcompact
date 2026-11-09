@@ -5,6 +5,8 @@ export interface RenderOptions {
   maxTotalBytes: number;
   maxSourceBytes: number;
   timeoutMs: number;
+  /** Pixel distance between bitmap text baselines. */
+  lineHeight: number;
 }
 
 export interface RenderedFrame {
@@ -15,12 +17,16 @@ export interface RenderedFrame {
   firstLine: number;
   /** Inclusive, one-based source line number. */
   lastLine: number;
+  /** Number of source-code characters represented by this frame. */
+  chars: number;
 }
 
 export interface RenderedArchive {
   frames: readonly RenderedFrame[];
   /** Source lines, including empty and trailing lines; empty input has one line. */
   lineCount: number;
+  /** Characters replaced by a visible fallback because no bitmap glyph existed. */
+  unrenderableChars: number;
 }
 
 export type RenderErrorCode =

@@ -3,7 +3,7 @@ import { validateOptions, validateSource } from './options.js';
 import { RenderError } from './types.js';
 import type { RenderOptions } from './types.js';
 
-export const GRID = Object.freeze({ margin: 16, header: 24, footer: 24, lineHeight: 20 });
+export const GRID = Object.freeze({ margin: 16, header: 24, footer: 24 });
 
 export interface PositionedGlyph {
   readonly glyph: BitmapGlyph;
@@ -21,6 +21,8 @@ export interface GridPage {
   readonly rows: readonly GridRow[];
   readonly firstLine: number;
   readonly lastLine: number;
+  /** Number of source characters represented by this page. */
+  readonly chars: number;
 }
 
 export interface GridLayout {
@@ -28,6 +30,7 @@ export interface GridLayout {
   readonly lineCount: number;
   readonly columns: number;
   readonly rowsPerPage: number;
+  readonly unrenderableChars: number;
 }
 
 // Deliberately conservative: no bidi reordering, ligation, contextual joining,
@@ -37,12 +40,22 @@ const SIMPLE_SCRIPT =
 const MARK = /\p{Mark}/u;
 const UNASSIGNED = /\p{Unassigned}/u;
 const FORMAT = /\p{Format}/u;
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'gu');
 
 function label(code: number): string {
   return `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
 }
 
-/** Visible, literal ASCII escapes; nothing interprets terminal escape sequences. */
+/** Canonical text projection: CRLF, ANSI and tabs become deterministic ASCII. */
+export function normalizeText(text: string): string {
+  return text.replace(/\r\n?/gu, '\n').replace(ANSI_ESCAPE, '').replace(/\t/gu, '    ');
+}
+
+/**
+ * Visible, literal ASCII escapes; nothing interprets terminal escape sequences.
+ * Characters the bitmap grid cannot represent are replaced with `?` so one
+ * exotic code point cannot discard an otherwise readable checkpoint.
+ */
 export function escapeCharacter(character: string): string {
   const code = character.codePointAt(0);
   if (code === undefined) return '';
@@ -63,7 +76,7 @@ export function escapeCharacter(character: string): string {
     (code >= 0x1f3fb && code <= 0x1f3ff) ||
     (code >= 0xe0020 && code <= 0xe007f)
   ) {
-    throw new RenderError('UNSUPPORTED_CHARACTER', `${label(code)} requires unsupported shaping.`);
+    return '?';
   }
   if (FORMAT.test(character) || code === 0x2028 || code === 0x2029) {
     return `\\u{${code.toString(16).toUpperCase()}}`;
@@ -74,16 +87,10 @@ export function escapeCharacter(character: string): string {
     (code & 0xffff) >= 0xfffe ||
     UNASSIGNED.test(character)
   ) {
-    throw new RenderError(
-      'MISSING_GLYPH',
-      `${label(code)} is not an assigned printable character.`,
-    );
+    return '?';
   }
   if (!SIMPLE_SCRIPT.test(character)) {
-    throw new RenderError(
-      'UNSUPPORTED_CHARACTER',
-      `${label(code)} is outside supported simple scripts.`,
-    );
+    return '?';
   }
   return character;
 }
@@ -95,10 +102,11 @@ export function layoutText(
   font: BitmapFont,
 ): GridLayout {
   const options = validateOptions(suppliedOptions);
-  validateSource(text, options);
+  const normalized = normalizeText(text);
+  validateSource(normalized, options);
   const contentWidth = Math.floor((options.width - GRID.margin * 2) / 8) * 8;
   const rowsPerPage = Math.floor(
-    (options.height - GRID.margin * 2 - GRID.header - GRID.footer) / GRID.lineHeight,
+    (options.height - GRID.margin * 2 - GRID.header - GRID.footer) / options.lineHeight,
   );
   if (rowsPerPage < 1 || contentWidth < 32) {
     throw new RenderError('INVALID_OPTIONS', 'Frame cannot hold a bitmap text row.');
@@ -108,6 +116,7 @@ export function layoutText(
   let x = 0;
   let sourceLine = 1;
   let continuation = false;
+  let unrenderableChars = 0;
   const flush = (): void => {
     if (rows.length >= rowsPerPage * options.maxFrames) {
       throw new RenderError('FRAME_LIMIT', 'Complete source cannot fit within the frame budget.');
@@ -116,16 +125,27 @@ export function layoutText(
     glyphs = [];
     x = 0;
   };
-  for (const original of text) {
+  const question = font.get(0x3f);
+  if (question === undefined)
+    throw new RenderError('FONT_INVALID', 'Font lacks the fallback glyph.');
+  for (const original of normalized) {
     if (original === '\n') {
       flush();
       sourceLine += 1;
       continuation = false;
       continue;
     }
-    for (const character of escapeCharacter(original)) {
+    const escaped = escapeCharacter(original);
+    if (escaped === '?' && original !== '?') unrenderableChars += 1;
+    for (const character of escaped) {
       const code = character.codePointAt(0);
-      const glyph = code === undefined ? undefined : font.get(code);
+      let glyph = code === undefined ? undefined : font.get(code);
+      let rendered = character;
+      if (glyph === undefined) {
+        glyph = question;
+        rendered = '?';
+        unrenderableChars += 1;
+      }
       if (glyph === undefined) {
         throw new RenderError('MISSING_GLYPH', `No bitmap glyph for ${label(code ?? 0)}.`);
       }
@@ -136,7 +156,7 @@ export function layoutText(
         flush();
         continuation = true;
       }
-      glyphs.push({ glyph, character, x });
+      glyphs.push({ glyph, character: rendered, x });
       x += glyph.width;
     }
   }
@@ -147,7 +167,18 @@ export function layoutText(
     const first = pageRows[0];
     const last = pageRows.at(-1);
     if (first === undefined || last === undefined) throw new Error('Empty internal grid page.');
-    pages.push({ rows: pageRows, firstLine: first.sourceLine, lastLine: last.sourceLine });
+    pages.push({
+      rows: pageRows,
+      firstLine: first.sourceLine,
+      lastLine: last.sourceLine,
+      chars: pageRows.reduce((total, row) => total + row.glyphs.length, 0),
+    });
   }
-  return { pages, lineCount: sourceLine, columns: contentWidth / 8, rowsPerPage };
+  return {
+    pages,
+    lineCount: sourceLine,
+    columns: contentWidth / 8,
+    rowsPerPage,
+    unrenderableChars,
+  };
 }

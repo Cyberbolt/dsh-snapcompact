@@ -47,7 +47,19 @@ export function registerCommands(
             `方法链：${engine.settings.methodOrder.join(' → ')}`,
             `自动压缩：${engine.config.auto ? '开启' : '关闭'}`,
             `路由：${route.provider ?? '未选择'}/${route.model ?? '未选择'}`,
-            `图片路径：${imageRoute ? `可尝试（${imageRoute.pricingSource}，仍需收益/预算校验）` : '使用文本回退（图片能力或计价未明确）'}`,
+            `帧尺寸：${engine.settings.rendering.width}×${engine.settings.rendering.height}，最多 ${engine.settings.rendering.maxFrames} 帧`,
+            `压缩比：${engine.settings.minCompressionRatio}×；最小可读字高：${engine.settings.rendering.minGlyphPx}px`,
+            `图片路径：${
+              imageRoute
+                ? `可尝试（${
+                    imageRoute.pricingSource === 'deepseek-estimate'
+                      ? 'DeepSeek 保守估算 1024 token/帧，非账单'
+                      : imageRoute.pricingSource === 'configured-ceiling'
+                        ? '配置上限，非账单'
+                        : '适配器声明计价'
+                  }，仍需收益/预算校验）`
+                : '使用文本回退（图片能力或计价未明确）'
+            }`,
             `已完成归档：${index.entries(agent.session).length}`,
             '图片不是唯一任务信息副本；精确字符串请回查原文。',
           ].join('\n'),

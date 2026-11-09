@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-attachment';
+import type {} from '@deepseek-ai/dsh-token-meter';
 import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
 import type { ArchiveRecord } from '../archives/service.js';
 import type { SnapcompactConfig, MethodName } from '../config.js';
@@ -26,6 +27,8 @@ export type CompactionSummary = {
 export interface MethodContext {
   readonly input: CompactionInput;
   readonly sourceMessages: readonly Message[];
+  readonly sourceTokens: number;
+  readonly meter: Context['tokenMeter'];
   readonly archive: ArchiveRecord;
   readonly config: SnapcompactConfig;
   readonly route: ModelRoute;

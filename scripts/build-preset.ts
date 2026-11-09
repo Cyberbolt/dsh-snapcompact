@@ -21,7 +21,7 @@ await writeFile(
   header +
     entries
       .split('\n')
-      .map((line) => `          ${line}`)
+      .map((line) => (line.trimEnd() === '' ? '' : `          ${line.trimEnd()}`))
       .join('\n') +
     '\n',
 );
