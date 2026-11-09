@@ -14,6 +14,7 @@ const options: RenderOptions = {
   maxTotalBytes: 16 * 1024 * 1024,
   maxSourceBytes: 64 * 1024 * 1024,
   timeoutMs: 15_000,
+  lineHeight: 20,
 };
 const ascii: BitmapGlyph = { width: 8, bitmap: new Uint8Array(16).fill(0x7e) };
 const wide: BitmapGlyph = { width: 16, bitmap: new Uint8Array(32).fill(0x7e) };
@@ -59,7 +60,8 @@ describe('lossless source grid', () => {
     expect(escapeCharacter('\u009b')).toBe('\\x9B');
     expect(escapeCharacter('\u202e')).toBe('\\u{202E}');
     expect(escapeCharacter('\u2028')).toBe('\\u{2028}');
-    expect(characters('\x1b[31m').join('')).toBe('\\x1B[31m');
+    expect(characters('\t').join('')).toBe('    ');
+    expect(characters('\x1b[31m')).toEqual(['']);
   });
   it('wraps at bitmap width without trimming or splitting astral characters', () => {
     const result = layoutText(`${'a'.repeat(11)}中😀`, options, font);
@@ -93,11 +95,19 @@ describe('lossless source grid', () => {
     '\u1100',
     '\ud800',
     '\u0378',
-  ])('rejects missing glyphs and unsupported shaping: %s', (text) =>
-    expect(() => layoutText(text, options, font)).toThrow(),
-  );
-  it('does not substitute question marks for unsupported glyphs', () => {
-    expect(() => layoutText('é', options, font)).toThrow(/No bitmap glyph/);
+  ])('replaces unrenderable glyphs and shaping with a visible fallback: %s', (text) => {
+    const result = layoutText(text, options, font);
+    const rendered = result.pages
+      .flatMap((page) => page.rows)
+      .flatMap((row) => row.glyphs.map((glyph) => glyph.character))
+      .join('');
+    expect(rendered).toContain('?');
+    expect(result.unrenderableChars).toBeGreaterThan(0);
+  });
+  it('does not abort the whole frame for one unsupported glyph', () => {
+    const result = layoutText('é', options, font);
+    expect(result.unrenderableChars).toBe(1);
+    expect(result.pages[0]?.rows[0]?.glyphs.map((glyph) => glyph.character)).toEqual(['?']);
   });
 });
 
@@ -117,7 +127,7 @@ describe('budgets and PNG output', () => {
     expect(first).toBeDefined();
     if (first === undefined) throw new Error('Missing first PNG');
     const decoded = PNG.sync.read(Buffer.from(first.data));
-    expect([decoded.width, decoded.height]).toEqual([128, 128]);
+    expect([decoded.width, decoded.height]).toEqual([128, 120]);
     expect(first.data).toEqual(renderArchive('a\nb\nc', options, font).frames[0]?.data);
     expect(() => renderArchive('a', { ...options, maxTotalBytes: 1 }, font)).toThrow(/byte budget/);
     expect(() => renderArchive('a', options, font, Date.now() - 1)).toThrow(/deadline/);

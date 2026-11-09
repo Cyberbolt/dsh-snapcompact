@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**面向 DeepSeek Harness 的可回查图文上下文压缩。** Snapcompact 把长对话变成一个更小的 checkpoint，同时在背后保留一份精确、可搜索的原文归档。它以可选的 DSH preset 形式安装：新会话可以选用一条“先尝试图片帧、始终保留独立文本交接、图片不可靠时自动回退”的压缩链。
+**面向 DeepSeek Harness 的可回查图文上下文压缩。** Snapcompact 把长对话变成一个更小的 checkpoint，同时在背后保留一份精确、可搜索的原文归档。它以可选的 DSH preset 形式安装：新会话可以选用一条“先本地渲染有界图片帧、保留精确头尾文本和归档、图片不可用或不可读时回退文本交接”的压缩链。
 
 > **不承诺无条件省 token。** 图片路径取决于当前路由是否支持图片输入、真实计价以及识读准确率；能力或价格不明确时回退文本。摘要不是无损的：涉及精确命令、路径、缩进或标识符时，请使用 `snapcompact_recall` 回查原文。
 
@@ -19,7 +19,7 @@
 | 你的需求                     | Snapcompact 提供的能力                                                       |
 | ---------------------------- | ---------------------------------------------------------------------------- |
 | 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                               |
-| 压缩后仍能找回精确字符串     | 独立文本交接摘要、归档引用，以及 `snapcompact_recall` 工具。                 |
+| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                     |
 | 失败时不冒险                 | `snapcompact → handoff → shake → soft`；无法证明“更小且可读”的候选会被跳过。 |
 | 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                           |
 | 用数据而不是口号说明效果     | `/snapcompact benchmark` 用内置合成语料对比文本、摘要和图片路径。            |
@@ -41,30 +41,32 @@ snapcompact → handoff → shake → soft
 
 | 顺序 | 方法          | 模型调用         | 产出                                                                              |
 | ---- | ------------- | ---------------- | --------------------------------------------------------------------------------- |
-| 1    | `snapcompact` | 一次交接摘要调用 | 把归档对话渲染为位图 PNG 帧，并保留独立文本交接摘要和归档引用。                   |
+| 1    | `snapcompact` | 无（纯本地）     | 把压缩后的中段渲染为有界 2048px 位图帧，保留精确头尾文本和归档引用。              |
 | 2    | `handoff`     | 一次交接摘要调用 | 结构化任务交接：目标、约束、决策、精确命令、已完成/未完成工作、下一步、关键事实。 |
 | 3    | `shake`       | 无               | 先归档大工具输出，再用有界头尾摘录和回查引用来替代。                              |
 | 4    | `soft`        | 原生摘要         | DSH 原生文本摘要，作为最后的兜底。                                                |
 
-只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或显式配置的保守上限）时，才会尝试图片路径。以下情况会跳过图片路径：选中的历史里已经包含图片、请求没有剩余图片槽位、文本无法清晰渲染，或收益达不到配置的压缩比。
+只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用宿主的图片上限（默认 20 张），并根据压缩比动态选择帧数。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
 
 一个 checkpoint 大致如下（已删节）：
 
 ```text
-Snapcompact v1; method=snapcompact
+Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
-Goal / Constraints / Decisions / Files and exact commands / …
+Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+[精确文本头]
 [image frame 1 of N] … [image frame N of N]
+[精确文本尾]
 [file] snapcompact archive reference
 ```
 
 安全性质：
 
-- 图片永远不是任务状态的唯一副本；文本交接摘要和归档始终存在。
+- 图片永远不是任务状态的唯一副本；精确头尾文本和归档始终存在，视觉不可用时还有文本交接兜底。
 - 取消会终止本次压缩，不会静默改用下一种方法。
 - 只有在该会话中成功完成的压缩，才会授予对应归档的回查权限。
-- 历史中已有图片或此前的视觉 checkpoint 时，选择文本交接，而不是把附件描述重新渲染成“原始图片”。
-- 视觉能力或计价不明确时，按失败关闭处理，回退文本。
+- 历史中已有图片或此前的视觉 checkpoint 时，优先携带进新 checkpoint，而不是把附件描述重新渲染成“原始图片”。
+- 视觉能力不明确时按失败关闭处理；仅对 DeepSeek 模型使用带标签的估算价。
 - 不注册自定义 Session event 类型，也不替换宿主的事务引擎。
 
 ## 安装
@@ -81,7 +83,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.1.2`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.2.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，在 preset 选择器中选择 **Snapcompact**。
 
@@ -90,7 +92,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.1.2
+dsh plugin --profile web add dsh-snapcompact@0.2.0
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -102,11 +104,11 @@ dsh plugin --profile web add dsh-snapcompact@0.1.2
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.1.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.2.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.1.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.2.0.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
@@ -145,14 +147,24 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 methodOrder: [snapcompact, handoff, shake, soft]
 minCompressionRatio: 2
 rendering:
-  width: 1536
-  height: 1024
-  maxFrames: 12
+  width: 2048
+  height: 2048
+  maxFrames: 20
+  lineHeight: 20
+  minGlyphPx: 12
+serialization:
+  toolResultMaxChars: 2000
+  toolArgumentMaxChars: 500
+  messageTextMaxChars: 8000
+  headChars: 2000
+  tailChars: 2000
+  includeReasoning: false
+  maxCarriedImages: 4
 ```
 
-默认上限包括 12 帧（最多 20 帧）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限；宿主更小的限制同样生效。
+默认使用 2048×2048 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
 
-如果模型确实支持图片输入且有已知价格，但 DSH 适配器没有暴露图片计价，可以显式声明一个保守上限：
+如果模型确实支持图片输入且有已知价格，但 DSH 适配器没有暴露图片计价：DeepSeek 模型会使用带标签的 1024 token/帧保守估算；其他模型可以显式声明一个保守上限：
 
 ```yaml
 routePolicies:
@@ -176,9 +188,10 @@ routePolicies:
 
 ## 限制与隐私
 
-- **不是无损压缩。** 生成的摘要和图片可能省略细节。归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。
+- **不是无损压缩。** 生成的摘要和图片可能省略细节。归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
 - **不承诺通用 2× 节省。** token 数是估算，图片计价因路由而异；更小的 checkpoint 不等于更低账单，也不等于任务信息完整保留。
-- **图片路径的适用条件很窄。** 路由必须声明图片输入和计价。缺字形、需要 shaping 的文字、页数过多、缩放后不可读、存储失败或压缩收益不足时，都会回退文本，而不是输出空白或截断的图片。
+- **图片路径的适用条件很窄。** 路由必须声明图片输入和计价或带标签的估算。无法渲染的字符会变成可见的 `?` 占位，缩放后不可读的帧会被拒绝；预算不足或存储失败会回退文本。视觉中段可能被截断，精确内容仍以归档为准。
+- **宿主计量提示。** 适配器不提供图片计价时，DSH 自身的上下文计量在下一次 provider usage 锚定前可能低估图片；插件使用自己的保守帧价做视觉 gate。
 - **评测会产生费用。** `/snapcompact benchmark` 使用内置合成语料，最多发起四次辅助模型调用；它不会读取或上传你的私有会话历史。
 - **归档访问有边界。** 回查只接受当前会话中已完成压缩所引用的归档 ID，没有任意路径或跨会话的入口。
 - **无遥测。** 归档通过 DSH 的 attachment 存储保存在 profile 内；插件不会把对话数据上传到其他地方。
@@ -195,7 +208,7 @@ routePolicies:
 <details>
 <summary>总是回退文本，从不渲染图片</summary>
 
-运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。除非你确认模型接受图片并已校准数值，否则不要随意添加 `routePolicies` 上限。历史中已有图片时也会选择文本交接。
+运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。除非你确认模型接受图片并已校准数值，否则不要随意添加 `routePolicies` 上限。历史中已有图片时会优先携带，最多 4 张；没有剩余图片槽位时才回退文本交接。
 
 </details>
 
@@ -225,6 +238,7 @@ routePolicies:
 - [配置与路由计价](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)
 - [架构与代码阅读顺序](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/architecture.md)
 - [评测及解释边界](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation.md)
+- [真实合成语料结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
 - [第三方许可与来源](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.zh.md)
 - [English docs](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs)
 

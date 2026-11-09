@@ -1,6 +1,6 @@
 {
   "name": "dsh-snapcompact",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "DeepSeek Harness plugin for recoverable visual and text conversation compaction with exact-history recall and explicit benchmarks",
   "type": "module",
   "license": "MIT",

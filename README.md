@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Recoverable visual and text compaction for DeepSeek Harness.** Snapcompact turns a long conversation into a smaller checkpoint that still has an exact, searchable archive behind it. Install it as an opt-in DSH preset: new sessions can choose a compaction chain that tries visual page frames first, keeps an independent text handoff, and falls back to safer methods whenever images would be unreliable.
+**Recoverable visual and text compaction for DeepSeek Harness.** Snapcompact turns a long conversation into a smaller checkpoint that still has an exact, searchable archive behind it. Install it as an opt-in DSH preset: new sessions can choose a compaction chain that renders a bounded visual checkpoint locally, keeps exact head/tail text and an archive behind it, and falls back to a text handoff whenever images would be unavailable or unreadable.
 
 > **Not an unconditional token-saving promise.** The visual path depends on the route's image support, real image pricing and OCR accuracy. Unknown capabilities or pricing fall back to text. Summaries are not lossless: use `snapcompact_recall` when an exact command, path, indentation or identifier matters.
 
@@ -19,7 +19,7 @@
 | What you need                                                 | What Snapcompact provides                                                                                        |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                            |
-| Recover exact strings after compaction                        | A standalone text handoff, an archive reference and the `snapcompact_recall` tool.                               |
+| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                    |
 | A safe failure mode                                           | `snapcompact → handoff → shake → soft`; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
 | Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                   |
 | Evidence instead of a slogan                                  | `/snapcompact benchmark` compares the bundled synthetic fixture across text, summary and visual arms.            |
@@ -41,30 +41,32 @@ native compaction transaction commits one checkpoint
 
 | Order | Method        | Model call       | What it produces                                                                                                                     |
 | ----- | ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `snapcompact` | One handoff call | Bitmap PNG frames of the archived transcript, plus the independent text handoff and archive reference.                               |
+| 1     | `snapcompact` | None (local)     | Bounded 2048px bitmap frames of the compact middle, exact head/tail text and an archive reference.                                   |
 | 2     | `handoff`     | One handoff call | A structured task handoff: goal, constraints, decisions, exact commands, completed and unfinished work, next action, critical facts. |
 | 3     | `shake`       | None             | Large tool outputs are archived, then replaced with bounded head/tail excerpts and recall references.                                |
 | 4     | `soft`        | Native summary   | DSH's native text summarization as the final fallback.                                                                               |
 
-The visual method is attempted only when the current route declares image input **and** supplies image pricing (or an explicit conservative ceiling). It is skipped when the selected history already contains images, when no request image slots remain, when text cannot be rendered readably, or when the result would not meet the configured reduction ratio.
+The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to the host's image limit (20 by default), selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
 
 A checkpoint looks roughly like this (abridged):
 
 ```text
-Snapcompact v1; method=snapcompact
+Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
-Goal / Constraints / Decisions / Files and exact commands / …
+Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+[exact text head]
 [image frame 1 of N] … [image frame N of N]
+[exact text tail]
 [file] snapcompact archive reference
 ```
 
 Safety properties:
 
-- Images are never the only copy of task state; a text handoff and the archive remain.
+- Images are never the only copy of task state; exact head/tail text and the archive remain. A text handoff is the fallback when visuals are unavailable.
 - Cancellation stops the compaction and never silently selects the next method.
 - Recall is granted only by a successfully completed compaction in the owning session.
-- Existing images or earlier visual checkpoints select a text handoff instead of re-rendering an attachment descriptor.
-- Unknown vision support or pricing fails closed to text.
+- Existing images and earlier visual checkpoints are carried forward, not re-rendered as attachment descriptors.
+- Unknown vision support fails closed to text; unknown pricing is estimated only for DeepSeek model IDs and is labelled as an estimate.
 - The plugin adds no custom Session event type and does not replace the host's transaction engine.
 
 ## Install
@@ -81,7 +83,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.1.2` and click **Install**.
+2. Paste `dsh-snapcompact@0.2.0` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker.
 
@@ -90,7 +92,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.1.2
+dsh plugin --profile web add dsh-snapcompact@0.2.0
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -102,11 +104,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.1.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.2.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.1.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.2.0.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -145,14 +147,24 @@ Configuration lives on the `snapcompact` row inside the Snapcompact preset's iso
 methodOrder: [snapcompact, handoff, shake, soft]
 minCompressionRatio: 2
 rendering:
-  width: 1536
-  height: 1024
-  maxFrames: 12
+  width: 2048
+  height: 2048
+  maxFrames: 20
+  lineHeight: 20
+  minGlyphPx: 12
+serialization:
+  toolResultMaxChars: 2000
+  toolArgumentMaxChars: 500
+  messageTextMaxChars: 8000
+  headChars: 2000
+  tailChars: 2000
+  includeReasoning: false
+  maxCarriedImages: 4
 ```
 
-Defaults include 12 frames (maximum 20), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The host's smaller limits also apply.
+Defaults use 2048×2048 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
 
-If a model genuinely has image input and a known price but DSH's adapter exposes no image pricing, you can declare a conservative ceiling explicitly:
+If a model genuinely has image input and a known price but DSH's adapter exposes no image pricing, DeepSeek model IDs use a labelled 1024-token/frame conservative estimate. Other models can declare a conservative ceiling explicitly:
 
 ```yaml
 routePolicies:
@@ -176,9 +188,10 @@ Compatibility is intentionally pinned while the upstream plugin API is still a r
 
 ## Limits and privacy
 
-- **Not lossless.** Generated summaries and images can omit details. The archive preserves the selected message content, but it cannot recover content another plugin already deleted.
+- **Not lossless.** Generated summaries and images can omit details. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
 - **Not a universal 2× saving.** Token counts are estimates, image pricing varies by route, and a smaller checkpoint is not proof of lower billing or preserved task information.
-- **Visual eligibility is narrow.** The route must declare image input and pricing. Missing glyphs, scripts that require shaping, too many pages, unreadable downscaling, storage failures or insufficient reduction fall back to text rather than producing blank or truncated images.
+- **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
+- **Host metering caveat.** On a route whose adapter does not price images, DSH's own context meter may underprice the checkpoint until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
 - **Benchmarks cost money.** `/snapcompact benchmark` makes up to four auxiliary model calls using the bundled synthetic fixture. It does not read or upload private session history.
 - **Archive access is scoped.** Recall accepts only archive IDs referenced by a completed compaction in the owning session; there is no path or cross-session escape hatch.
 - **No telemetry.** Archives are stored through DSH's attachment storage in the profile. The plugin does not upload conversation data anywhere else.
@@ -195,7 +208,7 @@ Confirm the plugin appears as installed, restart DSH if the Plugins page asks fo
 <details>
 <summary>It always falls back to text and never renders images</summary>
 
-Run `/snapcompact status`. The usual cause is that the current route has no declared image input or no image pricing. This is the intended safe behavior; do not add a `routePolicies` ceiling unless you know the model accepts images and have calibrated the value. A history that already contains images also selects the text handoff.
+Run `/snapcompact status`. The usual cause is that the current route has no declared image input or no usable image price estimate. This is the intended safe behavior; do not add a `routePolicies` ceiling unless you know the model accepts images and have calibrated the value. Existing images are carried forward, up to four; if there is no image slot left, the text handoff is used.
 
 </details>
 
@@ -225,6 +238,7 @@ This release supports DSH `0.2.2-rc.1` only. Upgrade or switch the host to that 
 - [Configuration and route pricing](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md)
 - [Architecture and reading guide](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/architecture.md)
 - [Evaluation and interpretation](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation.md)
+- [Real synthetic-fixture results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
 - [Third-party notices](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.md)
 - [中文文档](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs/zh)
 

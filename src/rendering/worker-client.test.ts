@@ -13,6 +13,7 @@ const options: RenderOptions = {
   maxTotalBytes: 16 * 1024 * 1024,
   maxSourceBytes: 64 * 1024 * 1024,
   timeoutMs: 15_000,
+  lineHeight: 20,
 };
 
 beforeAll(async () => {
@@ -37,7 +38,7 @@ describe('dist worker integration', () => {
     if (frame === undefined) throw new Error('Missing worker frame');
     expect([frame.firstLine, frame.lastLine]).toEqual([1, 3]);
     const png = PNG.sync.read(Buffer.from(frame.data));
-    expect([png.width, png.height]).toEqual([1536, 1024]);
+    expect([png.width, png.height]).toEqual([1536, 140]);
     expect(png.data.some((byte, index) => index % 4 !== 3 && byte < 100)).toBe(true);
   });
 
@@ -56,16 +57,14 @@ describe('dist worker integration', () => {
     });
   });
 
-  it('rejects unsupported shaping and can continue after a worker-side error', async () => {
-    await expect(renderer.render('العربية', options)).rejects.toMatchObject({
-      code: 'UNSUPPORTED_CHARACTER',
-    });
-    await expect(renderer.render('e\u0301', options)).rejects.toMatchObject({
-      code: 'UNSUPPORTED_CHARACTER',
-    });
-    await expect(renderer.render('\u{10FFFF}', options)).rejects.toMatchObject({
-      code: 'MISSING_GLYPH',
-    });
+  it('replaces unsupported shaping with a visible fallback and keeps rendering', async () => {
+    const arabic = await renderer.render('العربية', options);
+    expect(arabic.frames).toHaveLength(1);
+    expect(arabic.unrenderableChars).toBeGreaterThan(0);
+    const combining = await renderer.render('e\u0301', options);
+    expect(combining.unrenderableChars).toBe(1);
+    const unassigned = await renderer.render('\u{10FFFF}', options);
+    expect(unassigned.unrenderableChars).toBe(1);
     expect((await renderer.render('recovered', options)).lineCount).toBe(1);
   });
 

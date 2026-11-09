@@ -27,7 +27,7 @@ export interface ArchiveIndex {
 /** One stable, pure definition shared by registrations in different preset revisions. */
 export const archiveProjection = {
   key: 'snapcompact.archives' as const,
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema,
   init: (): ArchiveIndexState => ({ entries: [], pending: {} }),
   apply: (state: ArchiveIndexState, event: SessionEvent): ArchiveIndexState => {
@@ -38,7 +38,7 @@ export const archiveProjection = {
       const header = event.data.summary.find((block) => block.type === 'text');
       const parsed = methodNameSchema.safeParse(
         header?.type === 'text'
-          ? /^Snapcompact v1; method=(\w+)/.exec(header.text)?.[1]
+          ? /^Snapcompact v[12]; method=(\w+)/.exec(header.text)?.[1]
           : undefined,
       );
       if (!parsed.success) return state;

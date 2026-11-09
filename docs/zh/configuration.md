@@ -11,12 +11,23 @@ policy:
   # Smaller model windows need less headroom; native validation applies.
   headroomTokens: 65536
 rendering:
-  width: 1536
-  height: 1024
-  maxFrames: 12
+  width: 2048
+  height: 2048
+  maxFrames: 20
+  lineHeight: 20
+  minGlyphPx: 12
   maxTotalBytes: 16777216
   maxSourceBytes: 67108864
   timeoutMs: 15000
+serialization:
+  toolResultMaxChars: 2000
+  toolArgumentMaxChars: 500
+  toolCallMaxChars: 2000
+  messageTextMaxChars: 8000
+  headChars: 2000
+  tailChars: 2000
+  includeReasoning: false
+  maxCarriedImages: 4
 minCompressionRatio: 2
 archiveMaxBytes: 67108864
 handoffMaxTokens: 4096
@@ -32,9 +43,9 @@ routePolicies: []
 
 ## 图片启用条件
 
-必须同时满足：模型明确声明 image 输入；适配器有图片计价或存在精确路由上界；渲染和请求变体不缩小字形；帧/字节/像素符合附件预算；完整 checkpoint 预计达到至少 `minCompressionRatio` 倍压缩。
+必须同时满足：模型明确声明 image 输入；适配器有图片计价、精确路由上界或带标签的 DeepSeek 估算；渲染和请求变体不缩小字形到可读阈值以下；帧/字节/像素符合附件预算；完整 checkpoint 预计达到至少 `minCompressionRatio` 倍压缩。
 
-若适配器没有价格，只能在确认实际规则后显式设置保守上界，例如：
+若适配器没有价格，插件会对 DeepSeek 模型使用 1024 token/帧的保守估算；其他模型只能在确认实际规则后显式设置上界，例如：
 
 ```yaml
 routePolicies:
@@ -43,11 +54,11 @@ routePolicies:
     visualTokensPerFrame: 4096 # Example only, not a recommended price. Calibrate for the actual model and frame size.
 ```
 
-provider/model 精确匹配，不做模糊别名、跨模型沿用或自动猜测。上界不代表真实 token；价格声明不会绕过 image 输入能力检查。尺寸改变后必须重新校准。
+provider/model 精确匹配，不做模糊别名或跨模型沿用。估算/上界不代表真实 token；价格声明不会绕过 image 输入能力检查。尺寸改变后必须重新校准。
 
 ## 上限和失败行为
 
-配置允许缩小但不能超过首版安全边界：12帧为默认、最多20帧，总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
+配置允许缩小但不能超过首版安全边界：2048×2048 帧、默认最多20帧（宿主默认图片上限），总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
 
 方法链不能重复或为空，最后必须是 soft。图片失败、未知价格、无收益会回退；所有候选失败则保留原会话区间并返回原生压缩错误。取消不触发下一方法。
 

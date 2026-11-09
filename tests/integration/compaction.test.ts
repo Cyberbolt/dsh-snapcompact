@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { ArchiveRepository } from '../../src/archives/repository.js';
 import { ArchiveService } from '../../src/archives/service.js';
@@ -14,7 +15,16 @@ afterEach(async () => {
   for (const dispose of cleanups.splice(0).reverse()) await dispose();
 });
 
-async function setup(methodOrder: string[], model = 'vision') {
+async function setup(
+  methodOrder: string[],
+  model = 'vision',
+  rendering: { width: number; height: number; maxFrames: number; minGlyphPx: number } = {
+    width: 512,
+    height: 512,
+    maxFrames: 6,
+    minGlyphPx: 8,
+  },
+) {
   const harness = await createHarness(model);
   const rendererModule: typeof RendererModule = await import(
     /* @vite-ignore */ new URL('../../dist/rendering/worker-client.js', import.meta.url).href
@@ -24,7 +34,11 @@ async function setup(methodOrder: string[], model = 'vision') {
   const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
   const engine = new SnapcompactEngine(
     harness.ctx,
-    resolveConfig({ methodOrder, policy: { auto: false, maxTokens: 4096 } }),
+    resolveConfig({
+      methodOrder,
+      policy: { auto: false, maxTokens: 4096 },
+      rendering,
+    }),
     archives,
     renderer,
     new AbortController().signal,
@@ -80,7 +94,7 @@ describe('native region transaction with plugin candidates', () => {
     expect(replayed.entries).toEqual(state.entries);
   });
 
-  it('stores real PNG bytes and a standalone text handoff before the native commit', async () => {
+  it('commits a local visual checkpoint without an auxiliary model call', async () => {
     const test = await setup(['snapcompact', 'handoff', 'shake', 'soft']);
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
@@ -97,10 +111,110 @@ describe('native region transaction with plugin candidates', () => {
     }
     expect(
       result.summary.some(
-        (block) => block.type === 'text' && block.text.includes('Goal: continue'),
+        (block) => block.type === 'text' && block.text.includes('Visual snapcompact checkpoint'),
       ),
     ).toBe(true);
     expect(result.summary.some((block) => block.type === 'file')).toBe(true);
+    // The visual path renders locally and must not spend a handoff/native call.
+    expect(test.adapter.calls).toHaveLength(0);
+  });
+
+  it('selects a bounded frame subset under a realistic image price', async () => {
+    const test = await setup(['snapcompact', 'handoff', 'soft'], 'vision', {
+      width: 1024,
+      height: 1024,
+      maxFrames: 9,
+      minGlyphPx: 8,
+    });
+    test.adapter.visualTokens = 1024;
+    let first: ReturnType<typeof test.appendText> | undefined;
+    let last: ReturnType<typeof test.appendText> | undefined;
+    for (let index = 0; index < 20; index += 1) {
+      const line = Array.from(
+        { length: 70 },
+        (_, row) =>
+          `Task ${index} row ${row}: stable fact and precise identifier ID_${index}_${row}.`,
+      ).join('\n');
+      const event = test.appendText(line);
+      first ??= event;
+      last = event;
+    }
+    if (first === undefined || last === undefined) throw new Error('Missing source messages');
+    test.session.append('turn/start', { turn: 1 });
+    const result = await test.engine.compactRegion(first.seq, last.seq, test.agent);
+    const images = result.summary.filter((block) => block.type === 'image');
+    expect(images.length).toBeGreaterThan(0);
+    expect(images.length).toBeLessThanOrEqual(9);
+    expect(result.summary[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('method=snapcompact'),
+    });
+    expect(test.adapter.calls).toHaveLength(0);
+  });
+
+  it('carries an existing image instead of skipping the visual path', async () => {
+    const test = await setup(['snapcompact', 'handoff', 'soft'], 'vision', {
+      width: 1024,
+      height: 1024,
+      maxFrames: 8,
+      minGlyphPx: 8,
+    });
+    test.adapter.visualTokens = 100;
+    const carried = {
+      attachmentId: `sha256:${'a'.repeat(64)}` as never,
+      mediaType: 'image/png' as const,
+      bytes: 100,
+      width: 100,
+      height: 100,
+    };
+    const imageEvent = test.session.append(
+      'user/message',
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'image', attachment: carried }],
+      }),
+      { surfaceOp: 'append' },
+    );
+    const source = test.appendText(longSource);
+    test.session.append('turn/start', { turn: 1 });
+    const result = await test.engine.compactRegion(imageEvent.seq, source.seq, test.agent);
+    const images = result.summary.filter((block) => block.type === 'image');
+    expect(images.some((block) => block.attachment.attachmentId === carried.attachmentId)).toBe(
+      true,
+    );
+    expect(images.length).toBeGreaterThan(1);
+    expect(test.adapter.calls).toHaveLength(0);
+  });
+
+  it('uses the labelled DeepSeek estimate on a gateway without adapter pricing', async () => {
+    const test = await setup(['snapcompact', 'handoff', 'soft'], 'deepseek-v4.1-flash', {
+      width: 1024,
+      height: 1024,
+      maxFrames: 8,
+      minGlyphPx: 8,
+    });
+    test.adapter.pricingAvailable = false;
+    let first: ReturnType<typeof test.appendText> | undefined;
+    let last: ReturnType<typeof test.appendText> | undefined;
+    for (let index = 0; index < 20; index += 1) {
+      const line = Array.from(
+        { length: 70 },
+        (_, row) =>
+          `Task ${index} row ${row}: stable fact and precise identifier ID_${index}_${row}.`,
+      ).join('\n');
+      const event = test.appendText(line);
+      first ??= event;
+      last = event;
+    }
+    if (first === undefined || last === undefined) throw new Error('Missing source messages');
+    test.session.append('turn/start', { turn: 1 });
+    const result = await test.engine.compactRegion(first.seq, last.seq, test.agent);
+    expect(result.summary[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('method=snapcompact'),
+    });
+    expect(result.summary.some((block) => block.type === 'image')).toBe(true);
+    expect(test.adapter.calls).toHaveLength(0);
   });
 
   it.each(['incomplete', 'oversized'])(
