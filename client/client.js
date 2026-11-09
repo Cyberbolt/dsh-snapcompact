@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
           "key": "thresholdRatio",
           "kind": "number",
           "group": "trigger",
-          "min": 0.5,
+          "min": 0.2,
           "max": 0.95,
           "step": 0.01
         },
@@ -749,7 +749,7 @@ window.__ModuleLoader__.load({
                     { className: 'sc-slider' },
                     h('input', {
                       type: 'range',
-                      min: 0.5,
+                      min: 0.2,
                       max: 0.95,
                       step: 0.01,
                       value: draft.thresholdRatio,
