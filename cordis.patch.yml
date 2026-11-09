@@ -15,7 +15,9 @@
         id: snapcompact
         name: Snapcompact
         description: 'Standard mode plus bitmap-frame compaction with exact-history recall and text fallbacks.'
-        order: 20
+        # The registry sorts presets by numeric order, so 1.5 sits right after
+        # the built-in standard preset (1) and before ptc (2).
+        order: 1.5
         plugins:
           # Separate opt-in preset: existing presets and running sessions are unchanged.
           - id: persona
