@@ -1,0 +1,9 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+*.tgz
+.DS_Store
+.npmrc
+.test-artifacts-*/
+.artifacts/
