@@ -1,13 +1,32 @@
 {
   "name": "dsh-snapcompact",
   "version": "0.1.1",
-  "description": "Recoverable visual and text conversation compaction for DeepSeek Harness",
+  "description": "DeepSeek Harness plugin for recoverable visual and text conversation compaction with exact-history recall and explicit benchmarks",
   "type": "module",
   "license": "MIT",
   "author": "Cyberbolt",
+  "icon": "icon.svg",
+  "homepage": "https://github.com/Cyberbolt/dsh-snapcompact#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Cyberbolt/dsh-snapcompact.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Cyberbolt/dsh-snapcompact/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "compaction",
+    "context-compaction",
+    "recall",
+    "plugin"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "engines": {
     "node": ">=24",
@@ -52,7 +71,8 @@
     "test:watch": "vitest",
     "check:package": "node --experimental-strip-types scripts/check-package.ts",
     "check:install": "node --experimental-strip-types scripts/check-install.ts",
-    "check": "node --experimental-strip-types scripts/check.ts"
+    "check": "node --experimental-strip-types scripts/check.ts",
+    "prepublishOnly": "pnpm run check"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.19.0",
