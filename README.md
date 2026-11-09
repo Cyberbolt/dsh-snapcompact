@@ -22,6 +22,7 @@
 | Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                                                  |
 | A safe failure mode                                           | Default chain `snapcompact → handoff → shake → soft`, configurable as a subset/order; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
 | Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                                                 |
+| Change the common knobs without hand-editing YAML             | The **Plugins → Snapcompact** settings card edits the chain, threshold, frame budget and limits, and saves through the profile's config patch.                 |
 | Evidence instead of a slogan                                  | `/snapcompact benchmark` reports recall, one-time generation cost and per-turn checkpoint size for the text, summary and visual arms.                          |
 
 ## How it works
@@ -89,7 +90,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.3.0` and click **Install**.
+2. Paste `dsh-snapcompact@0.4.0` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker.
 
@@ -98,7 +99,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.3.0
+dsh plugin --profile web add dsh-snapcompact@0.4.0
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -110,11 +111,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.3.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.3.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.0.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -147,7 +148,7 @@ Archive IDs must be referenced by a completed compaction in the owning session (
 
 ## Configuration
 
-Configuration lives on the `snapcompact` row inside the Snapcompact preset's isolated compaction group. Edit it through DSH's preset/config editor rather than modifying active profile files by hand. A minimal example:
+Configuration lives on the `snapcompact` row inside the Snapcompact preset's isolated compaction group. The settings card on the **Plugins → Snapcompact** page covers the common keys; the preset/config editor covers everything else. Both write into the active profile's configuration patch, so neither requires editing profile files by hand.
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -173,6 +174,28 @@ serialization:
 ```
 
 Defaults use 2048×2048 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
+
+### In-app settings
+
+The Snapcompact detail page under **Plugins** carries a settings card backed by a `snapcompact-settings` row in the current profile. The card writes through DSH's settings service into that profile's configuration patch, so saved values survive restarts without hand-editing YAML. It manages:
+
+| Control                   | Config path                              | Default                               |
+| ------------------------- | ---------------------------------------- | ------------------------------------- |
+| Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
+| Custom trigger threshold  | `policy.thresholdRatio`                  | unset (host default 0.8)              |
+| Frame size                | `rendering.width` and `rendering.height` | 2048                                  |
+| Maximum frames            | `rendering.maxFrames`                    | 20                                    |
+| Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
+| Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
+| Handoff budget            | `handoffMaxTokens`                       | 4096                                  |
+| Externalize above         | `shakeThresholdChars`                    | 8192                                  |
+
+Rules worth knowing:
+
+- The engine is built when a session mounts the preset, so **saved changes apply to new sessions**; a running session keeps its configuration.
+- For a key the card manages, the saved value overrides the same key in preset YAML. `thresholdRatio` is the exception: it stays unset until you enable the custom threshold, so a preset-level `policy.thresholdRatio` still applies.
+- "Restore default" removes the override and falls back to the plugin default (or to YAML, for the threshold).
+- Everything else — the rest of `policy`, `serialization`, `routePolicies`, render timeouts — remains YAML-only.
 
 ### Custom method chains and thresholds
 

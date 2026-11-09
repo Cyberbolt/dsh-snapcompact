@@ -43,6 +43,12 @@ const policyFields = {
 
 const configSchema = z
   .strictObject({
+    /**
+     * How this row is hosted. `ui` marks the profile-plane carrier row that
+     * makes the browser half discoverable; it renders the plugin page card and
+     * must not register compaction, tools or commands.
+     */
+    role: z.enum(['plugin', 'ui']).default('plugin'),
     policy: z
       .strictObject({
         ...policyFields,
@@ -219,6 +225,12 @@ const loaderMethodName = schema.union([
 
 /** Loader-facing form; the strict parser above supplies defaults and cross-field validation. */
 export const Config: ReturnType<typeof schema.object> = schema.object({
+  role: schema
+    .union([schema.const('plugin'), schema.const('ui')])
+    .default('plugin')
+    .description(
+      'plugin = 正常压缩插件；ui = profile 平面的 UI 载体行，只用于让插件页加载客户端配置卡，不注册压缩、工具或命令。',
+    ),
   policy: BasicCompactionEngine.Config,
   methodOrder: schema
     .array(loaderMethodName)

@@ -22,6 +22,7 @@
 | 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                                            |
 | 失败时不冒险                 | 默认链 `snapcompact → handoff → shake → soft` 可配置子集/顺序；无法证明“更小且可读”的候选会被跳过。 |
 | 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                                                  |
+| 常用项不用手写 YAML          | **插件 → Snapcompact** 设置卡可改方法链、阈值、帧预算与上限，并通过 profile 配置补丁保存。          |
 | 用数据而不是口号说明效果     | `/snapcompact benchmark` 报告文本、摘要和图片三组的召回率、一次性生成成本和每轮 checkpoint 大小。   |
 
 ## 工作原理
@@ -89,7 +90,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.3.0`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.4.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，在 preset 选择器中选择 **Snapcompact**。
 
@@ -98,7 +99,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.3.0
+dsh plugin --profile web add dsh-snapcompact@0.4.0
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -110,11 +111,11 @@ dsh plugin --profile web add dsh-snapcompact@0.3.0
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.3.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.3.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.0.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
@@ -147,7 +148,7 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ## 配置
 
-配置位于 Snapcompact preset 独立压缩分组内的 `snapcompact` 行。请使用 DSH 的 preset/配置编辑器修改，不要手工修改活动 profile 文件。最小示例：
+配置位于 Snapcompact preset 独立压缩分组内的 `snapcompact` 行。常用项可以直接在 **插件 → Snapcompact** 页面的设置卡里改；其余项仍用 preset/配置编辑器。两者都写入当前 profile 的配置补丁，不需要手工修改 profile 文件。
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -173,6 +174,28 @@ serialization:
 ```
 
 默认使用 2048×2048 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
+
+### 在应用内配置
+
+**插件 → Snapcompact** 详情页里有一张设置卡，背后是当前 profile 的 `snapcompact-settings` 行。卡片通过 DSH 的设置服务写入该 profile 的配置补丁，保存后重启仍在，不需要手写 YAML。可调项：
+
+| 界面项         | 配置路径                                | 默认                                  |
+| -------------- | --------------------------------------- | ------------------------------------- |
+| 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
+| 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
+| 帧尺寸         | `rendering.width` 与 `rendering.height` | 2048                                  |
+| 最多帧数       | `rendering.maxFrames`                   | 20                                    |
+| 最小压缩比     | `minCompressionRatio`                   | 2                                     |
+| 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
+| 交接预算       | `handoffMaxTokens`                      | 4096                                  |
+| 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
+
+需要知道的规则：
+
+- 引擎在会话挂载 preset 时构造，所以**保存后的改动对新会话生效**；运行中的会话保持原配置。
+- 卡片托管的键，其保存值会覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：只有打开“自定义触发阈值”后才会覆盖，否则 preset 里的 `policy.thresholdRatio` 仍然生效。
+- “恢复默认”会移除覆盖，回到插件默认值（阈值则回到 YAML）。
+- 其它内容——`policy` 的其余字段、`serialization`、`routePolicies`、渲染超时——仍然只走 YAML。
 
 ### 自定义方法链与阈值
 

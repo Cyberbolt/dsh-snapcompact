@@ -2,7 +2,7 @@
 
 [简体中文](zh/configuration.md)
 
-Configure the **dsh-snapcompact row inside the Snapcompact preset's isolated compaction group**, not a second global compaction service. Use DSH's preset/config editor rather than modifying the active profile files manually.
+Configure the **dsh-snapcompact row inside the Snapcompact preset's isolated compaction group**, not a second global compaction service. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -36,6 +36,34 @@ handoffMaxTokens: 4096
 shakeThresholdChars: 8192
 routePolicies: []
 ```
+
+## In-app settings
+
+The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts.
+
+The card manages eight keys:
+
+| Control                   | Config path                              | Default                               |
+| ------------------------- | ---------------------------------------- | ------------------------------------- |
+| Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
+| Custom trigger threshold  | `policy.thresholdRatio`                  | unset (native default 0.8)            |
+| Frame size                | `rendering.width` and `rendering.height` | 2048                                  |
+| Maximum frames            | `rendering.maxFrames`                    | 20                                    |
+| Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
+| Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
+| Handoff budget            | `handoffMaxTokens`                       | 4096                                  |
+| Externalize above         | `shakeThresholdChars`                    | 8192                                  |
+
+Persistence and precedence:
+
+- Writes go through DSH's settings service to the profile's configuration patch; they survive restarts and are removed by "Restore default" (per field or for the whole card).
+- A saved card value overrides the same key in preset YAML. `thresholdRatio` is the exception: until the custom threshold is enabled the key is absent, so a preset-level `policy.thresholdRatio` still applies.
+- The engine is constructed when a session mounts the preset, so changes take effect for **new sessions**; `/snapcompact status` in an existing session keeps reporting its starting configuration.
+- The settings schema cannot express chain ordering, so a stored chain that is empty, repeated, or does not end in `soft` is ignored by the plugin; the strict parser remains the final gate.
+
+The bundle also declares a profile-plane carrier row (`snapcompact-ui`, module `dsh-snapcompact`) whose config is `role: ui`. DSH's browser module scanner only reads `dsh.client` from Loader entries named by a bare package specifier, so this row exists to make the card loadable; it registers no compaction, tools or commands. Keep it enabled: disabling it removes the settings card from the plugin page (the preset keeps working).
+
+Everything outside the eight keys stays YAML-only: the rest of `policy`, `serialization`, `routePolicies`, `rendering.maxTotalBytes`, `rendering.maxSourceBytes`, `rendering.timeoutMs`, `rendering.lineHeight` and `rendering.minGlyphPx`.
 
 ## Native policy
 

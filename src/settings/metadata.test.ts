@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_METHOD_ORDER, resolveConfig } from '../config.js';
+import {
+  applyUserSettings,
+  DEFAULT_USER_CHAIN,
+  defaultUserSettings,
+  readUserSettings,
+  SETTINGS_FIELDS,
+  SETTINGS_KEYS,
+  type UserSettings,
+} from './metadata.js';
+
+function resolvePath(input: unknown, path: readonly string[]): unknown {
+  let current = input;
+  for (const key of path) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+describe('settings metadata', () => {
+  it('mirrors the plugin default method chain', () => {
+    expect(DEFAULT_USER_CHAIN).toEqual(DEFAULT_METHOD_ORDER);
+  });
+
+  it('publishes one unique key per field', () => {
+    expect(new Set(SETTINGS_KEYS).size).toBe(SETTINGS_KEYS.length);
+    expect(SETTINGS_KEYS).toEqual(SETTINGS_FIELDS.map((field) => field.key));
+  });
+
+  it('keeps every declared default identical to the plugin parser default', () => {
+    const resolved = resolveConfig({});
+    for (const field of SETTINGS_FIELDS) {
+      if (field.defaultValue === undefined) continue;
+      for (const path of field.paths) {
+        expect(resolvePath(resolved, path), `${field.key} -> ${path.join('.')}`).toEqual(
+          field.defaultValue,
+        );
+      }
+    }
+  });
+
+  it('overrides configured paths without mutating the input', () => {
+    const input = { methodOrder: ['soft'], rendering: { width: 1024, height: 1024, maxFrames: 4 } };
+    const settings: UserSettings = {
+      methodOrder: ['snapcompact', 'soft'],
+      frameSize: 1536,
+      maxFrames: 8,
+    };
+    const merged = applyUserSettings(input, settings) as typeof input;
+    expect(merged.methodOrder).toEqual(['snapcompact', 'soft']);
+    expect(merged.rendering).toEqual({ width: 1536, height: 1536, maxFrames: 8 });
+    expect(input.rendering).toEqual({ width: 1024, height: 1024, maxFrames: 4 });
+    expect(input.methodOrder).toEqual(['soft']);
+    expect(resolveConfig(merged).rendering.maxFrames).toBe(8);
+  });
+
+  it('leaves the preset threshold in force until the user overrides it', () => {
+    const input = { policy: { thresholdRatio: 0.7 } };
+    const untouched = applyUserSettings(input, { maxFrames: 10 });
+    expect(resolveConfig(untouched).policy.thresholdRatio).toBe(0.7);
+    const overridden = applyUserSettings(input, { thresholdRatio: 0.55 });
+    expect(resolveConfig(overridden).policy.thresholdRatio).toBe(0.55);
+  });
+
+  it('copies the chain instead of sharing the settings array', () => {
+    const settings: UserSettings = { methodOrder: ['snapcompact', 'soft'] };
+    const merged = resolveConfig(applyUserSettings({}, settings));
+    merged.methodOrder.pop();
+    expect(settings.methodOrder).toEqual(['snapcompact', 'soft']);
+  });
+
+  it('reads plain values and volatile references alike', () => {
+    expect(readUserSettings({ maxFrames: 6, frameSize: 1024 })).toEqual({
+      maxFrames: 6,
+      frameSize: 1024,
+    });
+    const volatile = {
+      methodOrder: { get: () => ['soft'] },
+      maxFrames: { get: () => 12 },
+      shakeThresholdChars: { get: () => 4096 },
+    };
+    expect(readUserSettings(volatile)).toEqual({
+      methodOrder: ['soft'],
+      maxFrames: 12,
+      shakeThresholdChars: 4096,
+    });
+  });
+
+  it('drops chains the strict parser would reject', () => {
+    expect(readUserSettings({ methodOrder: ['soft', 'snapcompact'] })).toEqual({});
+    expect(readUserSettings({ methodOrder: ['soft', 'soft'] })).toEqual({});
+    expect(readUserSettings({ methodOrder: ['handoff'] })).toEqual({});
+    expect(readUserSettings({ methodOrder: [] })).toEqual({});
+    expect(readUserSettings({ methodOrder: ['snapcompact', 'soft'] })).toEqual({
+      methodOrder: ['snapcompact', 'soft'],
+    });
+  });
+
+  it('drops unknown, non-numeric and out-of-range values', () => {
+    expect(
+      readUserSettings({
+        maxFrames: 21,
+        frameSize: 'large',
+        archiveMaxBytes: -1,
+        methodOrder: [42],
+        unknown: 1,
+      }),
+    ).toEqual({});
+    expect(readUserSettings(null)).toEqual({});
+  });
+
+  it('reports the schema defaults as a plain map', () => {
+    expect(defaultUserSettings()).toEqual(
+      Object.fromEntries(
+        SETTINGS_FIELDS.filter((field) => field.defaultValue !== undefined).map((field) => [
+          field.key,
+          field.defaultValue,
+        ]),
+      ),
+    );
+    expect(defaultUserSettings()).not.toHaveProperty('thresholdRatio');
+  });
+
+  it('returns the input untouched without any overrides', () => {
+    const input = { methodOrder: ['soft'] };
+    expect(applyUserSettings(input, undefined)).toBe(input);
+    expect(applyUserSettings(input, {})).toBe(input);
+  });
+
+  it('produces a config the strict parser accepts for every default', () => {
+    const resolved = resolveConfig(applyUserSettings({}, defaultUserSettings()));
+    expect(resolved.methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
+    expect(resolved.rendering).toMatchObject({ width: 2048, height: 2048, maxFrames: 20 });
+    expect(resolved.archiveMaxBytes).toBe(64 * 1024 * 1024);
+    expect(resolved.handoffMaxTokens).toBe(4096);
+    expect(resolved.shakeThresholdChars).toBe(8192);
+    expect(resolved.minCompressionRatio).toBe(2);
+  });
+});
