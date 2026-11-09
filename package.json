@@ -73,6 +73,7 @@
     "check:install": "node --experimental-strip-types scripts/check-install.ts",
     "check": "node --experimental-strip-types scripts/check.ts",
     "release:plan": "node --experimental-strip-types scripts/release.ts",
+    "release:verify": "node --experimental-strip-types scripts/verify-release.ts",
     "prepublishOnly": "pnpm run check"
   },
   "dependencies": {
