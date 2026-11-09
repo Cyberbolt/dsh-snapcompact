@@ -7,12 +7,10 @@
  * can run before `pnpm install` in CI and the decision can be unit tested
  * without network access.
  */
-import { appendFile, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { appendFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { publishedVersions, readManifest } from './registry.ts';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
-const defaultRegistry = 'https://registry.npmjs.org';
 /** `<major>.<minor>.<patch>[-<prerelease>]`; build metadata is irrelevant to release order. */
 const versionPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -27,12 +25,6 @@ export interface ReleasePlan {
 interface ParsedVersion {
   readonly core: readonly number[];
   readonly prerelease: readonly string[];
-}
-
-interface PackageManifest {
-  readonly name: string;
-  readonly version: string;
-  readonly registry: string;
 }
 
 function parseVersion(version: string): ParsedVersion {
@@ -114,52 +106,8 @@ export function planRelease(input: {
   return { version, publish: true, reason: 'new-version', distTag };
 }
 
-function parseManifest(text: string): PackageManifest {
-  const parsed: unknown = JSON.parse(text);
-  if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error('package.json must contain a JSON object');
-  }
-  const record = parsed as Record<string, unknown>;
-  const name = record['name'];
-  const version = record['version'];
-  if (typeof name !== 'string' || name.length === 0) {
-    throw new Error('package.json is missing a package name');
-  }
-  if (typeof version !== 'string' || version.length === 0) {
-    throw new Error('package.json is missing a version');
-  }
-  const publishConfig = record['publishConfig'];
-  const configured =
-    typeof publishConfig === 'object' && publishConfig !== null
-      ? (publishConfig as Record<string, unknown>)['registry']
-      : undefined;
-  const registry =
-    typeof configured === 'string' && configured.length > 0 ? configured : defaultRegistry;
-  return { name, version, registry };
-}
-
-/** Published versions come from the registry, never from git: manual releases leave no trace in history. */
-async function publishedVersions(registry: string, name: string): Promise<string[]> {
-  const base = registry.replace(/\/+$/, '');
-  const url = `${base}/${encodeURIComponent(name)}`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
-  if (response.status === 404) return [];
-  if (!response.ok) {
-    throw new Error(`registry answered ${response.status} ${response.statusText} for ${url}`);
-  }
-  const document: unknown = await response.json();
-  const versions =
-    typeof document === 'object' && document !== null
-      ? (document as Record<string, unknown>)['versions']
-      : undefined;
-  if (typeof versions !== 'object' || versions === null) {
-    throw new Error(`registry document for ${name} has no versions map`);
-  }
-  return Object.keys(versions);
-}
-
 async function main(): Promise<void> {
-  const manifest = parseManifest(await readFile(resolve(root, 'package.json'), 'utf8'));
+  const manifest = await readManifest();
   const published = await publishedVersions(manifest.registry, manifest.name);
   const plan = planRelease({ version: manifest.version, published });
   const summary = [

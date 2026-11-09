@@ -35,6 +35,12 @@
 
 [独立条目列表](../../presets/snapcompact.yml) 是人工维护的源；构建脚本将它缩进为 [bundle patch](../../cordis.patch.yml) 的字面声明。生成文件不手工编辑，不使用依赖运行时 base URL 的相对 include。这样既方便阅读条目，也能让插件管理器直接校验和挂载声明。
 
+## 发布流水线
+
+`package.json` 里的版本号是唯一的发布开关。[publish.yml](../../.github/workflows/publish.yml) 只在 registry 还没有该版本时发布它，走 npm trusted publishing，仓库里因此没有长期令牌。有三点保证它不会被绕过：registry 地址来自 `publishConfig` 并在整个 job 里固定，别人 `.npmrc` 里的镜像既改不了发布目标也改不了校验目标；plan 步骤在 `pnpm install` 之前运行且用 `fetch` 读 registry，判定不依赖已安装状态；tag 和 GitHub Release 在发布成功后立刻创建，因为它们才是交付物。
+
+registry 校验放在最后，并且足够有耐心。`npm publish` 返回时公网 packument 还没提供新版本——本仓库实测 0.1.2 滞后 56 秒、0.2.0 滞后 78 秒，所以固定一分钟的窗口只能靠运气。[verify-release.ts](../../scripts/verify-release.ts) 用指数退避轮询最多五分钟，再断言 dist-tag、`dist.integrity` 和 provenance 证明，并打印 registry 实际耗时。重跑 workflow 可以修复缺失的 tag 或 Release：plan 判定 `already-published`，跳过发布，但 Release 步骤照常执行。
+
 ## 生命周期与并发
 
 Preset 的 compaction 组隔离后端和其消费者。安装只增加一个 opt-in preset，不取代其他 preset；新选择应在新会话验证。DSH 原生事务拥有会话锁和维护任务准入，插件没有第二套互相竞争的锁。
