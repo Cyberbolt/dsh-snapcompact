@@ -37,6 +37,12 @@ Read the composition root, configuration, engine and method contract first. Then
 
 The [standalone entry list](../presets/snapcompact.yml) is human-maintained. The build script emits a literal declaration into the [bundle patch](../cordis.patch.yml). Do not edit generated output. A literal patch avoids a runtime include's ambiguous relative base URL while keeping the source list readable.
 
+## Release pipeline
+
+The version in `package.json` is the only release switch. [publish.yml](../.github/workflows/publish.yml) publishes exactly that version when the registry does not have it yet, through npm trusted publishing, so no long-lived token exists in the repository. Three properties keep that honest: the registry address comes from `publishConfig` and is pinned for the whole job, so a mirror in someone's `.npmrc` cannot redirect a publish or a check; the plan step runs before `pnpm install` and reads the registry with `fetch`, so the decision cannot depend on installed state; and the tag and GitHub release are created immediately after a successful publish, because they are the deliverable.
+
+The registry assertion runs last and is patient. `npm publish` returns before the public packument serves the new version — measured on this repository, 0.1.2 became readable 56 s later and 0.2.0 78 s later — so a fixed one-minute window passed or failed by luck. [verify-release.ts](../scripts/verify-release.ts) polls with exponential backoff for up to five minutes, then asserts the dist-tag, `dist.integrity` and the provenance attestation, and reports how long the registry actually took. Re-running the workflow repairs a missing tag or release: the plan reports `already-published`, publishing is skipped, and the release step still runs.
+
 ## Lifetime and concurrency
 
 The preset isolates compaction and its consumers. Installation adds an opt-in preset without changing existing defaults or active sessions. DSH owns maintenance admission and transaction locks; the plugin adds no competing session lock.

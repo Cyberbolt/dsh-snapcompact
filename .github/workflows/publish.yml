@@ -27,6 +27,11 @@ jobs:
       # create the version tag and the GitHub release.
       id-token: write
       contents: write
+    env:
+      # A contributor's `.npmrc` may point at a mirror. Install, publish,
+      # tagging and verification must all agree on the registry the release
+      # lands in, so the public registry is set once for the whole job.
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org
     steps:
       - name: Require the default branch
         run: |
@@ -80,40 +85,16 @@ jobs:
         id: publish
         if: steps.release.outputs.publish == 'true'
         # --ignore-scripts: prepublishOnly reruns the checks above.
-        # The registry comes from publishConfig in package.json.
+        # The registry comes from NPM_CONFIG_REGISTRY above.
         run: npm publish --ignore-scripts --tag "${{ steps.release.outputs.dist_tag }}"
-
-      - name: Verify the registry state
-        if: steps.release.outputs.publish == 'true'
-        run: |
-          version="${{ steps.release.outputs.version }}"
-          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if npm view "dsh-snapcompact@${version}" version --prefer-online >/dev/null 2>&1; then
-              break
-            fi
-            sleep 5
-          done
-          npm view "dsh-snapcompact@${version}" version dist.integrity
-          npm view dsh-snapcompact dist-tags --json
-          node -e '
-            fetch(`https://registry.npmjs.org/dsh-snapcompact/${process.argv[1]}`)
-              .then((response) => {
-                if (!response.ok) throw new Error(`registry answered ${response.status}`);
-                return response.json();
-              })
-              .then((document) => {
-                const url = document?.dist?.attestations?.url;
-                if (url === undefined) {
-                  console.log(`::warning::no provenance attestation on ${process.argv[1]}`);
-                  return;
-                }
-                console.log(`provenance: ${url}`);
-              })
-              .catch((error) => console.log(`::warning::could not read provenance: ${error.message}`));
-          ' "${version}"
 
       # Also runs when the version was already published by an earlier attempt,
       # so a failed tag or release step can be repaired by re-running the job.
+      #
+      # Deliberately before the registry check: the release is the deliverable
+      # and a slow registry must not cost it. `gitHead` is only readable once
+      # the version is public, which is exactly the repair case; right after a
+      # fresh publish the fallback is this commit, which is the same target.
       - name: Tag and publish the GitHub release
         if: (steps.release.outputs.publish == 'true' && steps.publish.outcome == 'success') || steps.release.outputs.reason == 'already-published'
         env:
@@ -137,3 +118,14 @@ jobs:
             *-*) arguments+=(--prerelease) ;;
           esac
           gh release create "${tag}" "${arguments[@]}"
+
+      # Last, and patient. `npm publish` returns before the public packument
+      # serves the new version: 0.1.2 became readable about 56 s later and
+      # 0.2.0 about 78 s later, so the previous fixed 60 s window failed by a
+      # few seconds. scripts/verify-release.ts polls with backoff for up to
+      # five minutes and asserts the dist-tag, integrity and provenance.
+      - name: Verify the registry state
+        run: >-
+          node --experimental-strip-types scripts/verify-release.ts
+          "${{ steps.release.outputs.version }}"
+          "${{ steps.release.outputs.dist_tag }}"
