@@ -9,6 +9,14 @@ import { z } from 'zod';
 export const methodNameSchema = z.enum(['snapcompact', 'handoff', 'shake', 'soft']);
 export type MethodName = z.infer<typeof methodNameSchema>;
 
+/** Single source of truth shared by the strict parser, the loader schema and chain presets. */
+export const DEFAULT_METHOD_ORDER = Object.freeze([
+  'snapcompact',
+  'handoff',
+  'shake',
+  'soft',
+] as const satisfies readonly MethodName[]);
+
 /** Defaults shared by the strict runtime parser and the loader-facing schema. */
 export const SERIALIZATION_DEFAULTS = Object.freeze({
   toolResultMaxChars: 2_000,
@@ -53,7 +61,7 @@ const configSchema = z
     methodOrder: z
       .array(methodNameSchema)
       .min(1)
-      .default(['snapcompact', 'handoff', 'shake', 'soft']),
+      .default([...DEFAULT_METHOD_ORDER]),
     rendering: z
       .strictObject({
         width: z.number().int().min(256).max(2048).default(2048),
@@ -202,10 +210,24 @@ export function toNativePolicy(input: SnapcompactConfig['policy']): BasicCompact
   return result;
 }
 
+const loaderMethodName = schema.union([
+  schema.const('snapcompact'),
+  schema.const('handoff'),
+  schema.const('shake'),
+  schema.const('soft'),
+]);
+
 /** Loader-facing form; the strict parser above supplies defaults and cross-field validation. */
 export const Config: ReturnType<typeof schema.object> = schema.object({
   policy: BasicCompactionEngine.Config,
-  methodOrder: schema.array(schema.string()).default(['snapcompact', 'handoff', 'shake', 'soft']),
+  methodOrder: schema
+    .array(loaderMethodName)
+    .min(1)
+    .max(4)
+    .default([...DEFAULT_METHOD_ORDER])
+    .description(
+      '按优先级排列的压缩方法：第一个成功的候选会被采用，因此顺序就是回退顺序；最后必须是 soft 兜底。可只列子集，例如 [snapcompact, soft] 或 [soft]。',
+    ),
   rendering: schema.object({
     width: schema.number().step(1).min(256).max(2048).default(2048),
     height: schema.number().step(1).min(256).max(2048).default(2048),

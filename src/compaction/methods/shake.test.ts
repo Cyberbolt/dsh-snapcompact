@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
-import { shake } from './shake.js';
+import { countExternalizableOutputs, shake } from './shake.js';
 import { resolveConfig } from '../../config.js';
 import { ArchiveRepository } from '../../archives/repository.js';
 import { ArchiveService } from '../../archives/service.js';
@@ -12,6 +12,27 @@ afterEach(async () => {
 });
 
 describe('recoverable local tool-output externalization', () => {
+  it('counts only tool messages above the threshold for status explanations', () => {
+    const callId = ToolCallId('count-call');
+    const large = createMessage({
+      role: 'tool',
+      source: { kind: 'tool', callId },
+      toolCallId: callId,
+      content: [{ type: 'text', text: 'x'.repeat(9_000) }],
+    });
+    const small = createMessage({
+      role: 'tool',
+      source: { kind: 'tool', callId },
+      toolCallId: callId,
+      content: [{ type: 'text', text: 'short output' }],
+    });
+    const user = createUserMessage({
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: 'y'.repeat(9_000) }],
+    });
+    expect(countExternalizableOutputs([large, small, user], 8_192)).toBe(1);
+  });
+
   it('retains exact user constraints, archives full outputs and never calls the model or splits emoji', async () => {
     const fixture = await createHarness();
     cleanups.push(fixture.dispose);
