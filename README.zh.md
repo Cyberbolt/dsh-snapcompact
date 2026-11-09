@@ -10,19 +10,19 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**面向 DeepSeek Harness 的可回查图文上下文压缩。** Snapcompact 把长对话变成一个更小的 checkpoint，同时在背后保留一份精确、可搜索的原文归档。它以可选的 DSH preset 形式安装：新会话可以选用一条“先本地渲染有界图片帧、保留精确头尾文本和归档、图片不可用或不可读时回退文本交接”的压缩链。
+**Snapcompact 用“渲染”而不是“总结”来压缩长对话。** DSH 选出安全的压缩区间后，Snapcompact 把被丢弃的中段序列化成像素字体的密集 PNG 帧，交给视觉模型直接阅读；checkpoint 前后保留精确头尾文本，背后是 sha256 归档，`snapcompact_recall` 仍可逐字取回命令、路径和标识符。渲染是本地、确定性的：视觉路径不调用摘要模型，也不需要 API key 或网络。路由不支持图片时，按配置的文本方法链回退，最后回退 DSH 原生摘要。它以可选的 DSH preset 形式安装，默认 preset 和运行中的会话保持不变。
 
-> **不承诺无条件省 token。** 图片路径取决于当前路由是否支持图片输入、真实计价以及识读准确率；能力或价格不明确时回退文本。摘要不是无损的：涉及精确命令、路径、缩进或标识符时，请使用 `snapcompact_recall` 回查原文。
+**它在哪里划算。** 对比原始历史：同样召回率下 prompt token 更少。对比原生摘要：保留的原文多得多，且没有摘要生成调用，但 checkpoint 在后续每一轮都更大；短会话里精简摘要更便宜。这个取舍可以量：在你的路由上跑 `/snapcompact benchmark`，不要预设固定倍数。
 
 ## 亮点
 
-| 你的需求                     | Snapcompact 提供的能力                                                       |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                               |
-| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                     |
-| 失败时不冒险                 | `snapcompact → handoff → shake → soft`；无法证明“更小且可读”的候选会被跳过。 |
-| 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                           |
-| 用数据而不是口号说明效果     | `/snapcompact benchmark` 用内置合成语料对比文本、摘要和图片路径。            |
+| 你的需求                     | Snapcompact 提供的能力                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                                                    |
+| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                                          |
+| 失败时不冒险                 | `snapcompact → handoff → shake → soft`；无法证明“更小且可读”的候选会被跳过。                      |
+| 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                                                |
+| 用数据而不是口号说明效果     | `/snapcompact benchmark` 报告文本、摘要和图片三组的召回率、一次性生成成本和每轮 checkpoint 大小。 |
 
 ## 工作原理
 
@@ -46,7 +46,13 @@ snapcompact → handoff → shake → soft
 | 3    | `shake`       | 无               | 先归档大工具输出，再用有界头尾摘录和回查引用来替代。                              |
 | 4    | `soft`        | 原生摘要         | DSH 原生文本摘要，作为最后的兜底。                                                |
 
-只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用宿主的图片上限（默认 20 张），并根据压缩比动态选择帧数。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
+为什么用图片：视觉模型按面积计费，与帧里塞了多少字符基本无关。在模型可读的前提下，一帧密集位图能比同样的纯文本承载更多字符/token；具体比例取决于帧几何、读图模型计价和文本密度。
+
+只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧），且不会超过宿主对单条消息的图片上限；帧数根据压缩比动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
+
+### 它省 token 吗？
+
+视觉路径没有生成成本：压缩本身不发起模型调用。在内置合成语料上，它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。把生成算进去，视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须通过配置的 `minCompressionRatio`（按 DSH 自己的估算），历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
 
 一个 checkpoint 大致如下（已删节）：
 
@@ -188,8 +194,8 @@ routePolicies:
 
 ## 限制与隐私
 
-- **不是无损压缩。** 生成的摘要和图片可能省略细节。归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
-- **不承诺通用 2× 节省。** token 数是估算，图片计价因路由而异；更小的 checkpoint 不等于更低账单，也不等于任务信息完整保留。
+- **不是无损压缩。** 位图帧可能漏掉字符（缺失字形、中段被截断），文本回退本质上也是摘要。归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
+- **省不省取决于路由和使用时长。** 上面的数字只来自一条路由上的一份合成语料。短会话里精简摘要的每轮上下文可能更小；长历史或图片单价低的路由上视觉 checkpoint 可能更划算。缓存折扣、图片计价和轮次决定账单——checkpoint 更小不等于账单更低。
 - **图片路径的适用条件很窄。** 路由必须声明图片输入和计价或带标签的估算。无法渲染的字符会变成可见的 `?` 占位，缩放后不可读的帧会被拒绝；预算不足或存储失败会回退文本。视觉中段可能被截断，精确内容仍以归档为准。
 - **宿主计量提示。** 适配器不提供图片计价时，DSH 自身的上下文计量在下一次 provider usage 锚定前可能低估图片；插件使用自己的保守帧价做视觉 gate。
 - **评测会产生费用。** `/snapcompact benchmark` 使用内置合成语料，最多发起四次辅助模型调用；它不会读取或上传你的私有会话历史。
@@ -238,7 +244,7 @@ routePolicies:
 - [配置与路由计价](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)
 - [架构与代码阅读顺序](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/architecture.md)
 - [评测及解释边界](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation.md)
-- [真实合成语料结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
+- [评测结果与成本口径](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
 - [第三方许可与来源](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.zh.md)
 - [English docs](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs)
 

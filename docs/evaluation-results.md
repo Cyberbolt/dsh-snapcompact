@@ -6,20 +6,39 @@ This is a real, synthetic-fixture run of `/snapcompact benchmark` on **2026-11-0
 
 ## Result
 
-| Arm         | Status   | Exact match | Prompt tokens |  Time | Notes                                                                       |
-| ----------- | -------- | ----------- | ------------: | ----: | --------------------------------------------------------------------------- |
-| original    | measured | 8/9         |        14,357 | 11.6s | Full fixture text                                                           |
-| native-text | measured | 8/9         |           639 | 10.0s | Native summary baseline                                                     |
-| snapcompact | measured | 8/9         |         8,149 | 15.1s | 6 frames, 2048×2040, estimated checkpoint 8,786 tokens; `deepseek-estimate` |
+The table below is the 08:11 UTC run. An earlier run of the same fixture is recorded under "Run-to-run variance" so this page keeps one consistent set of numbers.
 
-Summary generation used 112 input and 1,476 output tokens (16,052 total with cache) in this run. The visual arm made no handoff call; it rendered and read bitmap frames.
+| Arm         | Status   | Exact match | Frames |  Time | Notes                                                                    |
+| ----------- | -------- | ----------- | -----: | ----: | ------------------------------------------------------------------------ |
+| original    | measured | 8/9         |      — |  9.4s | Full fixture text                                                        |
+| native-text | measured | 7/9         |      — | 12.5s | Native summary baseline                                                  |
+| snapcompact | measured | 8/9         |      6 | 16.3s | 2048×2040 frames, estimated checkpoint 8,786 tokens; `deepseek-estimate` |
+
+The native summary used 112 input, 14,464 cache-read and 1,476 output tokens (16,052 total). The visual arm made no handoff call; it rendered and read bitmap frames.
+
+The benchmark calls the visual method directly. In a normal session the method must also satisfy the configured `minCompressionRatio` on the engine's own estimate, so a short history can fall back to text even when the measured checkpoint is smaller.
+
+## Token accounting
+
+These are token totals, not billed dollars. Prompt totals follow DSH's contract: input + cacheRead + cacheWrite. One-time generation is the cost of producing the checkpoint; per-turn is the context carried after it.
+
+| Arm         | One-time generation | Per-turn read | First compaction | 3-turn total |
+| ----------- | ------------------: | ------------: | ---------------: | -----------: |
+| original    |                   0 |        14,357 |           14,357 |       43,071 |
+| native-text |              16,052 |           523 |           16,575 |       17,621 |
+| snapcompact |                   0 |         8,152 |            8,152 |       24,456 |
+
+- The native summary is smaller on every turn after the first, but generating it costs ~16k tokens once. Comparing its 523-token read with the visual checkpoint's 8,152-token read omits that generation call.
+- The visual checkpoint is cheaper for the first compaction (8,152 vs 16,575). The summary overtakes it between the second and third turn on this fixture.
+- Cache reads usually cost less than fresh input, and image pricing varies by route; these totals are not bills.
 
 ## Interpretation
 
-- **Readability:** the visual arm matched the original's 8/9 and beat the native text baseline (7/9) on this run. A separate live check asked the model to read a marker in the frame's middle; it answered `ID_40` correctly, and a follow-up `snapcompact_recall` retrieved an omitted archive line verbatim.
-- **Token economy:** on this route the native text summary was far cheaper (523 prompt tokens) than the visual checkpoint (8,152 prompt tokens). The visual method is therefore **not** a universal token-saving choice; the engine's `minCompressionRatio: 2` gate will usually prefer the text fallback unless the source is large enough. The tradeoff is fidelity: visual matched the original exactly on the fixture while the native summary missed one answer.
-- **When visual is useful:** exact bitmap fidelity, routes with cheap image tokens, or histories where a lossy text summary is unacceptable and the archive recall path is needed. Do not claim lower billing from a smaller checkpoint alone.
-- **Benchmark scope:** the fixture is synthetic and fixed; it does not represent every language, provider, or long-running project.
+- **Readability:** both runs scored the visual arm 8/9, matching the original. The native summary scored 7/9 here and 8/9 in the earlier run, so one comparison does not establish a stable recall advantage. A separate live check asked the model to read a marker in the frame's middle; it answered `ID_40` correctly, and a follow-up `snapcompact_recall` retrieved an omitted archive line verbatim.
+- **Token economy:** snapcompact has no generation call and a larger steady-state footprint; a native summary has a generation call and a smaller footprint. Which is cheaper depends on the turn horizon, cache pricing and image price.
+- **When visual is useful:** long histories, routes with cheap image tokens, fidelity-critical work where a lossy summary is unacceptable, and overflow recovery where no summarizer call is wanted.
+- **Run-to-run variance:** an earlier run of the same fixture (07:46 UTC) measured original 8/9 at 14,357 prompt tokens, native-text 8/9 at 639, and snapcompact 8/9 at 8,149 with 6 frames. Exact-match answers vary by one question between runs.
+- **Benchmark scope:** the fixture is synthetic and fixed; it does not represent every language, provider or long-running project.
 
 ## Reproduce
 

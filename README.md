@@ -10,19 +10,19 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Recoverable visual and text compaction for DeepSeek Harness.** Snapcompact turns a long conversation into a smaller checkpoint that still has an exact, searchable archive behind it. Install it as an opt-in DSH preset: new sessions can choose a compaction chain that renders a bounded visual checkpoint locally, keeps exact head/tail text and an archive behind it, and falls back to a text handoff whenever images would be unavailable or unreadable.
+**Snapcompact compacts a long conversation by rendering it, not summarizing it.** DSH selects a safe history region; Snapcompact serializes the discarded middle into dense PNG frames of pixel-font text that a vision model reads directly, and keeps exact head/tail text plus a sha256-addressed archive behind the checkpoint. Rendering is local and deterministic: the visual path makes no summarizer call and needs no API key or network, and `snapcompact_recall` can still recover exact commands, paths and identifiers from the archive. If the route cannot take images, it falls back through the configured text methods and finally to DSH's native summary. Install it as an opt-in DSH preset; the default preset and running sessions are unchanged.
 
-> **Not an unconditional token-saving promise.** The visual path depends on the route's image support, real image pricing and OCR accuracy. Unknown capabilities or pricing fall back to text. Summaries are not lossless: use `snapcompact_recall` when an exact command, path, indentation or identifier matters.
+**Where it pays off.** Against raw history it spends fewer prompt tokens for the same recall. Against a native summary it keeps far more of the original and costs no generation call, but its checkpoint is larger on every later turn; on a short session a terse summary is cheaper. This is measurable, not a slogan: run `/snapcompact benchmark` on your route instead of assuming a fixed ratio.
 
 ## Highlights
 
-| What you need                                                 | What Snapcompact provides                                                                                        |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                            |
-| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                    |
-| A safe failure mode                                           | `snapcompact → handoff → shake → soft`; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
-| Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                   |
-| Evidence instead of a slogan                                  | `/snapcompact benchmark` compares the bundled synthetic fixture across text, summary and visual arms.            |
+| What you need                                                 | What Snapcompact provides                                                                                                             |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                                                 |
+| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                         |
+| A safe failure mode                                           | `snapcompact → handoff → shake → soft`; a candidate that cannot prove a smaller, readable checkpoint is skipped.                      |
+| Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                        |
+| Evidence instead of a slogan                                  | `/snapcompact benchmark` reports recall, one-time generation cost and per-turn checkpoint size for the text, summary and visual arms. |
 
 ## How it works
 
@@ -46,7 +46,13 @@ native compaction transaction commits one checkpoint
 | 3     | `shake`       | None             | Large tool outputs are archived, then replaced with bounded head/tail excerpts and recall references.                                |
 | 4     | `soft`        | Native summary   | DSH's native text summarization as the final fallback.                                                                               |
 
-The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to the host's image limit (20 by default), selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
+Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
+
+The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
+
+### Does it save tokens?
+
+The visual path pays no generation cost: the compaction itself makes no model call. On the bundled synthetic fixture it turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. Counting that generation, the visual checkpoint is cheaper for the first compaction; the summary becomes cheaper in raw token count after roughly 2–3 turns. The method must also clear the configured `minCompressionRatio` on DSH's own estimate, so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
 
 A checkpoint looks roughly like this (abridged):
 
@@ -188,8 +194,8 @@ Compatibility is intentionally pinned while the upstream plugin API is still a r
 
 ## Limits and privacy
 
-- **Not lossless.** Generated summaries and images can omit details. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
-- **Not a universal 2× saving.** Token counts are estimates, image pricing varies by route, and a smaller checkpoint is not proof of lower billing or preserved task information.
+- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle), and the text fallbacks are summaries. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
+- **Savings depend on the route and the horizon.** The numbers above come from one synthetic fixture on one route. A terse native summary can be smaller per turn on a short session; the visual checkpoint can win on a long history or a route with cheap image tokens. Cache-read discounts, image pricing and turn count decide the bill: a smaller checkpoint is not proof of a lower bill.
 - **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
 - **Host metering caveat.** On a route whose adapter does not price images, DSH's own context meter may underprice the checkpoint until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
 - **Benchmarks cost money.** `/snapcompact benchmark` makes up to four auxiliary model calls using the bundled synthetic fixture. It does not read or upload private session history.
@@ -238,7 +244,7 @@ This release supports DSH `0.2.2-rc.1` only. Upgrade or switch the host to that 
 - [Configuration and route pricing](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md)
 - [Architecture and reading guide](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/architecture.md)
 - [Evaluation and interpretation](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation.md)
-- [Real synthetic-fixture results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
+- [Evaluation results and cost accounting](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
 - [Third-party notices](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.md)
 - [中文文档](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs/zh)
 
