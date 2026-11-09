@@ -87,10 +87,10 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     ],
     kind: 'number',
     group: 'rendering',
-    defaultValue: 2048,
+    defaultValue: 1568,
     min: 1024,
     max: 2048,
-    step: 256,
+    step: 1,
     description: 'Edge length of one rendered frame in pixels; frames stay square.',
   },
   {

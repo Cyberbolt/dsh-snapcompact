@@ -11,8 +11,8 @@ policy:
   # Smaller model windows need less headroom; native validation applies.
   headroomTokens: 65536
 rendering:
-  width: 2048
-  height: 2048
+  width: 1568
+  height: 1568
   maxFrames: 20
   lineHeight: 20
   minGlyphPx: 12
@@ -45,7 +45,7 @@ routePolicies: []
 | -------------- | --------------------------------------- | ------------------------------------- |
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
-| 帧尺寸         | `rendering.width` 与 `rendering.height` | 2048                                  |
+| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20                                    |
 | 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |

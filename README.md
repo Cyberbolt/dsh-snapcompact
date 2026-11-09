@@ -42,7 +42,7 @@ native compaction transaction commits one checkpoint
 
 | Order | Method        | Model call       | What it produces                                                                                                                     |
 | ----- | ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `snapcompact` | None (local)     | Bounded 2048px bitmap frames of the compact middle, exact head/tail text and an archive reference.                                   |
+| 1     | `snapcompact` | None (local)     | Bounded 1568px bitmap frames of the compact middle, exact head/tail text and an archive reference.                                   |
 | 2     | `handoff`     | One handoff call | A structured task handoff: goal, constraints, decisions, exact commands, completed and unfinished work, next action, critical facts. |
 | 3     | `shake`       | None             | Large tool outputs are archived, then replaced with bounded head/tail excerpts and recall references.                                |
 | 4     | `soft`        | Native summary   | DSH's native text summarization as the final fallback.                                                                               |
@@ -158,8 +158,8 @@ policy:
   thresholdRatio: 0.8
 minCompressionRatio: 2
 rendering:
-  width: 2048
-  height: 2048
+  width: 1568
+  height: 1568
   maxFrames: 20
   lineHeight: 20
   minGlyphPx: 12
@@ -173,7 +173,7 @@ serialization:
   maxCarriedImages: 4
 ```
 
-Defaults use 2048×2048 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
+Defaults use 1568×1568 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
 
 ### In-app settings
 
@@ -183,7 +183,7 @@ The Snapcompact detail page under **Plugins** carries a settings card backed by 
 | ------------------------- | ---------------------------------------- | ------------------------------------- |
 | Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold  | `policy.thresholdRatio`                  | unset (host default 0.8)              |
-| Frame size                | `rendering.width` and `rendering.height` | 2048                                  |
+| Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames            | `rendering.maxFrames`                    | 20                                    |
 | Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
 | Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |

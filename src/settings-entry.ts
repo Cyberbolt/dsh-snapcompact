@@ -50,10 +50,10 @@ export const Config = schema.object({
     .volatile(),
   frameSize: schema
     .number()
-    .step(256)
+    .step(1)
     .min(1024)
     .max(2048)
-    .default(2048)
+    .default(1568)
     .description(descriptionOf('frameSize'))
     .volatile(),
   maxFrames: schema

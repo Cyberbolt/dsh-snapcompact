@@ -13,8 +13,8 @@ policy:
   # Smaller windows need less headroom; native capacity validation still applies.
   headroomTokens: 65536
 rendering:
-  width: 2048
-  height: 2048
+  width: 1568
+  height: 1568
   maxFrames: 20
   lineHeight: 20
   minGlyphPx: 12
@@ -47,7 +47,7 @@ The card manages eight keys:
 | ------------------------- | ---------------------------------------- | ------------------------------------- |
 | Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold  | `policy.thresholdRatio`                  | unset (native default 0.8)            |
-| Frame size                | `rendering.width` and `rendering.height` | 2048                                  |
+| Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames            | `rendering.maxFrames`                    | 20                                    |
 | Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
 | Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
@@ -120,7 +120,7 @@ Provider/model matching is exact, with no aliases, fuzzy matching or cross-model
 
 ## Bounds and failure
 
-Defaults use 2048×2048 frames, with a maximum of 20 (the host's default image-count cap); at most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
+Defaults use 1568×1568 frames (1568 is omp's standard frame edge), with a maximum of 20 (the host's default image-count cap); at most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
 
 Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through.
 

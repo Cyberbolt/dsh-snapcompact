@@ -23,8 +23,8 @@ describe('plugin configuration', () => {
     const config = resolveConfig({});
     expect(config.methodOrder).toEqual(['snapcompact', 'handoff', 'shake', 'soft']);
     expect(config.rendering).toMatchObject({
-      width: 2048,
-      height: 2048,
+      width: 1568,
+      height: 1568,
       maxFrames: 20,
       lineHeight: 20,
       minGlyphPx: 12,

@@ -52,10 +52,10 @@ window.__ModuleLoader__.load({
           "key": "frameSize",
           "kind": "number",
           "group": "rendering",
-          "defaultValue": 2048,
+          "defaultValue": 1568,
           "min": 1024,
           "max": 2048,
-          "step": 256
+          "step": 1
         },
         {
           "key": "maxFrames",
@@ -779,7 +779,7 @@ window.__ModuleLoader__.load({
                   'aria-label': t('frameSize'),
                   onChange: (event) => edit('frameSize', Number(event.target.value)),
                 },
-                [1024, 1536, 2048].map((size) =>
+                [1024, 1568, 2048].map((size) =>
                   h('option', { key: size, value: size }, `${size} ${t('unitPx')}`),
                 ),
               ),

@@ -33,7 +33,7 @@ describe('settings entry', () => {
     const current = resolve({});
     expect(current['methodOrder']).toEqual(['snapcompact', 'handoff', 'shake', 'soft']);
     expect(current['maxFrames']).toBe(20);
-    expect(current['frameSize']).toBe(2048);
+    expect(current['frameSize']).toBe(1568);
     expect(current['archiveMaxBytes']).toBe(64 * 1024 * 1024);
     expect(current['thresholdRatio']).toBeUndefined();
   });

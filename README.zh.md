@@ -42,7 +42,7 @@ snapcompact → handoff → shake → soft
 
 | 顺序 | 方法          | 模型调用         | 产出                                                                              |
 | ---- | ------------- | ---------------- | --------------------------------------------------------------------------------- |
-| 1    | `snapcompact` | 无（纯本地）     | 把压缩后的中段渲染为有界 2048px 位图帧，保留精确头尾文本和归档引用。              |
+| 1    | `snapcompact` | 无（纯本地）     | 把压缩后的中段渲染为有界 1568px 位图帧，保留精确头尾文本和归档引用。              |
 | 2    | `handoff`     | 一次交接摘要调用 | 结构化任务交接：目标、约束、决策、精确命令、已完成/未完成工作、下一步、关键事实。 |
 | 3    | `shake`       | 无               | 先归档大工具输出，再用有界头尾摘录和回查引用来替代。                              |
 | 4    | `soft`        | 原生摘要         | DSH 原生文本摘要，作为最后的兜底。                                                |
@@ -158,8 +158,8 @@ policy:
   thresholdRatio: 0.8
 minCompressionRatio: 2
 rendering:
-  width: 2048
-  height: 2048
+  width: 1568
+  height: 1568
   maxFrames: 20
   lineHeight: 20
   minGlyphPx: 12
@@ -173,7 +173,7 @@ serialization:
   maxCarriedImages: 4
 ```
 
-默认使用 2048×2048 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
+默认使用 1568×1568 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
 
 ### 在应用内配置
 
@@ -183,7 +183,7 @@ serialization:
 | -------------- | --------------------------------------- | ------------------------------------- |
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
-| 帧尺寸         | `rendering.width` 与 `rendering.height` | 2048                                  |
+| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20                                    |
 | 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
