@@ -50,7 +50,7 @@ native compaction transaction commits one checkpoint
 
 Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
 
-The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
+The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
 
 ### Does it save tokens?
 
@@ -183,7 +183,7 @@ serialization:
   maxCarriedImages: 4
 ```
 
-Defaults use 1568×1568 frames, a maximum of 20 frames (the host's default image-count cap), 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits also apply.
+Defaults use 1568×1568 frames and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count. Other limits are 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`.
 
 ### In-app settings
 
@@ -194,7 +194,7 @@ The Snapcompact detail page under **Plugins** carries a settings card backed by 
 | Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold  | `policy.thresholdRatio`                  | unset (host default 0.8)              |
 | Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames            | `rendering.maxFrames`                    | 20                                    |
+| Maximum frames            | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
 | Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
 | Handoff budget            | `handoffMaxTokens`                       | 4096                                  |

@@ -25,7 +25,17 @@ function isElement(value: unknown): value is Element {
 const React = {
   createElement: (type: unknown, props: Record<string, unknown> | null, ...children: Node[]) => ({
     type,
-    props: { ...(props ?? {}), children: children.length === 1 ? children[0] : children },
+    props: {
+      ...(props ?? {}),
+      // The card passes some children through the props object, so absence of
+      // variadic children must not wipe an explicit `children` prop.
+      children:
+        children.length === 0
+          ? ((props ?? {}).children ?? [])
+          : children.length === 1
+            ? children[0]
+            : children,
+    },
   }),
   useCallback: <T>(callback: T): T => callback,
   useState: <T>(initial: T | (() => T)): [T, () => void] => [
@@ -55,6 +65,20 @@ function collectText(node: Node): string {
   if (typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(collectText).join(' ');
   return collectText(node.props.children as Node);
+}
+
+/** Depth-first search over the rendered host tree. */
+function findElement(node: Node, match: (element: Element) => boolean): Element | undefined {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findElement(child, match);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (!isElement(node)) return undefined;
+  if (match(node)) return node;
+  return findElement(node.props.children as Node, match);
 }
 
 async function loadClient() {
@@ -157,6 +181,12 @@ describe('client bundle', () => {
     expect(text).toContain('t:chainTitle');
     expect(text).toContain('t:save');
     expect(text).not.toContain('t:unavailableTitle');
+
+    const framesControl = findElement(
+      tree,
+      (element) => element.props.type === 'range' && element.props['aria-label'] === 't:maxFrames',
+    );
+    expect(framesControl?.props).toMatchObject({ min: 1, max: 64 });
   });
 
   it('renders the fallback guidance while the settings row is unavailable', async () => {

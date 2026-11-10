@@ -50,7 +50,7 @@ The card manages eight keys:
 | Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold  | `policy.thresholdRatio`                  | unset (native default 0.8)            |
 | Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames            | `rendering.maxFrames`                    | 20                                    |
+| Maximum frames            | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
 | Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
 | Handoff budget            | `handoffMaxTokens`                       | 4096                                  |
@@ -122,7 +122,7 @@ Provider/model matching is exact, with no aliases, fuzzy matching or cross-model
 
 ## Bounds and failure
 
-Defaults use 1568×1568 frames (1568 is omp's standard frame edge), with a maximum of 20 (the host's default image-count cap); at most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
+Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count, so raise both to use more. At most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
 
 Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through.
 

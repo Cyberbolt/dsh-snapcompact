@@ -100,9 +100,10 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     group: 'rendering',
     defaultValue: 20,
     min: 1,
-    max: 20,
+    max: 64,
     step: 1,
-    description: 'Upper bound on rendered frames per checkpoint, below the host image cap.',
+    description:
+      'Upper bound on rendered frames per checkpoint (at most 64). The host per-message image cap, 20 by default, still clamps the effective count.',
   },
   {
     key: 'minCompressionRatio',

@@ -48,7 +48,7 @@ routePolicies: []
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数       | `rendering.maxFrames`                   | 20                                    |
+| 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
 | 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
 | 交接预算       | `handoffMaxTokens`                      | 4096                                  |
@@ -120,7 +120,7 @@ provider/model 精确匹配，不做模糊别名或跨模型沿用。估算/上�
 
 ## 上限和失败行为
 
-配置允许缩小但不能超过首版安全边界：2048×2048 帧、默认最多20帧（宿主默认图片上限），总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
+配置允许缩小但不能超过首版安全边界：2048×2048 帧、每次 checkpoint 默认 20 帧且上限 64；宿主对单条消息的图片上限（默认 20 张）仍会钳制实际帧数，要真正用满需同时调高宿主的 `maxImagesPerMessage`。总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
 
 图片失败、未知价格、无收益会回退；所有候选失败则保留原会话区间并返回原生压缩错误。取消不触发下一方法。
 

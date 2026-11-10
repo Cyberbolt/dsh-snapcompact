@@ -60,7 +60,7 @@ export const Config = schema.object({
     .number()
     .step(1)
     .min(1)
-    .max(20)
+    .max(64)
     .default(20)
     .description(descriptionOf('maxFrames'))
     .volatile(),
