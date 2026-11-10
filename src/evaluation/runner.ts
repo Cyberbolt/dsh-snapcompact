@@ -100,6 +100,12 @@ type NativeSummarizer = (
   signal?: AbortSignal,
 ) => Promise<CompactionSummary>;
 
+/**
+ * The 40-question fixture can exceed 8k output tokens on reasoning routes; a
+ * truncated answer is a failed arm, not a recall measurement.
+ */
+const EVALUATION_MAX_TOKENS = 32_768;
+
 /** Four bounded auxiliary calls at most: one native summary plus three comprehension arms. */
 export async function evaluate(
   ctx: Context,
@@ -179,7 +185,7 @@ export async function evaluate(
       for await (const chunk of ctx.llm.stream({
         ...route,
         messages: [{ role: 'user', content: [...content, { type: 'text', text: questions }] }],
-        maxTokens: 8192,
+        maxTokens: EVALUATION_MAX_TOKENS,
         sessionId: agent.id,
         purpose: 'compaction',
         signal,

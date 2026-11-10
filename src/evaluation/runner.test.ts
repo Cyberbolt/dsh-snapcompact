@@ -56,6 +56,8 @@ describe('truthful evaluation accounting', () => {
     expect(JSON.stringify(fixture.adapter.calls[0]?.messages)).toContain(
       'Observation 60: FRAME_ONE_7K',
     );
+    // The 40-question fixture must not truncate a reasoning arm at the old 8k cap.
+    expect(fixture.adapter.calls[0]?.maxTokens).toBeGreaterThan(8192);
     expect(report.summaryUsage?.inputTokens).toBe(12);
     expect(summarize).toHaveBeenCalledOnce();
     expect(fixture.adapter.calls).toHaveLength(2);
