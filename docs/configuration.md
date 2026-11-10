@@ -140,4 +140,4 @@ Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames
 
 Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through.
 
-Only DSH `0.2.2-rc.1` is currently declared compatible. Validate types, native integration, package contents and live preset activation before widening this range; do not bypass version checks.
+Snapcompact declares `^0.2.2-rc.1` (0.2.x) and is verified on `0.2.2-rc.1`. Raise the floor only after an install and activation check on that host release, and keep a finite ceiling: validate types, native integration, package contents and live preset activation before widening it. Do not bypass the host check.

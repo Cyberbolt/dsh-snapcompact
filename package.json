@@ -30,7 +30,7 @@
   },
   "engines": {
     "node": ">=24",
-    "dsh": "0.2.2-rc.1"
+    "dsh": "^0.2.2-rc.1"
   },
   "packageManager": "pnpm@11.28.5",
   "exports": {
@@ -96,16 +96,16 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
-    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-commands": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-compaction": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-compaction-basic": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-session-projection": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-token-meter": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-agent": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-commands": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-compaction": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-compaction-basic": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-token-meter": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.2.2-rc.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",

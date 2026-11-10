@@ -7,7 +7,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-snapcompact?logo=npm&label=npm)](https://www.npmjs.com/package/dsh-snapcompact)
 [![downloads](https://img.shields.io/npm/dt/dsh-snapcompact?logo=npm&label=downloads)](https://www.npmjs.com/package/dsh-snapcompact)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
 **Snapcompact compacts a long conversation by rendering it, not summarizing it.** DSH selects a safe history region; Snapcompact serializes the discarded middle into dense PNG frames of pixel-font text that a vision model reads directly, and keeps exact head/tail text plus a sha256-addressed archive behind the checkpoint. Rendering is local and deterministic: the visual path makes no summarizer call and needs no API key or network, and `snapcompact_recall` can still recover exact commands, paths and identifiers from the archive. If the route cannot take images, it falls back through the configured text methods and finally to DSH's native summary. It ships as opt-in presets for DSH's **standard**, **PTC** and **Cordis** modes; the official presets and running sessions are unchanged.
@@ -87,14 +87,14 @@ Safety properties:
 
 ## Install
 
-Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are not declared compatible, and the host may reject the install rather than run untested code.
+Snapcompact declares **DeepSeek Harness `^0.2.2-rc.1`**, the 0.2.x line, and is verified on `0.2.2-rc.1`. A 0.2.x patch or prerelease installs without an exact-version exemption; the next minor line is declared only after the install and activation checks have passed against it.
 
-| Requirement                | Value                                        |
-| -------------------------- | -------------------------------------------- |
-| DSH                        | `0.2.2-rc.1` (exact)                         |
-| Node.js                    | 24 or newer (the host's requirement)         |
-| Build step                 | None; the npm package ships compiled `dist/` |
-| Install-time build scripts | None                                         |
+| Requirement                | Value                                           |
+| -------------------------- | ----------------------------------------------- |
+| DSH                        | `^0.2.2-rc.1` (0.2.x; verified on `0.2.2-rc.1`) |
+| Node.js                    | 24 or newer (the host's requirement)            |
+| Build step                 | None; the npm package ships compiled `dist/`    |
+| Install-time build scripts | None                                            |
 
 ### From the Plugins page (recommended)
 
@@ -245,12 +245,12 @@ A ceiling is not actual usage and cannot grant missing image modality. See [conf
 
 | Component    | Supported                                    |
 | ------------ | -------------------------------------------- |
-| DSH          | `0.2.2-rc.1` only                            |
+| DSH          | `^0.2.2-rc.1` (0.2.x)                        |
 | Node.js      | 24+                                          |
 | DSH packages | Host-provided peers; no local copy is needed |
 | npm install  | Prebuilt package, no install scripts         |
 
-Compatibility is intentionally pinned while the upstream plugin API is still a release candidate. DSH checks the declared version and can reject an install on a different host. Widening this range requires revalidating types, native integration, package contents and live preset activation; do not bypass the check by editing profile files.
+The plugin declares a bounded range rather than a single version. The host's gate is a semver check; the floor is the newest host release this build was verified against, and the ceiling is the next minor line. A compatible patch installs without a new plugin release, while a newer minor stays rejected until it passes the same revalidation — types, native integration, package contents and live preset activation — and ships in a new plugin release. Do not bypass the host check by editing profile metadata.
 
 ## Limits and privacy
 
@@ -296,7 +296,7 @@ Use the archive ID from a checkpoint created by a completed compaction in the cu
 <details>
 <summary>The install is rejected as incompatible</summary>
 
-This release supports DSH `0.2.2-rc.1` only. Upgrade or switch the host to that version instead of editing the compatibility check. A wider range will be published after it is validated.
+This build declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Upgrade or switch the host to a 0.2.x release, or install a Snapcompact release that declares your host's minor line. Do not hand-edit the compatibility check to force the install.
 
 </details>
 

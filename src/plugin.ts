@@ -9,6 +9,7 @@ import { ArchiveRepository } from './archives/repository.js';
 import { ArchiveService } from './archives/service.js';
 import { SnapcompactEngine } from './compaction/engine.js';
 import { registerArchiveIndex } from './integrations/dsh/archive-projection.js';
+import { missingHostCapabilities } from './integrations/dsh/host-contract.js';
 import { registerRecallTool } from './integrations/dsh/recall-tool.js';
 import { registerCommands } from './integrations/dsh/commands.js';
 import { createRenderer } from './rendering/worker-client.js';
@@ -50,6 +51,16 @@ export async function apply(ctx: Context, input: unknown): Promise<void> {
   if (ctx.get('compaction')) {
     throw new Error(
       'Snapcompact replaces compaction-basic. Mount it in an isolated compaction group with the native backend removed.',
+    );
+  }
+  // A range still admits host releases that rework a service. Fail before any
+  // registration so an incompatible host cannot produce a half-mounted backend.
+  const missing = missingHostCapabilities(ctx);
+  if (missing.length > 0) {
+    throw new Error(
+      `Snapcompact cannot start on this DSH build: required host capabilities are missing ` +
+        `(${missing.join(', ')}). Nothing was mounted; install a DSH release this plugin ` +
+        `declares compatible, or a newer Snapcompact release.`,
     );
   }
   const archives = new ArchiveService(

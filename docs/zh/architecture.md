@@ -48,7 +48,7 @@
 
 `minimal` 有意不支持。它的组合刻意去掉 read/write/edit 和完整工具面；加入图像帧、FILES 索引与归档回查会违背该 preset 的定位。这是产品边界，不是技术限制。
 
-[官方快照](../../tests/fixtures/official-presets/) 固定到声明的 `engines.dsh`。升级 DSH peer 版本时，从 `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`（桌面端位于 `app.asar` 内）替换三份快照并重跑 `pnpm check`；parity 测试会逐行指出任何非预期漂移。
+[官方快照](../../tests/fixtures/official-presets/) 固定到 [scripts/compat.ts](../../scripts/compat.ts) 中的 `DSH_VERIFIED_VERSION`，它也是发布区间的唯一来源。该下界移动时，从 `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`（桌面端位于 `app.asar` 内）替换三份快照并重跑 `pnpm check`；parity 测试会逐行指出任何非预期漂移。放宽上界属于需要评审的决定：parity 只证明已验证下界的组合，CI 的安装矩阵负责证明新宿主上仍可安装与挂载。
 
 ## 为什么是独立 preset
 

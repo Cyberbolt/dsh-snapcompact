@@ -35,3 +35,35 @@ jobs:
 
       - name: Verify
         run: pnpm run check
+
+  # Prove the published compatibility range with a real installation, not a
+  # manifest comparison. The pinned leg is the exact host this build was
+  # verified on; the latest leg proves the declared 0.2.x range against the
+  # newest published host. When latest moves to a new minor the host rejects
+  # the package and this leg fails on purpose: verify that host, widen the range
+  # and publish a new plugin version instead of loosening the assertion.
+  install-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: ['0.2.2-rc.1', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install the DSH host
+        run: npm install --global @deepseek-ai/dsh@${{ matrix.dsh }}
+
+      - name: Verify the packaged plugin installs and mounts
+        run: node --experimental-strip-types scripts/check-install.ts --dsh "$(command -v dsh)"

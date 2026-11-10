@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { chmod, cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
@@ -255,7 +255,14 @@ function resolveHostAnchor(dsh: string): HostAnchor {
   if (explicit !== undefined && existsSync(explicit)) {
     return { packageDir: explicit, insideAsar: explicit.includes('.asar') };
   }
-  const match = /^(.*)[/\\]runtime[/\\]cli[/\\]bin[/\\]dsh(?:\.cmd)?$/u.exec(dsh);
+  // A package-manager bin entry is usually a symlink; anchor on the real entry.
+  let entry = dsh;
+  try {
+    entry = realpathSync(dsh);
+  } catch {
+    // Keep the given path when it cannot be resolved.
+  }
+  const match = /^(.*)[/\\]runtime[/\\]cli[/\\]bin[/\\]dsh(?:\.cmd)?$/u.exec(entry);
   if (match?.[1] !== undefined) {
     const resources = match[1];
     const packageDir = join(resources, 'app.asar', 'dsh');
@@ -263,7 +270,7 @@ function resolveHostAnchor(dsh: string): HostAnchor {
     return { packageDir, insideAsar: true, ...(existsSync(electron) ? { electron } : {}) };
   }
   // A plain Node installation: walk up from the CLI entry to the owning package.
-  let current = dirname(dsh);
+  let current = dirname(entry);
   for (let depth = 0; depth < 6; depth += 1) {
     if (existsSync(join(current, 'package.json'))) {
       return { packageDir: current, insideAsar: current.includes('.asar') };
