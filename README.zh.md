@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Snapcompact 用“渲染”而不是“总结”来压缩长对话。** DSH 选出安全的压缩区间后，Snapcompact 把被丢弃的中段序列化成像素字体的密集 PNG 帧，交给视觉模型直接阅读；checkpoint 前后保留精确头尾文本，背后是 sha256 归档，`snapcompact_recall` 仍可逐字取回命令、路径和标识符。渲染是本地、确定性的：视觉路径不调用摘要模型，也不需要 API key 或网络。路由不支持图片时，按配置的文本方法链回退，最后回退 DSH 原生摘要。它以可选的 DSH preset 形式安装，默认 preset 和运行中的会话保持不变。
+**Snapcompact 用“渲染”而不是“总结”来压缩长对话。** DSH 选出安全的压缩区间后，Snapcompact 把被丢弃的中段序列化成像素字体的密集 PNG 帧，交给视觉模型直接阅读；checkpoint 前后保留精确头尾文本，背后是 sha256 归档，`snapcompact_recall` 仍可逐字取回命令、路径和标识符。渲染是本地、确定性的：视觉路径不调用摘要模型，也不需要 API key 或网络。路由不支持图片时，按配置的文本方法链回退，最后回退 DSH 原生摘要。它提供面向 DSH **standard**、**PTC** 和 **Cordis** 模式的可选 preset；官方 preset 和运行中的会话保持不变。
 
 **它在哪里划算。** 对比原始历史：同样召回率下 prompt token 更少。对比原生摘要：保留的原文多得多，且没有摘要生成调用，但 checkpoint 在后续每一轮都更大；短会话里精简摘要更便宜。这个取舍可以量：在你的路由上跑 `/snapcompact benchmark`，不要预设固定倍数。
 
@@ -101,7 +101,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
 2. 填写 `dsh-snapcompact@0.5.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
-4. 新建会话，在 preset 选择器中选择 **Snapcompact**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
+4. 新建会话，选择与你工作方式匹配的 Snapcompact 变体：**Snapcompact (Standard)**、**Snapcompact (PTC)** 或 **Snapcompact (Cordis)**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
 
 建议带版本号安装，确保拿到的是这个确切版本；不带版本号时，包管理器会解析到最新发布版本。
 
@@ -131,15 +131,24 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ### 启用 preset
 
-安装只会新增一个**可选 preset**，不会修改默认 preset 或任何运行中的会话。请新建会话并选择 **Snapcompact**。
+安装只会新增**可选 preset**，不会修改官方 preset 或任何运行中的会话。请新建会话并选择任一 Snapcompact 变体。
 
-选中它就是启用动作：DSH 把每个会话的压缩后端放在 preset 的隔离分组里，profile 平面的插件无法全局替换它。选中 **Snapcompact** 后，原生 `compaction-basic` 不再挂载，`/compact` 和自动压缩都由 Snapcompact 链处理。这是 DSH 的隔离边界，不是每轮都要操心的额外模式。
+每个变体复制对应的官方 preset，只替换压缩后端：移出原生 `compaction-basic`，换入 Snapcompact 链；破坏性的结果裁剪器保持关闭，因为 shake 会先归档再外置。选中变体就是启用动作——DSH 把每个会话的压缩后端放在 preset 的隔离分组里，profile 平面的插件无法全局替换它，内置 preset 也不能就地扩展。这是 DSH 的隔离边界，不是每轮都要操心的额外模式。
+
+| 官方模式   | 选择                       | 保留的行为                                                                                                                          |
+| ---------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `standard` | **Snapcompact (Standard)** | 常规工具集：shell、文件工具、搜索、子代理与 workflow、web、plan mode。                                                              |
+| `ptc`      | **Snapcompact (PTC)**      | `run_code` 仍是唯一直接工具；其余工具通过 `tools.*` 调用，包括 `snapcompact_recall`。workflow 和插件管理器沿用官方 PTC 的禁用设置。 |
+| `cordis`   | **Snapcompact (Cordis)**   | `tool-cordis` 与官方 Cordis 技能目录（从随 DSH 分发的 `@deepseek-ai/dsh-agent-preset/skills` 挂载）。                               |
+| `minimal`  | 不提供                     | minimal 刻意去掉 read/write/edit 和完整工具面；加入图像帧与归档回查会违背其定位，因此不在范围内。                                   |
+
+设置卡是共享的：它编辑 profile 平面的 `snapcompact-settings` 行，会话挂载哪个变体就在挂载时读取它。
 
 ## 使用
 
 | 入口                     | 作用                                                                                          |
 | ------------------------ | --------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH 标准手动压缩命令；在 Snapcompact preset 内由 Snapcompact 链执行。                         |
+| `/compact`               | DSH 标准手动压缩命令；在任一 Snapcompact preset 内由 Snapcompact 链执行。                     |
 | `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值 tokens、每个方法的可用性，以及归档数量。 |
 | `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                            |
 | `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                |
@@ -158,7 +167,7 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ## 配置
 
-配置位于 Snapcompact preset 独立压缩分组内的 `snapcompact` 行。常用项可以直接在 **插件 → Snapcompact** 页面的设置卡里改；其余项仍用 preset/配置编辑器。两者都写入当前 profile 的配置补丁，不需要手工修改 profile 文件。
+配置位于所选 Snapcompact preset 独立压缩分组内的 `snapcompact` 行。常用项可以直接在 **插件 → Snapcompact** 页面的设置卡里改；其余项仍用 preset/配置编辑器。两者都写入当前 profile 的配置补丁，不需要手工修改 profile 文件。
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -257,9 +266,9 @@ routePolicies:
 ## 常见问题
 
 <details>
-<summary>安装后 preset 选择器里没有 Snapcompact</summary>
+<summary>安装后 preset 选择器里没有 Snapcompact 变体</summary>
 
-先确认插件显示为已安装；如果插件页要求重启，请完成重启；然后**新建**会话。已有会话会保持它启动时使用的 preset。使用 DSH Desktop 时，请确认是通过应用内插件页安装，而不是装进了桌面端不使用的 CLI profile。
+先确认插件显示为已安装；如果插件页要求重启，请完成重启；然后**新建**会话，查找 **Snapcompact (Standard)**、**Snapcompact (PTC)** 和 **Snapcompact (Cordis)**。已有会话会保持它启动时使用的 preset。使用 DSH Desktop 时，请确认是通过应用内插件页安装，而不是装进了桌面端不使用的 CLI profile。
 
 </details>
 

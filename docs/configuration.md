@@ -2,7 +2,7 @@
 
 [简体中文](zh/configuration.md)
 
-Configure the **dsh-snapcompact row inside the Snapcompact preset's isolated compaction group**, not a second global compaction service. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
+Configure the **dsh-snapcompact row inside the selected Snapcompact preset's isolated compaction group**, not a second global compaction service. The standard, PTC and Cordis variants all mount the same row id and configuration key, so the same settings apply whichever variant a session selects. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
 
 Manual compaction is `/compact`; it resolves to whichever backend the preset mounts. `/snapcompact status` is read-only diagnostics, not a compaction entry point.
 
@@ -40,7 +40,7 @@ routePolicies: []
 
 ## In-app settings
 
-The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts.
+The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts, so one card configures every Snapcompact variant.
 
 The card manages seven keys:
 

@@ -1,29 +1,44 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
+import { PRESET_VARIANTS } from '../scripts/preset-variants.ts';
 import { Config, DEFAULT_METHOD_ORDER, resolveConfig } from './config.js';
 
+interface PresetEntry {
+  readonly id: string;
+  readonly config?: readonly PresetEntry[] | { readonly section?: string };
+}
+
+function readPreset(source: string): readonly PresetEntry[] {
+  return parse(readFileSync(new URL(`../presets/${source}`, import.meta.url), 'utf8'), {
+    logLevel: 'silent',
+  }) as readonly PresetEntry[];
+}
+
 describe('plugin configuration', () => {
-  it('keeps the shipped plan-mode section non-empty', () => {
-    const preset = parse(
-      readFileSync(new URL('../presets/snapcompact.yml', import.meta.url), 'utf8'),
-      { logLevel: 'silent' },
-    ) as { id: string; config?: { id: string; config?: { section?: string } }[] }[];
-    const planning = preset.find((entry) => entry.id === 'planning');
-    const planMode = planning?.config?.find((entry) => entry.id === 'plan-mode');
-    expect(planMode?.config?.section?.trim().length).toBeGreaterThan(0);
-  });
-  it('mounts /compact without the native compaction backend', () => {
-    const preset = parse(
-      readFileSync(new URL('../presets/snapcompact.yml', import.meta.url), 'utf8'),
-      { logLevel: 'silent' },
-    ) as { id: string; config?: { id: string }[] }[];
-    const compaction = preset.find((entry) => entry.id === 'compaction');
-    const ids = (compaction?.config ?? []).map((entry) => entry.id);
-    expect(ids).toContain('snapcompact');
-    expect(ids).toContain('command-compact');
-    expect(ids).not.toContain('compaction-basic');
-  });
+  for (const variant of PRESET_VARIANTS) {
+    it(`keeps the ${variant.mode} plan-mode section non-empty`, () => {
+      const preset = readPreset(variant.source);
+      const planning = preset.find((entry) => entry.id === 'planning');
+      const planMode = (planning?.config as readonly PresetEntry[] | undefined)?.find(
+        (entry) => entry.id === 'plan-mode',
+      );
+      expect(
+        (planMode?.config as { section?: string } | undefined)?.section?.trim().length,
+      ).toBeGreaterThan(0);
+    });
+    it(`mounts /compact without the native compaction backend in ${variant.mode}`, () => {
+      const preset = readPreset(variant.source);
+      const compaction = preset.find((entry) => entry.id === 'compaction');
+      const ids = ((compaction?.config as readonly PresetEntry[] | undefined) ?? []).map(
+        (entry) => entry.id,
+      );
+      expect(ids).toContain('snapcompact');
+      expect(ids).toContain('command-compact');
+      expect(ids).not.toContain('compaction-basic');
+      expect(ids).not.toContain('tool-result-pruner');
+    });
+  }
   it('defaults to the compaction role and accepts the UI carrier role', () => {
     expect(resolveConfig({}).role).toBe('plugin');
     expect(resolveConfig({ role: 'ui' }).role).toBe('ui');

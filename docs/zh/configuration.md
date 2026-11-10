@@ -1,6 +1,6 @@
 # 配置
 
-插件配置属于 **Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。插件页的设置卡管理常用项，其余项用 preset/配置编辑器或下面的 YAML。两者都通过当前 profile 的配置补丁持久化，不要手工重写 profile 文件。
+插件配置属于**所选 Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。standard、PTC、Cordis 三个变体挂载相同的行 id 与配置键，因此会话选中哪个变体都使用同一份设置。插件页的设置卡管理常用项，其余项用 preset/配置编辑器或下面的 YAML。两者都通过当前 profile 的配置补丁持久化，不要手工重写 profile 文件。
 
 手动压缩统一用 `/compact`，它解析到 preset 挂载的后端；`/snapcompact status` 只是只读诊断，不是压缩入口。
 
@@ -38,7 +38,7 @@ routePolicies: []
 
 ## 在应用内配置
 
-**插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次。
+**插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次，因此一张卡配置所有 Snapcompact 变体。
 
 卡片管理 8 个键：
 
