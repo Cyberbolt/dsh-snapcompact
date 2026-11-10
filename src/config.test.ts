@@ -63,6 +63,12 @@ describe('plugin configuration', () => {
     ]);
     expect(resolveConfig({ methodOrder: ['soft'] }).methodOrder).toEqual(['soft']);
   });
+  it('keeps the retired compression ratio parseable but unused', () => {
+    const resolved = resolveConfig({ minCompressionRatio: 3 });
+    expect(resolved.minCompressionRatio).toBe(3);
+    // Nothing consumes it any more: the checkpoint budget is trigger-relative.
+    expect(resolveConfig({}).minCompressionRatio).toBeUndefined();
+  });
   it.each([
     { methodOrder: [] },
     { methodOrder: ['soft', 'soft'] },

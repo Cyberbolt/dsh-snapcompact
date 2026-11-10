@@ -141,6 +141,7 @@ describe('settings metadata', () => {
     expect(resolved.archiveMaxBytes).toBe(64 * 1024 * 1024);
     expect(resolved.handoffMaxTokens).toBe(4096);
     expect(resolved.shakeThresholdChars).toBe(8192);
-    expect(resolved.minCompressionRatio).toBe(2);
+    // Deprecated and no longer projected from the settings card.
+    expect(resolved.minCompressionRatio).toBeUndefined();
   });
 });

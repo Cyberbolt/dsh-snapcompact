@@ -2,7 +2,8 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-token-meter';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic';
-import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock, LlmResolvedModelInfo, Message } from '@deepseek-ai/dsh-llm';
+import type { EpochHeader } from '@deepseek-ai/dsh-session';
 import type { ArchiveService } from '../archives/service.js';
 import { isArchiveReference } from '../archives/format.js';
 import { toNativePolicy } from '../config.js';
@@ -14,6 +15,12 @@ import type {
   MethodContext,
 } from './method.js';
 import { estimateCheckpoint } from '../budgeting/pricing.js';
+import {
+  type CheckpointBudget,
+  resolveCheckpointBudget,
+  resolvePressureBudget,
+  resolveTargetPolicy,
+} from './budget.js';
 import { generateHandoff, handoff } from './methods/handoff.js';
 import { shake } from './methods/shake.js';
 import { snapcompact } from './methods/snapcompact.js';
@@ -61,8 +68,21 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     const provider = header?.config.provider ?? agent.options.provider;
     const model = header?.config.model ?? agent.options.model;
     if (!provider || !model) throw new Error('No conversation provider/model is available.');
-    const { sourceMessages, sourceTokens, retainedImages } = this.measureSource(input, agent);
+    const { sourceMessages, sourceTokens, surfaceTokens, retainedImages } = this.measureSource(
+      input,
+      agent,
+      header,
+    );
     if (sourceMessages.length === 0) throw new Error('There is no source history to archive.');
+    const budget = await this.checkpointBudget(
+      header,
+      provider,
+      model,
+      surfaceTokens,
+      sourceTokens,
+      signal,
+    );
+    const checkpointTargetTokens = budget.kind === 'ok' ? budget.tokens : 0;
     const parentArchives = sourceMessages.flatMap((message) =>
       message.content.flatMap((block) =>
         block.type === 'file' && isArchiveReference(block.attachment) ? [block.attachment] : [],
@@ -80,6 +100,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       input,
       sourceMessages,
       sourceTokens,
+      checkpointTargetTokens,
       meter: this.ctx.tokenMeter,
       archive,
       route: { provider, model },
@@ -117,13 +138,20 @@ export class SnapcompactEngine extends BasicCompactionEngine {
           { type: 'file', attachment: archive.reference },
         ];
         const tokens = estimateCheckpoint(summary, this.ctx.tokenMeter, attempt.imageRoute);
-        const requiredRatio = name === 'snapcompact' ? this.settings.minCompressionRatio : 1;
-        if (tokens * requiredRatio >= sourceTokens) {
-          failures.push(`${name}: no sufficient estimated shrink (${tokens} vs ${sourceTokens}).`);
+        if (tokens >= sourceTokens) {
+          failures.push(`${name}: no estimated shrink (${tokens} vs ${sourceTokens}).`);
+          continue;
+        }
+        if (name === 'snapcompact' && tokens > checkpointTargetTokens) {
+          failures.push(
+            `${name}: checkpoint ${tokens} exceeds its ${checkpointTargetTokens}-token budget.`,
+          );
           continue;
         }
         this.ctx.logger.info(
-          `snapcompact: selected ${name}; estimated checkpoint ${tokens} tokens, source ${sourceTokens}; not a billing measurement`,
+          `snapcompact: selected ${name}; estimated checkpoint ${tokens} tokens, source ${sourceTokens}, ` +
+            `budget ${checkpointTargetTokens} (${budget.kind === 'ok' ? budget.basis : 'unreachable'}); ` +
+            'not a billing measurement',
         );
         return { ...attempt.result, summary };
       } catch (error) {
@@ -139,12 +167,51 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     );
   }
 
+  /**
+   * Size this transaction's checkpoint against the routed model's trigger.
+   *
+   * The native engine remains the authority over *when* to compact; this only
+   * mirrors its pressure formula so a checkpoint cannot leave the session above
+   * the threshold it was compacted for. A route without a declared window, or a
+   * failed model lookup, falls back to half of the source.
+   */
+  private async checkpointBudget(
+    header: EpochHeader | undefined,
+    provider: string,
+    model: string,
+    surfaceTokens: number,
+    sourceTokens: number,
+    signal: AbortSignal | undefined,
+  ): Promise<CheckpointBudget> {
+    const policy = resolveTargetPolicy(this.config, provider, model);
+    let info: LlmResolvedModelInfo | undefined;
+    try {
+      info = await this.ctx.llm.resolveModelInfo(provider, model, signal);
+    } catch {
+      info = undefined;
+    }
+    signal?.throwIfAborted();
+    const contextWindow = info?.context?.contextWindow;
+    const reservedCompletionTokens = header?.config.maxTokens ?? info?.defaultMaxTokens ?? 0;
+    const pressure =
+      contextWindow === undefined || contextWindow <= 0
+        ? undefined
+        : resolvePressureBudget(policy, contextWindow, reservedCompletionTokens);
+    return resolveCheckpointBudget({
+      totalTokens: surfaceTokens,
+      sourceTokens,
+      ...(pressure?.kind === 'ok' ? { thresholdTokens: pressure.thresholdTokens } : {}),
+    });
+  }
+
   private measureSource(
     input: CompactionInput,
     agent: Agent,
+    header: EpochHeader | undefined,
   ): {
     sourceMessages: readonly Message[];
     sourceTokens: number;
+    surfaceTokens: number;
     retainedImages: number;
   } {
     const session = agent.session;
@@ -154,7 +221,8 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       (message, index) => !(index === 0 && message.role === 'system' && message.id === head?.id),
     );
     const ids = new Set(sourceMessages.map((message) => message.id));
-    const measurement = this.ctx.tokenMeter.measure(session);
+    // Price against the same envelope the native engine will re-measure after commit.
+    const measurement = this.ctx.tokenMeter.measure(session, header);
     // Empty system heads can project to no message. Never guess a shifted positional mapping.
     const pricesAlign = visible.length === measurement.nodes.length;
     let sourceTokens = 0;
@@ -170,6 +238,6 @@ export class SnapcompactEngine extends BasicCompactionEngine {
         ).length;
       }
     });
-    return { sourceMessages, sourceTokens, retainedImages };
+    return { sourceMessages, sourceTokens, surfaceTokens: measurement.totalTokens, retainedImages };
   }
 }

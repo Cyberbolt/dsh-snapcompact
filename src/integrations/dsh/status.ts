@@ -4,108 +4,21 @@ import type { ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
 import type { LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm';
 import { resolveImageRoute } from '../../budgeting/capabilities.js';
 import type { ImageRoute } from '../../budgeting/capabilities.js';
+import {
+  formatTokens,
+  resolvePressureBudget,
+  resolveTargetPolicy,
+} from '../../compaction/budget.js';
 import { describeChain } from '../../compaction/chain.js';
 import { countExternalizableOutputs } from '../../compaction/methods/shake.js';
 import type { MethodName, SnapcompactConfig } from '../../config.js';
 import type { ArchiveIndex } from './archive-projection.js';
 
-/** Policy view merged exactly like the native backend before capacity scaling. */
-export interface DisplayPolicy {
-  readonly thresholdRatio: number;
-  readonly headroomTokens: number;
-  readonly retainRatio?: number;
-  readonly retainTokens?: number;
-}
-
-export type PressureBudget =
-  | {
-      readonly kind: 'ok';
-      readonly thresholdTokens: number;
-      readonly retainTokens: number;
-      readonly retainTooLarge: boolean;
-      readonly messageBudgetTokens: number;
-    }
-  | { readonly kind: 'error'; readonly reason: string };
-
-const TOKEN_FORMAT = new Intl.NumberFormat('en-US');
-
-/** Avoid locale-dependent separators in command output and tests. */
-export function formatTokens(value: number): string {
-  return TOKEN_FORMAT.format(value);
-}
+export { formatTokens, resolvePressureBudget, resolveTargetPolicy };
+export type { PressureBudget, TargetPolicy } from '../../compaction/budget.js';
 
 function share(part: number, whole: number): string {
   return `${Math.round((part / whole) * 100)}%`;
-}
-
-/** Exact-target override first, then global defaults; retention fields stay mutually exclusive. */
-export function resolveDisplayPolicy(
-  config: ResolvedConfig,
-  provider: string,
-  model: string,
-): DisplayPolicy {
-  const override = config.modelPolicies.find(
-    (policy) => policy.provider === provider && policy.model === model,
-  );
-  const thresholdRatio = override?.thresholdRatio ?? config.thresholdRatio;
-  const headroomTokens = override?.headroomTokens ?? config.headroomTokens;
-  if (override?.retainTokens !== undefined) {
-    return { thresholdRatio, headroomTokens, retainTokens: override.retainTokens };
-  }
-  if (override?.retainRatio !== undefined) {
-    return { thresholdRatio, headroomTokens, retainRatio: override.retainRatio };
-  }
-  if (config.retainTokens !== undefined) {
-    return { thresholdRatio, headroomTokens, retainTokens: config.retainTokens };
-  }
-  return { thresholdRatio, headroomTokens, retainRatio: config.retainRatio };
-}
-
-/**
- * Display-only mirror of the pinned backend's trigger formula:
- * `floor(min(W × ratio, W − O − headroom))`, with the retained tail below it.
- * The native engine remains the sole authority; this never gates a compaction.
- */
-export function resolvePressureBudget(
-  policy: DisplayPolicy,
-  contextWindow: number,
-  reservedCompletionTokens: number,
-): PressureBudget {
-  if (!Number.isInteger(contextWindow) || contextWindow <= 0) {
-    return { kind: 'error', reason: `模型声明了无效的上下文窗口（${contextWindow}）` };
-  }
-  if (!Number.isInteger(reservedCompletionTokens) || reservedCompletionTokens < 0) {
-    return { kind: 'error', reason: `输出预留不是有效的非负整数（${reservedCompletionTokens}）` };
-  }
-  const messageBudgetTokens = contextWindow - reservedCompletionTokens;
-  if (messageBudgetTokens <= 0) {
-    return {
-      kind: 'error',
-      reason: `窗口 ${formatTokens(contextWindow)} 扣除输出预留 ${formatTokens(reservedCompletionTokens)} 后没有剩余消息预算`,
-    };
-  }
-  const pressureBudgetTokens = messageBudgetTokens - policy.headroomTokens;
-  if (pressureBudgetTokens <= 0) {
-    return {
-      kind: 'error',
-      reason:
-        `窗口 ${formatTokens(contextWindow)} 扣除输出预留 ${formatTokens(reservedCompletionTokens)} ` +
-        `与 headroom ${formatTokens(policy.headroomTokens)} 后没有触发预算；` +
-        '请降低 headroomTokens 或换用更大窗口的模型',
-    };
-  }
-  const thresholdTokens = Math.floor(
-    Math.min(contextWindow * policy.thresholdRatio, pressureBudgetTokens),
-  );
-  const retainTokens =
-    policy.retainTokens ?? Math.floor(messageBudgetTokens * (policy.retainRatio ?? 0));
-  return {
-    kind: 'ok',
-    thresholdTokens,
-    retainTokens,
-    retainTooLarge: retainTokens >= thresholdTokens,
-    messageBudgetTokens,
-  };
 }
 
 function pricingLabel(imageRoute: ImageRoute): string {
@@ -197,7 +110,7 @@ export async function formatStatus(
     lines.push(
       `上下文：${formatTokens(currentTokens)} / ${formatTokens(contextWindow)} tokens（${share(currentTokens, contextWindow)}）`,
     );
-    const policy = resolveDisplayPolicy(config, provider, model);
+    const policy = resolveTargetPolicy(config, provider, model);
     const budget = resolvePressureBudget(policy, contextWindow, reservedCompletionTokens);
     if (budget.kind === 'error') {
       lines.push(`触发阈值：无法计算（${budget.reason}）`);
@@ -260,7 +173,7 @@ export async function formatStatus(
   );
   lines.push(
     `渲染：${settings.rendering.width}×${settings.rendering.height}，最多 ${settings.rendering.maxFrames} 帧；` +
-      `压缩比 ≥ ${settings.minCompressionRatio}×；最小字高 ${settings.rendering.minGlyphPx}px`,
+      `checkpoint 预算 = 触发阈值下剩余空间的一半；最小字高 ${settings.rendering.minGlyphPx}px`,
   );
   lines.push(`已完成归档：${index.entries(session).length}`);
   lines.push('提示：阈值和节省量都是估算，不是计费测量；精确字符串请用 snapcompact_recall 回查。');

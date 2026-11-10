@@ -64,14 +64,6 @@ export const Config = schema.object({
     .default(20)
     .description(descriptionOf('maxFrames'))
     .volatile(),
-  minCompressionRatio: schema
-    .number()
-    .step(0.1)
-    .min(1.1)
-    .max(10)
-    .default(2)
-    .description(descriptionOf('minCompressionRatio'))
-    .volatile(),
   archiveMaxBytes: schema
     .number()
     .step(1024 * 1024)

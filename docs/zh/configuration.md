@@ -30,7 +30,6 @@ serialization:
   tailChars: 2000
   includeReasoning: false
   maxCarriedImages: 4
-minCompressionRatio: 2
 archiveMaxBytes: 67108864
 handoffMaxTokens: 4096
 shakeThresholdChars: 8192
@@ -49,7 +48,6 @@ routePolicies: []
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
 | 交接预算       | `handoffMaxTokens`                      | 4096                                  |
 | 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
@@ -63,7 +61,7 @@ routePolicies: []
 
 bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模块 `dsh-snapcompact`），配置是 `role: ui`。DSH 的浏览器模块扫描只读取「裸包名」Loader 行的 `dsh.client`，这一行就是让配置卡能被加载的入口；它不注册压缩、工具或命令。请保持启用：禁用后插件页不再显示设置卡（preset 本身仍然可用）。
 
-8 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
+7 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
 
 ## 原生策略
 
@@ -86,7 +84,7 @@ bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模�
 容易误解的语义：
 
 - `shake` 只要存在超过 `shakeThresholdChars` 的工具输出就成功，放在 `snapcompact` 前面会抢先于视觉路径。
-- `minCompressionRatio` 只约束 `snapcompact`；其它方法只要求 checkpoint 比源历史小。
+- checkpoint 预算（触发阈值下剩余空间的一半）只约束 `snapcompact`；其它方法只要求 checkpoint 比源历史小。
 - 归档在方法链之前创建，所以配置成 `[soft]` 仍然保留 `snapcompact_recall`。
 - 取消会终止事务，不会触发下一方法。
 
@@ -103,9 +101,25 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 
 `/snapcompact status` 会解析精确路由，打印当前 tokens、`W`、阈值 tokens、保留 tokens 以及是否已越过阈值。这个展示只是对上述公式的解释，实际触发仍由原生引擎决定。阈值是配置期设置（修改后需重载），且不会关闭宿主的上下文溢出恢复。没有绝对 token 数阈值；请使用 `thresholdRatio`，并用 `/snapcompact status` 查看换算后的 token 数。
 
+### checkpoint 预算
+
+`snapcompact` 最多可以用掉阈值下剩余空间的一半：
+
+```text
+fixed  = max(0, surface - source)
+room   = threshold - fixed
+budget = floor(min(room, source) / 2)    # 路由未声明窗口时：floor(source / 2)
+```
+
+`surface` 是压缩前的整段请求压力，`source` 是 checkpoint 要替换的历史；两者都来自原生引擎提交后会重新测量的那个 token meter。checkpoint 无法替代的部分——系统提示、工具 schema、输出预留、保留尾部——都留在 `fixed` 里。
+
+只用掉一半剩余空间，可以让压缩后的总量回到阈值以下并留下同样多的余量；这也正是原生引擎在采纳 checkpoint 前会复核的条件。自动压力触发时 `room ≈ source`，所以它等价于旧的「源历史的一半」，只会按越界量收紧；对阈值以下的手动 `/compact` 同样成立，因为那时剩余空间大于源历史，仍然由源历史那一半来约束。路由未声明上下文窗口、或模型信息解析失败时回退到 `floor(source / 2)`；`room ≤ 0` 时直接跳过视觉路径，因为没有帧能把会话拉回阈值以下。
+
+预算在每次压缩时按当前路由现算，所以它会自动跟随 `thresholdRatio`、`headroomTokens` 和按模型覆盖，不需要额外设置项。旧配置里可能仍带着 `minCompressionRatio`；它只为升级兼容而被接受，实际会被忽略。
+
 ## 图片启用条件
 
-必须同时满足：模型明确声明 image 输入；适配器有图片计价、精确路由上界或带标签的 DeepSeek 估算；渲染和请求变体不缩小字形到可读阈值以下；帧/字节/像素符合附件预算；完整 checkpoint 预计达到至少 `minCompressionRatio` 倍压缩。
+必须同时满足：模型明确声明 image 输入；适配器有图片计价、精确路由上界或带标签的 DeepSeek 估算；渲染和请求变体不缩小字形到可读阈值以下；帧/字节/像素符合附件预算；完整 checkpoint 能放进下面的触发阈值相对预算。
 
 若适配器没有价格，插件会对 DeepSeek 模型使用 1024 token/帧的保守估算；其他模型只能在确认实际规则后显式设置上界，例如：
 
