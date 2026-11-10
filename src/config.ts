@@ -72,7 +72,7 @@ const configSchema = z
       .strictObject({
         width: z.number().int().min(256).max(2048).default(1568),
         height: z.number().int().min(256).max(2048).default(1568),
-        maxFrames: z.number().int().min(1).max(20).default(20),
+        maxFrames: z.number().int().min(1).max(64).default(20),
         lineHeight: z.number().int().min(16).max(32).default(20),
         minGlyphPx: z.number().int().min(8).max(16).default(12),
         maxTotalBytes: z
@@ -243,7 +243,7 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
   rendering: schema.object({
     width: schema.number().step(1).min(256).max(2048).default(1568),
     height: schema.number().step(1).min(256).max(2048).default(1568),
-    maxFrames: schema.number().step(1).min(1).max(20).default(20),
+    maxFrames: schema.number().step(1).min(1).max(64).default(20),
     lineHeight: schema.number().step(1).min(16).max(32).default(20),
     minGlyphPx: schema.number().step(1).min(8).max(16).default(12),
     maxTotalBytes: schema

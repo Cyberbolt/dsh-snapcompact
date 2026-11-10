@@ -50,7 +50,7 @@ snapcompact → handoff → shake → soft
 
 为什么用图片：视觉模型按面积计费，与帧里塞了多少字符基本无关。在模型可读的前提下，一帧密集位图能比同样的纯文本承载更多字符/token；具体比例取决于帧几何、读图模型计价和文本密度。
 
-只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧），且不会超过宿主对单条消息的图片上限；帧数根据压缩比动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
+只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧，可配到 64），且不会超过宿主对单条消息的图片上限；帧数根据压缩比动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
 
 ### 它省 token 吗？
 
@@ -183,7 +183,7 @@ serialization:
   maxCarriedImages: 4
 ```
 
-默认使用 1568×1568 帧，最多 20 帧（宿主默认图片数上限）、16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择；宿主更小的限制同样生效。
+默认使用 1568×1568 帧、每次 checkpoint 20 帧，上限可配到 64；实际帧数仍受宿主对单条消息的图片上限（默认 20 张）约束。其余限制为 16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择。
 
 ### 在应用内配置
 
@@ -194,7 +194,7 @@ serialization:
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数       | `rendering.maxFrames`                   | 20                                    |
+| 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
 | 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
 | 交接预算       | `handoffMaxTokens`                      | 4096                                  |

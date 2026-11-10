@@ -53,6 +53,9 @@ describe('plugin configuration', () => {
   it('keeps the loader schema default aligned with the strict parser', () => {
     expect(Config({}).methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
   });
+  it('accepts frame counts up to the renderer ceiling', () => {
+    expect(resolveConfig({ rendering: { maxFrames: 64 } }).rendering.maxFrames).toBe(64);
+  });
   it('accepts explicit subsets that still end with soft', () => {
     expect(resolveConfig({ methodOrder: ['snapcompact', 'soft'] }).methodOrder).toEqual([
       'snapcompact',
@@ -66,7 +69,7 @@ describe('plugin configuration', () => {
     { methodOrder: ['handoff'] },
     { methodOrder: ['remote', 'soft'] },
     { typo: true },
-    { rendering: { maxFrames: 21 } },
+    { rendering: { maxFrames: 65 } },
     { rendering: { timeoutMs: 15_001 } },
     { rendering: { maxSourceBytes: 65 * 1024 * 1024 } },
     { routePolicies: [{ provider: 'a', model: 'b', visualTokensPerFrame: -1 }] },

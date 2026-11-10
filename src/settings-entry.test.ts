@@ -60,6 +60,7 @@ describe('settings entry', () => {
       shakeThresholdChars: 2048,
     });
     expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
+    expect(resolve({ maxFrames: 64 }).maxFrames).toBe(64);
   });
 
   it.each([
@@ -68,7 +69,7 @@ describe('settings entry', () => {
     { thresholdRatio: 1.2 },
     { thresholdRatio: 0.19 },
     { frameSize: 4096 },
-    { maxFrames: 21 },
+    { maxFrames: 65 },
     { minCompressionRatio: 1 },
     { archiveMaxBytes: 0 },
     { handoffMaxTokens: 128 },

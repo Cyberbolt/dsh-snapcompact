@@ -101,7 +101,7 @@ describe('settings metadata', () => {
   it('drops unknown, non-numeric and out-of-range values', () => {
     expect(
       readUserSettings({
-        maxFrames: 21,
+        maxFrames: 65,
         frameSize: 'large',
         archiveMaxBytes: -1,
         methodOrder: [42],
@@ -109,6 +109,11 @@ describe('settings metadata', () => {
       }),
     ).toEqual({});
     expect(readUserSettings(null)).toEqual({});
+  });
+
+  it('accepts frame counts up to the renderer ceiling', () => {
+    expect(readUserSettings({ maxFrames: 64 })).toEqual({ maxFrames: 64 });
+    expect(resolveConfig(applyUserSettings({}, { maxFrames: 64 })).rendering.maxFrames).toBe(64);
   });
 
   it('reports the schema defaults as a plain map', () => {

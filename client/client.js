@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
           "group": "rendering",
           "defaultValue": 20,
           "min": 1,
-          "max": 20,
+          "max": 64,
           "step": 1
         },
         {
@@ -146,7 +146,8 @@ window.__ModuleLoader__.load({
       frameSize: '帧尺寸',
       frameSizeHint: '方形帧的边长；越大越清晰，也越占 token。',
       maxFrames: '最多帧数',
-      maxFramesHint: '单次 checkpoint 最多渲染多少帧。',
+      maxFramesHint:
+        '单次 checkpoint 最多渲染多少帧；实际帧数还受宿主单条消息图片上限（默认 20）约束。',
       compressionRatio: '最小压缩比',
       compressionRatioHint: '视觉路径必须把历史压缩到这个倍数以下才会采用。',
       advancedTitle: '高级',
@@ -217,7 +218,8 @@ window.__ModuleLoader__.load({
       frameSize: 'Frame size',
       frameSizeHint: 'Edge length of a square frame; larger is sharper and costs more tokens.',
       maxFrames: 'Maximum frames',
-      maxFramesHint: 'How many frames one checkpoint may render.',
+      maxFramesHint:
+        'How many frames one checkpoint may render; the host per-message image cap (20 by default) still applies.',
       compressionRatio: 'Minimum compression ratio',
       compressionRatioHint:
         'The visual path must shrink history by at least this factor to be used.',
@@ -795,8 +797,10 @@ window.__ModuleLoader__.load({
                 { className: 'sc-slider' },
                 h('input', {
                   type: 'range',
-                  min: 1,
-                  max: 20,
+                  // Bounds come from the generated field table so the slider
+                  // cannot drift from the configuration schema.
+                  min: fieldOf('maxFrames')?.min ?? 1,
+                  max: fieldOf('maxFrames')?.max ?? 64,
                   step: 1,
                   value: draft.maxFrames,
                   disabled: readOnly || busy,
