@@ -99,7 +99,7 @@ Snapcompact declares **DeepSeek Harness `^0.2.2-rc.1`**, the 0.2.x line, and is 
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.5.1` and click **Install**.
+2. Paste `dsh-snapcompact@0.5.2` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and pick the Snapcompact variant that matches how you work: **Snapcompact (Standard)**, **Snapcompact (PTC)** or **Snapcompact (Cordis)**. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
@@ -108,7 +108,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.1
+dsh plugin --profile web add dsh-snapcompact@0.5.2
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -120,11 +120,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.2.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.1.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.2.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -146,12 +146,12 @@ The settings card is shared: it edits the profile-plane `snapcompact-settings` r
 
 ## Use it
 
-| Entry point              | What it does                                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH's standard manual compaction command; inside any Snapcompact preset it runs the Snapcompact chain.                                                   |
-| `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold in tokens, per-method availability and the archive count. |
-| `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                         |
-| `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                             |
+| Entry point              | What it does                                                                                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/compact`               | DSH's standard manual compaction command; inside any Snapcompact preset it runs the Snapcompact chain.                                                               |
+| `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold and compactable space, per-method availability and the archive count. |
+| `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                                     |
+| `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                                         |
 
 Recall examples:
 
@@ -175,6 +175,13 @@ policy:
   auto: true
   # Trigger at 80% of the window; /snapcompact status shows the effective token count.
   thresholdRatio: 0.8
+  # Verbatim tail kept after compaction. Mutually exclusive with retainTokens.
+  retainRatio: 0.16
+guard:
+  # Refuse to mount when thresholdRatio - retainRatio falls below this; 0 disables.
+  minCompactableRatio: 0.1
+  # Skip a compaction whose source is below max(1024, window x this) tokens; 0 disables.
+  minSourceRatio: 0.01
 rendering:
   width: 1568
   height: 1568
@@ -201,6 +208,7 @@ The Snapcompact detail page under **Plugins** carries a settings card backed by 
 | ------------------------ | ---------------------------------------- | ------------------------------------- |
 | Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (host default 0.8)              |
+| Retained tail            | `policy.retainRatio` or `retainTokens`   | unset (host default 0.16)             |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
@@ -211,8 +219,28 @@ Rules worth knowing:
 
 - The engine is built when a session mounts the preset, so **saved changes apply to new sessions**; a running session keeps its configuration.
 - For a key the card manages, the saved value overrides the same key in preset YAML. `thresholdRatio` is the exception: it stays unset until you enable the custom threshold, so a preset-level `policy.thresholdRatio` still applies.
+- The retained tail has one three-state control: inherit the native 0.16, set a ratio, or set an absolute token budget. `retainRatio` and `retainTokens` are mutually exclusive; saving one removes the other, and hand-written YAML that sets both is rejected.
+- `guard` is YAML-only. Both guards default to on, and both accept `0` to disable them.
 - "Restore default" removes the override and falls back to the plugin default (or to YAML, for the threshold).
 - Everything else — the rest of `policy`, `serialization`, `routePolicies`, render timeouts — remains YAML-only.
+
+### Retained tail and usefulness guards
+
+The trigger only matters relative to the retained tail:
+
+```text
+compactable = threshold - retained tail
+```
+
+At a 1M-token window the native 0.16 tail is about 160K tokens, so `thresholdRatio: 0.2` leaves only about 4% of the window — roughly 41K tokens — to pay for a checkpoint. That is the classic "20% never becomes 19%" trap: the estimated savings are smaller than the rounding step.
+
+The plugin now fails fast instead of mounting that pair: when `thresholdRatio - retainRatio` is below `guard.minCompactableRatio` (default 0.1), the engine refuses to start and the error names the values and the fix. `/snapcompact status` prints the same arithmetic — retained tail, compactable space, the floor, and a warning when the space is below it. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
+
+Existing profiles that combine `thresholdRatio: 0.2` with the default retained tail will be rejected after upgrading. Fix it in one of three ways:
+
+- raise the trigger (the card floor is `0.5`; the host default is `0.8`), or
+- lower the retained tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or
+- set `guard.minCompactableRatio: 0` to disable the mount check (not recommended).
 
 ### Custom method chains and thresholds
 
@@ -228,7 +256,7 @@ Rules worth knowing:
 
 Two easy misreadings: `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so putting it first preempts the visual path; and the checkpoint budget (half of the room left under the trigger) only constrains `snapcompact`, while every other method merely has to shrink the source.
 
-The trigger is still the native `policy.thresholdRatio` (a window fraction, default 0.8). `/snapcompact status` converts it into tokens for the current route and explains whether each method will run or be skipped.
+The trigger is still the native `policy.thresholdRatio` (a window fraction, default 0.8). `/snapcompact status` converts it into tokens for the current route, prints the retained tail and the compactable space between them, and explains whether each method will run or be skipped.
 
 If a model genuinely has image input and a known price but DSH's adapter exposes no image pricing, DeepSeek model IDs use a labelled 1024-token/frame conservative estimate. Other models can declare a conservative ceiling explicitly:
 
@@ -283,6 +311,20 @@ Run `/snapcompact status`. The usual cause is that the current route has no decl
 <summary>Compaction fails with "No compaction method produced a safe smaller checkpoint"</summary>
 
 Every candidate was skipped or failed its budget check. Check `/snapcompact status` first, then retry when the history is larger or choose a route with a working text summarizer. The error lists each method's reason; cancellation is reported separately and does not fall through.
+
+</details>
+
+<details>
+<summary>It refuses to start with "leaves only … of the window compactable"</summary>
+
+The configured threshold and retained tail leave too little room for a checkpoint to pay for itself, so the plugin refuses to mount instead of burning model calls. Run `/snapcompact status` for the exact token numbers, then raise `policy.thresholdRatio`, lower `policy.retainRatio`/`retainTokens`, or set `guard.minCompactableRatio: 0` to disable the mount check.
+
+</details>
+
+<details>
+<summary>Compaction fails with "below the …-token floor"</summary>
+
+The selected source history is smaller than `max(1024, window × guard.minSourceRatio)`. Wait for more history, or lower `guard.minSourceRatio` (set it to `0` to disable the earnings check). The guard runs before the archive and before any method, so nothing was spent.
 
 </details>
 

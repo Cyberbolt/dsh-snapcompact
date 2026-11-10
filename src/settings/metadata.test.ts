@@ -64,6 +64,19 @@ describe('settings metadata', () => {
     expect(resolveConfig(overridden).policy.thresholdRatio).toBe(0.55);
   });
 
+  it('drops a legacy sub-0.5 trigger so the preset value can take over', () => {
+    expect(readUserSettings({ thresholdRatio: 0.49 })).toEqual({});
+    expect(readUserSettings({ thresholdRatio: 0.5 })).toEqual({ thresholdRatio: 0.5 });
+    expect(
+      resolveConfig(
+        applyUserSettings(
+          { policy: { thresholdRatio: 0.7 } },
+          readUserSettings({ thresholdRatio: 0.2 }),
+        ),
+      ).policy.thresholdRatio,
+    ).toBe(0.7);
+  });
+
   it('copies the chain instead of sharing the settings array', () => {
     const settings: UserSettings = { methodOrder: ['snapcompact', 'soft'] };
     const merged = resolveConfig(applyUserSettings({}, settings));
@@ -132,6 +145,45 @@ describe('settings metadata', () => {
     const input = { methodOrder: ['soft'] };
     expect(applyUserSettings(input, undefined)).toBe(input);
     expect(applyUserSettings(input, {})).toBe(input);
+  });
+
+  it('defaults to 0.16 retention while leaving both retention forms unset', () => {
+    expect(defaultUserSettings()).not.toHaveProperty('retainRatio');
+    expect(defaultUserSettings()).not.toHaveProperty('retainTokens');
+    expect(resolveConfig({}).policy.retainRatio).toBeUndefined();
+  });
+
+  it('maps the retained tail onto mutually exclusive policy keys', () => {
+    expect(SETTINGS_FIELDS.find((field) => field.key === 'retainRatio')?.paths).toEqual([
+      ['policy', 'retainRatio'],
+    ]);
+    expect(SETTINGS_FIELDS.find((field) => field.key === 'retainTokens')?.paths).toEqual([
+      ['policy', 'retainTokens'],
+    ]);
+    const ratio = resolveConfig(
+      applyUserSettings({ policy: { retainTokens: 4_096 } }, { retainRatio: 0.03 }),
+    );
+    expect(ratio.policy.retainRatio).toBe(0.03);
+    expect(ratio.policy.retainTokens).toBeUndefined();
+    const tokens = resolveConfig(
+      applyUserSettings({ policy: { retainRatio: 0.16 } }, { retainTokens: 8_192 }),
+    );
+    expect(tokens.policy.retainTokens).toBe(8_192);
+    expect(tokens.policy.retainRatio).toBeUndefined();
+  });
+
+  it('lets the absolute token form win when a document carries both', () => {
+    const both = resolveConfig(applyUserSettings({}, { retainRatio: 0.03, retainTokens: 8_192 }));
+    expect(both.policy.retainTokens).toBe(8_192);
+    expect(both.policy.retainRatio).toBeUndefined();
+  });
+
+  it('drops retained-tail values outside the card bounds', () => {
+    expect(readUserSettings({ retainRatio: 0.5, retainTokens: 2_048 })).toEqual({
+      retainRatio: 0.5,
+      retainTokens: 2_048,
+    });
+    expect(readUserSettings({ retainRatio: 0.51, retainTokens: 1_023 })).toEqual({});
   });
 
   it('produces a config the strict parser accepts for every default', () => {

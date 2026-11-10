@@ -14,6 +14,11 @@ policy:
   retainRatio: 0.16
   # Smaller windows need less headroom; native capacity validation still applies.
   headroomTokens: 65536
+guard:
+  # Refuse to mount when thresholdRatio - retainRatio is below this; 0 disables.
+  minCompactableRatio: 0.1
+  # Skip one compaction whose source is below max(1024, window x this); 0 disables.
+  minSourceRatio: 0.01
 rendering:
   width: 1568
   height: 1568
@@ -42,12 +47,13 @@ routePolicies: []
 
 The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts, so one card configures every Snapcompact variant.
 
-The card manages seven keys:
+The card manages nine keys:
 
 | Control                  | Config path                              | Default                               |
 | ------------------------ | ---------------------------------------- | ------------------------------------- |
 | Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)            |
+| Retained tail            | `policy.retainRatio` or `retainTokens`   | unset (native default 0.16)           |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
@@ -58,18 +64,19 @@ Persistence and precedence:
 
 - Writes go through DSH's settings service to the profile's configuration patch; they survive restarts and are removed by "Restore default" (per field or for the whole card).
 - A saved card value overrides the same key in preset YAML. `thresholdRatio` is the exception: until the custom threshold is enabled the key is absent, so a preset-level `policy.thresholdRatio` still applies.
+- The retained tail is one three-state control (inherit 0.16 / ratio / absolute tokens). `retainRatio` and `retainTokens` are mutually exclusive: saving one removes the other from the merged row, and the strict parser rejects YAML that sets both.
 - The engine is constructed when a session mounts the preset, so changes take effect for **new sessions**; `/snapcompact status` in an existing session keeps reporting its starting configuration.
 - The settings schema cannot express chain ordering, so a stored chain that is empty, repeated, or does not end in `soft` is ignored by the plugin; the strict parser remains the final gate.
 
 The bundle also declares a profile-plane carrier row (`snapcompact-ui`, module `dsh-snapcompact`) whose config is `role: ui`. DSH's browser module scanner only reads `dsh.client` from Loader entries named by a bare package specifier, so this row exists to make the card loadable; it registers no compaction, tools or commands. Keep it enabled: disabling it removes the settings card from the plugin page (the preset keeps working).
 
-Everything outside the eight keys stays YAML-only: the rest of `policy`, `serialization`, `routePolicies`, `rendering.maxTotalBytes`, `rendering.maxSourceBytes`, `rendering.timeoutMs`, `rendering.lineHeight` and `rendering.minGlyphPx`.
+Everything outside those nine keys stays YAML-only: the rest of `policy`, `guard`, `serialization`, `routePolicies`, `rendering.maxTotalBytes`, `rendering.maxSourceBytes`, `rendering.timeoutMs`, `rendering.lineHeight` and `rendering.minGlyphPx`.
 
 ## Native policy
 
 `policy` is validated by `BasicCompactionEngine`. It supports thresholdRatio, headroomTokens, retainRatio/retainTokens (mutually exclusive), summarizationProvider/summarizationModel (a pair), maxTokens, compactionRetries, maxOverflowRetries, auto and modelPolicies. An empty object uses native defaults.
 
-Do not copy 65,536-token headroom to a small-window model without adjustment. The native backend validates capacity, output reservation and retained-tail budgets.
+Do not copy 65,536-token headroom to a small-window model without adjustment. The native backend validates capacity, output reservation and retained-tail budgets. The plugin additionally validates the gap between the threshold and the retained tail at mount time (see [retained tail and guards](#retained-tail-and-usefulness-guards)).
 
 ## Method chains and fallback order
 
@@ -101,7 +108,30 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 
 `W` is the adapter-declared context window, `O` the effective output reservation, and `headroomTokens` a capacity safety margin. `thresholdRatio` is a window fraction, not an absolute token count; small-window models usually need both a lower ratio and smaller headroom. `retainRatio`/`retainTokens` must stay below the threshold, or the native backend rejects that route.
 
-`/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery. There is no absolute token-count trigger; use `thresholdRatio` and inspect the effective token number with `/snapcompact status`.
+`/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens, the compactable space between them, the guard floors and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery. There is no absolute token-count trigger; use `thresholdRatio` and inspect the effective token number with `/snapcompact status`.
+
+### Retained tail and usefulness guards
+
+The trigger only means something relative to the retained tail:
+
+```text
+compactable = threshold - retain
+```
+
+At a 1M-token window the native `retainRatio: 0.16` reserves about 158,720 tokens, so `thresholdRatio: 0.2` leaves only about 4% of the window (roughly 41K tokens). A checkpoint plus the retained text can easily cost more than that, which is why "20% occupied" can round to "19% occupied" after a full compaction. The native backend only rejects `retainRatio >= thresholdRatio`; it cannot know the gap is too small to pay for itself.
+
+`guard` adds the missing checks:
+
+| Key                   | Default | Meaning                                                                                               |
+| --------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `minCompactableRatio` | `0.1`   | Reject the mount when `thresholdRatio - retainRatio` is below this. `0` disables the check.           |
+| `minSourceRatio`      | `0.01`  | Skip one compaction whose source is below `max(1024, window × ratio)` tokens. `0` disables the check. |
+
+The mount check runs in the engine constructor after native defaults are resolved, so it covers the global policy and every exact `modelPolicies` entry (using the same inheritance rules). The error lists every infeasible scope with the actual fractions and the fix. The absolute `retainTokens` form is window-dependent, so it is not rejected at mount time; `/snapcompact status` prints the real compactable space and warns when it is below `max(1024, window × minCompactableRatio)`.
+
+The source floor runs after the source history is measured and before the archive or any method: a too-small source fails immediately, without a model call. Manual `/compact` is subject to the same guard; lower `guard.minSourceRatio` to allow a small manual run.
+
+Upgrading a profile that combines `thresholdRatio: 0.2` with the default tail therefore fails at mount. Fix it by raising the threshold (the card floor is `0.5`; the host default is `0.8`), lowering the tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or explicitly setting `guard.minCompactableRatio: 0`.
 
 ### Checkpoint budget
 
@@ -138,6 +168,6 @@ Provider/model matching is exact, with no aliases, fuzzy matching or cross-model
 
 Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count, so raise both to use more. At most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under the trigger-relative checkpoint budget; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
 
-Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through.
+Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through. A threshold/retention pair below the compactable floor refuses to mount, and a source below the earnings floor fails before the archive or any method runs.
 
 Snapcompact declares `^0.2.2-rc.1` (0.2.x) and is verified on `0.2.2-rc.1`. Raise the floor only after an install and activation check on that host release, and keep a finite ceiling: validate types, native integration, package contents and live preset activation before widening it. Do not bypass the host check.

@@ -6,6 +6,7 @@ import { resolveImageRoute } from '../../budgeting/capabilities.js';
 import type { ImageRoute } from '../../budgeting/capabilities.js';
 import {
   formatTokens,
+  MIN_USEFUL_TOKENS,
   resolvePressureBudget,
   resolveTargetPolicy,
 } from '../../compaction/budget.js';
@@ -19,6 +20,13 @@ export type { PressureBudget, TargetPolicy } from '../../compaction/budget.js';
 
 function share(part: number, whole: number): string {
   return `${Math.round((part / whole) * 100)}%`;
+}
+
+/** Token floor used by the source guard and the compactable-space warning. */
+function tokenFloor(contextWindow: number | undefined, ratio: number): number {
+  const scaled =
+    contextWindow === undefined || contextWindow <= 0 ? 0 : Math.floor(contextWindow * ratio);
+  return Math.max(MIN_USEFUL_TOKENS, scaled);
 }
 
 function pricingLabel(imageRoute: ImageRoute): string {
@@ -122,7 +130,26 @@ export async function formatStatus(
           ? `配置 ${configuredPercent}%；受输出预留/headroom 限制后占窗口 ${effectivePercent}%`
           : `配置 ${configuredPercent}%`;
       lines.push(`触发阈值：${formatTokens(budget.thresholdTokens)} tokens（${capNote}）`);
-      lines.push(`保留尾部：${formatTokens(budget.retainTokens)} tokens`);
+      const retentionSource =
+        policy.retainTokens !== undefined
+          ? 'retainTokens 指定'
+          : `retainRatio ${policy.retainRatio ?? 0}`;
+      lines.push(
+        `保留尾部：${formatTokens(budget.retainTokens)} tokens` +
+          `（${retentionSource}；占窗口 ${share(budget.retainTokens, contextWindow)}）`,
+      );
+      const compactableFloor = tokenFloor(contextWindow, settings.guard.minCompactableRatio);
+      const floorNote =
+        settings.guard.minCompactableRatio > 0 ? `；下限 ${formatTokens(compactableFloor)}` : '';
+      lines.push(
+        `可压空间：${formatTokens(budget.compactableTokens)} tokens` +
+          `（窗口 ${share(budget.compactableTokens, contextWindow)}；阈值 − 保留尾部${floorNote}）`,
+      );
+      if (settings.guard.minCompactableRatio > 0 && budget.compactableTokens < compactableFloor) {
+        lines.push(
+          '警告：可压空间低于下限；提高 thresholdRatio、降低 retainRatio/retainTokens 或 headroomTokens。',
+        );
+      }
       const crossed = currentTokens >= budget.thresholdTokens;
       if (!config.auto) {
         lines.push(`状态：${crossed ? '已越过阈值' : '未越过阈值'}；自动压缩已关闭`);
@@ -138,6 +165,12 @@ export async function formatStatus(
       }
     }
   }
+
+  lines.push(
+    settings.guard.minSourceRatio > 0
+      ? `收益门槛：源历史少于 ${formatTokens(tokenFloor(contextWindow, settings.guard.minSourceRatio))} tokens 时跳过压缩（guard.minSourceRatio ${settings.guard.minSourceRatio}）`
+      : '收益门槛：已关闭（guard.minSourceRatio 0）',
+  );
 
   signal.throwIfAborted();
   let imageRoute: ImageRoute | null = null;

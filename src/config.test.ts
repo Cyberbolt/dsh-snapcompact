@@ -67,6 +67,28 @@ describe('plugin configuration', () => {
   });
   it('keeps the loader schema default aligned with the strict parser', () => {
     expect(Config({}).methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
+    expect(Config({}).guard).toEqual(resolveConfig({}).guard);
+  });
+  it('supplies usefulness guard defaults and accepts overrides', () => {
+    expect(resolveConfig({}).guard).toEqual({
+      minCompactableRatio: 0.1,
+      minSourceRatio: 0.01,
+    });
+    expect(
+      resolveConfig({ guard: { minCompactableRatio: 0, minSourceRatio: 0.05 } }).guard,
+    ).toEqual({ minCompactableRatio: 0, minSourceRatio: 0.05 });
+  });
+  it('rejects retention carried in both forms within one scope', () => {
+    expect(() => resolveConfig({ policy: { retainRatio: 0.1, retainTokens: 1_024 } })).toThrow(
+      /mutually exclusive/,
+    );
+    expect(() =>
+      resolveConfig({
+        policy: {
+          modelPolicies: [{ provider: 'a', model: 'b', retainRatio: 0.1, retainTokens: 1_024 }],
+        },
+      }),
+    ).toThrow(/mutually exclusive/);
   });
   it('accepts frame counts up to the renderer ceiling', () => {
     expect(resolveConfig({ rendering: { maxFrames: 64 } }).rendering.maxFrames).toBe(64);
@@ -90,6 +112,9 @@ describe('plugin configuration', () => {
     { methodOrder: ['handoff'] },
     { methodOrder: ['remote', 'soft'] },
     { typo: true },
+    { guard: { minCompactableRatio: -0.1 } },
+    { guard: { minSourceRatio: 1 } },
+    { guard: { unknown: 1 } },
     { rendering: { maxFrames: 65 } },
     { rendering: { timeoutMs: 15_001 } },
     { rendering: { maxSourceBytes: 65 * 1024 * 1024 } },

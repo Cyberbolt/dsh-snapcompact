@@ -16,6 +16,8 @@ import type {
 } from './method.js';
 import { estimateCheckpoint } from '../budgeting/pricing.js';
 import {
+  collectPolicyViabilityProblems,
+  MIN_USEFUL_TOKENS,
   type CheckpointBudget,
   resolveCheckpointBudget,
   resolvePressureBudget,
@@ -46,6 +48,16 @@ export class SnapcompactEngine extends BasicCompactionEngine {
   ) {
     // The base owns validation of the native policy, not our unrelated plugin settings.
     super(ctx, toNativePolicy(settings.policy));
+    // Fail fast instead of spending a session on a threshold/retention pair that
+    // leaves no room for a checkpoint. `this.config` is the native-resolved
+    // policy, so the defaults here are authoritative rather than mirrored.
+    const viability = collectPolicyViabilityProblems(
+      this.config,
+      settings.guard.minCompactableRatio,
+    );
+    if (viability.length > 0) {
+      throw new Error(`Snapcompact cannot start: ${viability.join(' ')}`);
+    }
   }
 
   /** Benchmark-only entry; computes a native summary without changing the session surface. */
@@ -74,7 +86,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       header,
     );
     if (sourceMessages.length === 0) throw new Error('There is no source history to archive.');
-    const budget = await this.checkpointBudget(
+    const { budget, contextWindow } = await this.checkpointBudget(
       header,
       provider,
       model,
@@ -82,6 +94,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       sourceTokens,
       signal,
     );
+    this.assertUsefulSource(sourceTokens, contextWindow);
     const checkpointTargetTokens = budget.kind === 'ok' ? budget.tokens : 0;
     const parentArchives = sourceMessages.flatMap((message) =>
       message.content.flatMap((block) =>
@@ -168,6 +181,27 @@ export class SnapcompactEngine extends BasicCompactionEngine {
   }
 
   /**
+   * Refuse to spend a model call (or create an archive) for a source history
+   * too small to pay for itself. The floor is `max(1024, window × ratio)` and
+   * `guard.minSourceRatio: 0` disables the check.
+   */
+  private assertUsefulSource(sourceTokens: number, contextWindow: number | undefined): void {
+    const ratio = this.settings.guard.minSourceRatio;
+    if (ratio <= 0) return;
+    const scaled = contextWindow === undefined ? 0 : Math.floor(contextWindow * ratio);
+    const floor = Math.max(MIN_USEFUL_TOKENS, scaled);
+    if (sourceTokens >= floor) return;
+    this.ctx.logger.warn(
+      `snapcompact: source ${sourceTokens} tokens is below the ${floor}-token floor; no method ran.`,
+    );
+    throw new Error(
+      `Compaction source has ${sourceTokens} tokens, below the ${floor}-token floor ` +
+        `(guard.minSourceRatio ${ratio}); no method ran. Lower guard.minSourceRatio or ` +
+        'compact a larger history.',
+    );
+  }
+
+  /**
    * Size this transaction's checkpoint against the routed model's trigger.
    *
    * The native engine remains the authority over *when* to compact; this only
@@ -182,7 +216,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     surfaceTokens: number,
     sourceTokens: number,
     signal: AbortSignal | undefined,
-  ): Promise<CheckpointBudget> {
+  ): Promise<{ budget: CheckpointBudget; contextWindow: number | undefined }> {
     const policy = resolveTargetPolicy(this.config, provider, model);
     let info: LlmResolvedModelInfo | undefined;
     try {
@@ -197,11 +231,12 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       contextWindow === undefined || contextWindow <= 0
         ? undefined
         : resolvePressureBudget(policy, contextWindow, reservedCompletionTokens);
-    return resolveCheckpointBudget({
+    const budget = resolveCheckpointBudget({
       totalTokens: surfaceTokens,
       sourceTokens,
       ...(pressure?.kind === 'ok' ? { thresholdTokens: pressure.thresholdTokens } : {}),
     });
+    return { budget, contextWindow };
   }
 
   private measureSource(
