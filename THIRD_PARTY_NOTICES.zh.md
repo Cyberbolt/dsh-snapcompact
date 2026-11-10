@@ -12,6 +12,8 @@
 
 光学文本压缩思路参考 [oh-my-pi snapcompact](https://github.com/can1357/oh-my-pi/tree/75e7801e247d4e3263439d4cc08ccad60dc64bdd/packages/snapcompact)。本项目使用自有小型 TypeScript 渲染器，不运行其 Bun/native renderer，也不继承其评测结论。
 
+checkpoint 的 `FILES` 段沿用 oh-my-pi 文件操作摘要的分组、前缀折叠路径列表形态；本包中的 TypeScript 提取、解析和渲染代码由本项目实现。
+
 DSH 接入使用 DeepSeek Harness（MIT）的公开 `BasicCompactionEngine` 扩展接口。DSH 包作为宿主提供的 peer dependencies，不将其实现或许可冒充本项目原创内容。
 
 原创应用代码见 [LICENSE](LICENSE)。

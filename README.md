@@ -20,6 +20,7 @@
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                                                                          |
 | Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                                                  |
+| Know which files are in play after compaction                 | A bounded `FILES` index from read/write/edit calls, with directory folding, `(Read)`/`(Write)`/`(RW)` markers and archive recall for exact content.            |
 | A safe failure mode                                           | Default chain `snapcompact → handoff → shake → soft`, configurable as a subset/order; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
 | Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                                                 |
 | Change the common knobs without hand-editing YAML             | The **Plugins → Snapcompact** settings card edits the chain, threshold, frame budget and limits, and saves through the profile's config patch.                 |
@@ -42,7 +43,7 @@ native compaction transaction commits one checkpoint
 
 | Order | Method        | Model call       | What it produces                                                                                                                     |
 | ----- | ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `snapcompact` | None (local)     | Bounded 1568px bitmap frames of the compact middle, exact head/tail text and an archive reference.                                   |
+| 1     | `snapcompact` | None (local)     | Bounded 1568px bitmap frames of the compact middle, exact head/tail text, a bounded FILES index and an archive reference.            |
 | 2     | `handoff`     | One handoff call | A structured task handoff: goal, constraints, decisions, exact commands, completed and unfinished work, next action, critical facts. |
 | 3     | `shake`       | None             | Large tool outputs are archived, then replaced with bounded head/tail excerpts and recall references.                                |
 | 4     | `soft`        | Native summary   | DSH's native text summarization as the final fallback.                                                                               |
@@ -61,6 +62,13 @@ A checkpoint looks roughly like this (abridged):
 Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
 Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+FILES (touched by read/write/edit tools; not a current disk-state guarantee)
+(Read) read-only; (Write) written without a read; (RW) read and written
+============================================================
+# src/compaction/
+visual-source.ts (Read)
+## methods/
+snapcompact.ts (RW)
 [exact text head]
 [image frame 1 of N] … [image frame N of N]
 [exact text tail]
@@ -70,6 +78,7 @@ Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recal
 Safety properties:
 
 - Images are never the only copy of task state; exact head/tail text and the archive remain. A text handoff is the fallback when visuals are unavailable.
+- The `FILES` index is derived from read/write/edit tool calls in the compacted range and earlier snapcompact checkpoints. It is a navigation aid, not a disk snapshot; `bash` and apply-patch changes are not tracked.
 - Cancellation stops the compaction and never silently selects the next method.
 - Recall is granted only by a successfully completed compaction in the owning session.
 - Existing images and earlier visual checkpoints are carried forward, not re-rendered as attachment descriptors.
@@ -90,7 +99,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.4.2` and click **Install**.
+2. Paste `dsh-snapcompact@0.4.3` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
@@ -99,7 +108,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.4.2
+dsh plugin --profile web add dsh-snapcompact@0.4.3
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -111,11 +120,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.3.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.3.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -241,6 +250,7 @@ Compatibility is intentionally pinned while the upstream plugin API is still a r
 - **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle), and the text fallbacks are summaries. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
 - **Savings depend on the route and the horizon.** The numbers above come from one synthetic fixture on one route. A terse native summary can be smaller per turn on a short session; the visual checkpoint can win on a long history or a route with cheap image tokens. Cache-read discounts, image pricing and turn count decide the bill: a smaller checkpoint is not proof of a lower bill.
 - **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
+- **FILES is a tool-observed index, not a snapshot.** It covers read/write/edit calls in the compacted range plus earlier snapcompact FILES blocks, is capped at 20 sorted paths, and does not see `bash` or apply-patch changes. Paths elided from an earlier checkpoint are not re-indexed; the archive and recall remain exact.
 - **Host metering caveat.** On a route whose adapter does not price images, DSH's own context meter may underprice the checkpoint until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
 - **Benchmarks cost money.** `/snapcompact benchmark` makes up to four auxiliary model calls using the bundled synthetic fixture. It does not read or upload private session history.
 - **Archive access is scoped.** Recall accepts only archive IDs referenced by a completed compaction in the owning session; there is no path or cross-session escape hatch.
