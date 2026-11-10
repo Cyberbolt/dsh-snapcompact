@@ -1,6 +1,8 @@
 import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
+import { isCompactCheckpointSource } from '@deepseek-ai/dsh-compaction';
 import type { SnapcompactConfig } from '../config.js';
+import { isFileListBlock } from './file-ops.js';
 
 /**
  * A bounded, deterministic projection of the selected history for bitmap
@@ -77,7 +79,9 @@ function blockText(block: ContentBlock, config: SnapcompactConfig['serialization
 }
 
 function messageText(message: Message, config: SnapcompactConfig['serialization']): string {
+  const checkpoint = isCompactCheckpointSource(message.source);
   const blocks = message.content
+    .filter((block) => !(checkpoint && block.type === 'text' && isFileListBlock(block.text)))
     .map((block) => blockText(block, config))
     .filter((text) => text.length > 0);
   if (blocks.length === 0) return '';

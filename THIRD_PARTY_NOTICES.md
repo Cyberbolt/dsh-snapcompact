@@ -10,6 +10,8 @@ Only font data is included. No GPL Unifont utility program is copied. Generated 
 
 The optical text-compaction concept is inspired by [oh-my-pi snapcompact](https://github.com/can1357/oh-my-pi/tree/75e7801e247d4e3263439d4cc08ccad60dc64bdd/packages/snapcompact). This project uses its own small TypeScript renderer, not the upstream Bun/native renderer or its benchmark claims.
 
+The checkpoint `FILES` section follows the grouped, prefix-folded path-list shape used by oh-my-pi's file-operation summaries. The TypeScript extraction, parsing and rendering code in this package is local to this project.
+
 DSH integration uses the public `BasicCompactionEngine` extension seam from DeepSeek Harness (MIT). DSH packages remain peer dependencies supplied by the host; their source and licenses are not bundled into this package.
 
 Original application code is covered by [LICENSE](LICENSE).

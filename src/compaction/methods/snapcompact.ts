@@ -11,6 +11,7 @@ import {
 } from '../../budgeting/capabilities.js';
 import type { ImageRoute } from '../../budgeting/capabilities.js';
 import { CHECKPOINT_WRAPPER_ALLOWANCE, estimateCheckpoint } from '../../budgeting/pricing.js';
+import { collectFileOperations, renderFileList } from '../file-ops.js';
 
 const CANDIDATE_SIZES = Object.freeze([
   { width: 2048, height: 2048 },
@@ -50,8 +51,10 @@ function guideText(
   };
 }
 
-function summaryBlocks(
+/** Compose the model-facing checkpoint in a stable order; exported for focused tests. */
+export function summaryBlocks(
   source: VisualSource,
+  files: string,
   frames: readonly ContentBlock[],
   carried: readonly ContentBlock[],
   omitted: number,
@@ -59,6 +62,7 @@ function summaryBlocks(
 ): ContentBlock[] {
   return [
     guideText(frames.length, carried.length, omitted, unrenderable),
+    ...(files.length > 0 ? [{ type: 'text' as const, text: files }] : []),
     ...(source.head.length > 0 ? [{ type: 'text' as const, text: source.head }] : []),
     ...carried,
     ...(omitted > 0
@@ -124,6 +128,7 @@ export const snapcompact: CompactionMethod = async (context) => {
     };
   }
   const limits = context.attachments.imageLimits;
+  let filesText = renderFileList(collectFileOperations(context.sourceMessages));
   const carried = source.carriedImages.slice(
     0,
     Math.min(source.carriedImages.length, limits.maxImagesPerMessage),
@@ -145,12 +150,7 @@ export const snapcompact: CompactionMethod = async (context) => {
     attachment,
   }));
   const baseTokens = estimateCheckpoint(
-    [
-      guideText(0, carried.length, 0, 0),
-      ...(source.head.length > 0 ? [{ type: 'text' as const, text: source.head }] : []),
-      ...(source.tail.length > 0 ? [{ type: 'text' as const, text: source.tail }] : []),
-      ...carriedBlocks,
-    ],
+    summaryBlocks(source, filesText, [], carriedBlocks, 0, 0),
     context.meter,
     imageRoute,
   );
@@ -160,7 +160,18 @@ export const snapcompact: CompactionMethod = async (context) => {
   }
   const ratio = context.config.minCompressionRatio;
   const budget = Math.floor((context.sourceTokens / ratio - baseTokens) / price);
-  const plannedFrames = Math.max(0, Math.min(maxNewFrames, budget));
+  let plannedFrames = Math.max(0, Math.min(maxNewFrames, budget));
+  if (plannedFrames < 1 && filesText.length > 0) {
+    // The FILES index is auxiliary; never let it turn a viable visual checkpoint into a fallback.
+    filesText = '';
+    const withoutFiles = estimateCheckpoint(
+      summaryBlocks(source, '', [], carriedBlocks, 0, 0),
+      context.meter,
+      imageRoute,
+    );
+    const retryBudget = Math.floor((context.sourceTokens / ratio - withoutFiles) / price);
+    plannedFrames = Math.max(0, Math.min(maxNewFrames, retryBudget));
+  }
   if (plannedFrames < 1) {
     return {
       kind: 'skipped',
@@ -224,7 +235,14 @@ export const snapcompact: CompactionMethod = async (context) => {
       attachment: syntheticImageBlock(frame.width, frame.height, frame.data.byteLength).attachment,
     }));
     const tokens = estimateCheckpoint(
-      summaryBlocks(middleSource, imageBlocks, carriedBlocks, omitted, rendered.unrenderableChars),
+      summaryBlocks(
+        middleSource,
+        filesText,
+        imageBlocks,
+        carriedBlocks,
+        omitted,
+        rendered.unrenderableChars,
+      ),
       context.meter,
       imageRoute,
     );
@@ -284,14 +302,32 @@ export const snapcompact: CompactionMethod = async (context) => {
     );
   });
 
-  const summary = summaryBlocks(
+  const referenceBlocks = references.map(
+    (attachment): ContentBlock => ({ type: 'image', attachment }),
+  );
+  let summary = summaryBlocks(
     middleSource,
-    references.map((attachment): ContentBlock => ({ type: 'image', attachment })),
+    filesText,
+    referenceBlocks,
     carriedBlocks,
     omittedChars,
     rendered.unrenderableChars,
   );
-  const tokens = estimateCheckpoint(summary, context.meter, imageRoute);
+  let tokens = estimateCheckpoint(summary, context.meter, imageRoute);
+  if (tokens * ratio >= context.sourceTokens && filesText.length > 0) {
+    // The final stored references can be slightly larger than the synthetic price.
+    // Drop the auxiliary index before failing a visual checkpoint that would fit without it.
+    filesText = '';
+    summary = summaryBlocks(
+      middleSource,
+      '',
+      referenceBlocks,
+      carriedBlocks,
+      omittedChars,
+      rendered.unrenderableChars,
+    );
+    tokens = estimateCheckpoint(summary, context.meter, imageRoute);
+  }
   if (tokens * ratio >= context.sourceTokens) {
     return {
       kind: 'skipped',

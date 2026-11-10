@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
-import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
 import { ArchiveRepository } from '../../src/archives/repository.js';
 import { ArchiveService } from '../../src/archives/service.js';
+import type { ArchiveRecord } from '../../src/archives/service.js';
 import { SnapcompactEngine } from '../../src/compaction/engine.js';
+import { FILE_LIST_HEADER } from '../../src/compaction/file-ops.js';
+import type { MethodContext } from '../../src/compaction/method.js';
+import { snapcompact } from '../../src/compaction/methods/snapcompact.js';
 import { resolveConfig } from '../../src/config.js';
 import type * as RendererModule from '../../src/rendering/worker-client.js';
 import { createHarness } from '../fixtures/harness.js';
@@ -43,7 +47,7 @@ async function setup(
     renderer,
     new AbortController().signal,
   );
-  return { ...harness, archives, engine };
+  return { ...harness, archives, engine, renderer };
 }
 
 const longSource =
@@ -115,7 +119,74 @@ describe('native region transaction with plugin candidates', () => {
       ),
     ).toBe(true);
     expect(result.summary.some((block) => block.type === 'file')).toBe(true);
+    expect(
+      result.summary.some(
+        (block) => block.type === 'text' && block.text.startsWith(FILE_LIST_HEADER),
+      ),
+    ).toBe(false);
     // The visual path renders locally and must not spend a handoff/native call.
+    expect(test.adapter.calls).toHaveLength(0);
+  });
+
+  it('adds a cumulative FILES index to the visual checkpoint', async () => {
+    const test = await setup(['snapcompact', 'handoff', 'soft']);
+    const sourceMessages = [
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: longSource }],
+      }),
+      createAssistantMessage({
+        source: { provider: 'test', model: 'vision' },
+        content: [
+          {
+            type: 'tool-call',
+            id: ToolCallId('call-files-1'),
+            name: 'read',
+            arguments: JSON.stringify({ file_path: 'src/compaction/file-ops.ts' }),
+          },
+          {
+            type: 'tool-call',
+            id: ToolCallId('call-files-2'),
+            name: 'edit',
+            arguments: JSON.stringify({ file_path: 'src/compaction/methods/snapcompact.ts' }),
+          },
+        ],
+      }),
+    ];
+    const context: MethodContext = {
+      input: { messages: sourceMessages },
+      sourceMessages,
+      sourceTokens: 100_000,
+      meter: test.ctx.tokenMeter,
+      archive: {} as ArchiveRecord,
+      route: { provider: 'test', model: 'vision' },
+      config: resolveConfig({
+        rendering: { width: 512, height: 512, maxFrames: 3, minGlyphPx: 8 },
+        minCompressionRatio: 2,
+      }),
+      llm: test.ctx.llm,
+      attachments: test.ctx.attachments,
+      imageSlots: 20,
+      signal: new AbortController().signal,
+      render: (text, options, signal) => test.renderer.render(text, options, signal),
+      handoff: async () => {
+        throw new Error('Handoff is not expected in this test.');
+      },
+      soft: async () => {
+        throw new Error('Native summary is not expected in this test.');
+      },
+    };
+    const attempt = await snapcompact(context);
+    expect(attempt.kind).toBe('candidate');
+    if (attempt.kind !== 'candidate') throw new Error('Expected a visual candidate');
+    const files = attempt.result.summary.find(
+      (block) => block.type === 'text' && block.text.startsWith(FILE_LIST_HEADER),
+    );
+    expect(files?.type).toBe('text');
+    if (files?.type !== 'text') throw new Error('Missing FILES block');
+    expect(files.text).toContain('# src/compaction/');
+    expect(files.text).toContain('file-ops.ts (Read)');
+    expect(files.text).toContain('snapcompact.ts (Write)');
     expect(test.adapter.calls).toHaveLength(0);
   });
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
+import { CompactionId, compactCheckpointSource } from '@deepseek-ai/dsh-compaction';
 import { resolveConfig } from '../config.js';
+import { FILE_LIST_HEADER, renderFileList } from './file-ops.js';
 import {
   buildVisualSource,
   clipText,
@@ -119,5 +121,29 @@ describe('visual source projection', () => {
     expect(clipped.startsWith('a'.repeat(12))).toBe(true);
     expect(clipped).toContain('80 chars omitted');
     expect(clipped.length).toBeLessThan(120);
+  });
+
+  it('omits a prior FILES block from checkpoint projection without touching user text', () => {
+    const files = renderFileList({
+      read: new Set(['src/a.ts']),
+      modified: new Set(['src/b.ts']),
+    });
+    const checkpoint = createMessage({
+      role: 'user',
+      source: compactCheckpointSource(CompactionId('compaction-1')),
+      content: [
+        { type: 'text', text: files },
+        { type: 'text', text: 'exact head remains' },
+      ],
+    });
+    const serializedCheckpoint = serializeConversation([checkpoint], config);
+    expect(serializedCheckpoint).not.toContain(FILE_LIST_HEADER);
+    expect(serializedCheckpoint).toContain('exact head remains');
+
+    const user = createUserMessage({
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: files }],
+    });
+    expect(serializeConversation([user], config)).toContain(FILE_LIST_HEADER);
   });
 });

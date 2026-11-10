@@ -32,6 +32,7 @@ Read the composition root, configuration, engine and method contract first. Then
 6. Image reference metadata is not visual-token pricing. Unknown capabilities fail closed; unknown prices are estimated only for DeepSeek model IDs and labelled as estimates.
 7. Missing glyphs, unsupported shaping, page limits and unreadable resizing cannot silently omit content.
 8. Existing images are carried into the next checkpoint when slots allow; attachment descriptors are not re-rendered as their original pixels. Repeated compaction retains parent archive references.
+9. The `FILES` index is bounded, tool-observed metadata: read/write/edit calls plus earlier snapcompact FILES blocks, never a claim about current disk state. It is capped at 20 sorted paths and never replaces the exact archive or recall.
 
 ## Preset source of truth
 
@@ -56,6 +57,8 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 ## Deliberate tradeoffs
 
 The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot satisfy the reduction ratio, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
+
+The checkpoint also carries a bounded `FILES` text block outside the frames. It is derived deterministically from read/write/edit tool arguments and earlier snapcompact checkpoints; `bash`, apply-patch and other mutation paths are outside its scope. FILES is `(Read)` / `(Write)` / `(RW)` metadata for navigation, not a filesystem snapshot, and it is included in the checkpoint's token estimate.
 
 It has no generation call, so the first compaction is cheaper in model tokens; its steady-state checkpoint is larger than a terse summary, so the advantage depends on the turn horizon and on cache/image pricing.
 
