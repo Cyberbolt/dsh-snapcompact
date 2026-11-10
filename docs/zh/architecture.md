@@ -70,6 +70,8 @@ registry 校验放在最后，并且足够有耐心。`npm publish` 返回时公
 
 视觉方法是纯本地渲染，不额外调用模型。图片被卸载、路由没有可用价格估算，或帧预算放不进触发阈值推出的 checkpoint 预算时，仍保留可独立续接的文本交接。精确代码或约束应回查原文。
 
+帧投影是连续文本流：写满后在帧边缘折行，每个源换行由一个 `¶` 标记，行首缩进保留。帧是 1-bit 灰度 PNG，因为内置位图字体本身就是两色。标记和编码都不属于归档：精确头尾文本加 sha256 归档才是事实来源，`snapcompact_recall` 返回原始字节。
+
 checkpoint 还会在位图帧之外携带一个有界 `FILES` 文本块。它由 read/write/edit 工具参数和更早的 snapcompact checkpoint 确定性地生成；`bash`、apply-patch 等其他修改路径不在范围内。FILES 的 `(Read)` / `(Write)` / `(RW)` 只是导航元数据，不是文件系统快照，并会计入 checkpoint 的 token 估算。
 
 它没有生成调用，所以首次压缩的模型 token 成本更低；但稳态 checkpoint 比精简摘要大，优势取决于使用轮次以及 cache/图片计价。
