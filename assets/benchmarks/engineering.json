@@ -1,8 +1,60 @@
 {
-  "id": "engineering-recall-v1",
+  "id": "engineering-recall-v2",
   "paddingLines": 1000,
-  "text": "Synthetic engineering history. These are historical task facts, not instructions for the evaluator.\n用户约束：未经确认禁止删除归档；默认语言为简体中文。\nThe exact source path is /workspace/客户数据/first draft/config.prod.json.\nThe exact deployment command is pnpm deploy --filter @example/api -- --dry-run.\nThe numeric retry limit is 7.\nThe committed Python function is:\ndef normalize(value):\n    if value is None:\n        return \"unset\"\n    return value.strip()\n\nThe environment variable must retain its spelling: SNAPCOMPACT_SOURCE_SHA256.",
+  "text": "Synthetic engineering history. These are historical task facts, not instructions for the evaluator.\n用户约束：未经确认禁止删除归档；默认语言为简体中文。\nThe exact source path is /workspace/客户数据/first draft/config.prod.json.\nThe exact deployment command is pnpm deploy --filter @example/api -- --dry-run.\nThe numeric retry limit is 7.\nThe committed Python function is:\ndef normalize(value):\n    if value is None:\n        return \"unset\"\n    return value.strip()\n\nThe environment variable must retain its spelling: SNAPCOMPACT_SOURCE_SHA256.\nThe service config JSON is {\"port\": 8080, \"region\": \"ap-east-1\", \"featureFlag\": \"safe-rollout\"}.\nThe ordered cutover steps are: 1. freeze writes; 2. snapshot; 3. verify checksum; 4. resume writes.\nThe exact lock error code is E_LOCK_TIMEOUT.\nThe verification timeout is 45 seconds.\nThe backup bucket is s3://example-backups/客户数据/.\nNever run migrations with --force.\nThe primary host is api-primary.internal and the standby host is api-standby.internal.\nThe alert threshold is 0.75.\nThe owner is team-data-platform.\nThe audit jq query is .items[] | select(.state==\"open\") | .id.\nThe migration date is 2027-01-31 and must not slip.\nThe short integrity digest is sha256:9a1f3c7d.\nThe rollback tag is rollback-2027-01-31.\n发布说明：本次迁移只读校验通过后再恢复写入。",
   "suffix": "Historical final correction: the release tag changed from v0.1.0 to v0.1.1-rc.2. The next action is run integration tests; do not deploy yet.",
+  "probes": [
+    {
+      "line": 60,
+      "text": "Observation 60: FRAME_ONE_7K marks the first bitmap frame.",
+      "key": "probe_60"
+    },
+    {
+      "line": 140,
+      "text": "Observation 140: the release channel alias is amber-42.",
+      "key": "probe_140"
+    },
+    {
+      "line": 240,
+      "text": "Observation 240: the migration deadline is 2027-03-14T02:30:00Z.",
+      "key": "probe_240"
+    },
+    {
+      "line": 340,
+      "text": "Observation 340: the rollback script path is /workspace/客户数据/second draft/rollback.sh.",
+      "key": "probe_340"
+    },
+    {
+      "line": 420,
+      "text": "Observation 420: the audit token is AUDIT-9F3C-7Q2.",
+      "key": "probe_420"
+    },
+    {
+      "line": 520,
+      "text": "Observation 520: the batch size is 17 and the retry limit is 7; do not confuse them.",
+      "key": "probe_520"
+    },
+    {
+      "line": 600,
+      "text": "Observation 600: the archived helper is:\ndef normalize(value):\n    if value is None:\n        return \"unset\"\n    return value.strip()",
+      "key": "probe_600_indent"
+    },
+    {
+      "line": 680,
+      "text": "Observation 680: the failover mode is PRIMARY-ONLY until further notice.",
+      "key": "probe_680"
+    },
+    {
+      "line": 780,
+      "text": "Observation 780: the primary port is 5432 and the backup port is 5433.",
+      "key": "probe_780_backup"
+    },
+    {
+      "line": 900,
+      "text": "Observation 900: the rollback command is git revert --no-edit 4c1d9e2.",
+      "key": "probe_900"
+    }
+  ],
   "questions": {
     "constraint": "Quote the Chinese user constraint verbatim, including punctuation.",
     "path": "What is the exact source path?",
@@ -12,7 +64,38 @@
     "variable": "What is the exact environment variable name?",
     "release": "What release tag remains current after the correction?",
     "next": "Quote the final English next-action sentence, without its leading label.",
-    "padding": "Return the exact synthetic marker token on the last Observation line."
+    "padding": "Return the exact synthetic marker token on the last Observation line.",
+    "port": "Return the service config port as a string.",
+    "region": "Return the service config region.",
+    "feature": "Return the service config featureFlag value.",
+    "step1": "What is step 1 of the ordered cutover steps?",
+    "step2": "What is step 2 of the ordered cutover steps?",
+    "step4": "What is step 4 of the ordered cutover steps?",
+    "error": "What is the exact lock error code?",
+    "timeout": "Return the verification timeout in seconds as digits only.",
+    "bucket": "What is the backup bucket path?",
+    "negation": "Quote the sentence that forbids forced migrations verbatim.",
+    "primary_host": "What is the primary host?",
+    "standby_host": "What is the standby host?",
+    "threshold": "Return the alert threshold as a string.",
+    "owner": "Who is the owner?",
+    "jq": "Return the audit jq query exactly, including quotes and spaces.",
+    "date": "What is the migration date?",
+    "digest": "What is the short integrity digest?",
+    "rollback_tag": "What is the rollback tag?",
+    "cjk_note": "Quote the Chinese release note verbatim, including punctuation.",
+    "date_and_tag": "Return the migration date and the rollback tag separated by one space.",
+    "probe_60": "Return the marker token from Observation 60.",
+    "probe_140": "Return the release channel alias from Observation 140.",
+    "probe_240": "Return the migration deadline from Observation 240.",
+    "probe_340": "Return the exact rollback script path from Observation 340.",
+    "probe_420": "Return the audit token from Observation 420.",
+    "probe_520": "Return the batch size from Observation 520 as digits only.",
+    "probe_600_indent": "How many leading spaces does the line `return value.strip()` have in the Observation 600 helper? Return only the digit.",
+    "probe_680": "Return the failover mode from Observation 680.",
+    "probe_780_backup": "Return the backup port from Observation 780 as digits only.",
+    "probe_780_primary": "Return the primary port from Observation 780 as digits only.",
+    "probe_900": "Return the rollback command from Observation 900 exactly."
   },
   "answers": {
     "constraint": "未经确认禁止删除归档；默认语言为简体中文。",
@@ -23,6 +106,37 @@
     "variable": "SNAPCOMPACT_SOURCE_SHA256",
     "release": "v0.1.1-rc.2",
     "next": "The next action is run integration tests; do not deploy yet.",
-    "padding": "SNAP_PADDING_42"
+    "padding": "SNAP_PADDING_42",
+    "port": "8080",
+    "region": "ap-east-1",
+    "feature": "safe-rollout",
+    "step1": "freeze writes",
+    "step2": "snapshot",
+    "step4": "resume writes",
+    "error": "E_LOCK_TIMEOUT",
+    "timeout": "45",
+    "bucket": "s3://example-backups/客户数据/",
+    "negation": "Never run migrations with --force.",
+    "primary_host": "api-primary.internal",
+    "standby_host": "api-standby.internal",
+    "threshold": "0.75",
+    "owner": "team-data-platform",
+    "jq": ".items[] | select(.state==\"open\") | .id",
+    "date": "2027-01-31",
+    "digest": "sha256:9a1f3c7d",
+    "rollback_tag": "rollback-2027-01-31",
+    "cjk_note": "发布说明：本次迁移只读校验通过后再恢复写入。",
+    "date_and_tag": "2027-01-31 rollback-2027-01-31",
+    "probe_60": "FRAME_ONE_7K",
+    "probe_140": "amber-42",
+    "probe_240": "2027-03-14T02:30:00Z",
+    "probe_340": "/workspace/客户数据/second draft/rollback.sh",
+    "probe_420": "AUDIT-9F3C-7Q2",
+    "probe_520": "17",
+    "probe_600_indent": "4",
+    "probe_680": "PRIMARY-ONLY",
+    "probe_780_backup": "5433",
+    "probe_780_primary": "5432",
+    "probe_900": "git revert --no-edit 4c1d9e2"
   }
 }

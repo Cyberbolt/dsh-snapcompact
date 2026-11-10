@@ -50,18 +50,20 @@ native compaction transaction commits one checkpoint
 
 Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
 
+The layout is a continuous flow, not one source line per row. A full row wraps at the frame edge, one `¶` marks each source newline (consecutive `¶` are blank lines), and leading spaces keep indentation. Frames are one-bit grayscale PNGs: the bundled font is already two-tone, so this keeps a full 1568px prose frame near 11 KB. On the bundled 70k-character fixture the current renderer produces 5 frames at about 13.4k characters per frame; the previous row-per-line renderer needed 14. These are local rendering measurements, not model-recall scores.
+
 The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint fits the room left under the trigger. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
 
 ### Does it save tokens?
 
-The visual path pays no generation cost: the compaction itself makes no model call. On the bundled synthetic fixture it turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. Counting that generation, the visual checkpoint is cheaper for the first compaction; the summary becomes cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
+The visual path pays no generation cost: the compaction itself makes no model call. The last live comparison — fixture v1, 9 questions, previous row-per-line layout — turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. The current layout and the expanded 40-question fixture v2 have not been re-scored here; run `/snapcompact benchmark` on your route to measure them. Counting that generation, the v1 visual checkpoint was cheaper for the first compaction; the summary became cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
 
 A checkpoint looks roughly like this (abridged):
 
 ```text
 Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
-Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+Visual snapcompact checkpoint: N frames; M carried images; ¶ marks a source newline; use snapcompact_recall for exact strings.
 FILES (touched by read/write/edit tools; not a current disk-state guarantee)
 (Read) read-only; (Write) written without a read; (RW) read and written
 ============================================================
@@ -282,7 +284,7 @@ The plugin declares a bounded range rather than a single version. The host's gat
 
 ## Limits and privacy
 
-- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle), and the text fallbacks are summaries. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
+- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle) and are a visual projection: invisible trailing spaces are trimmed and each source newline becomes a one-cell `¶`. The exact head/tail text and the archive preserve the selected message content, but they cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
 - **Savings depend on the route and the horizon.** The numbers above come from one synthetic fixture on one route. A terse native summary can be smaller per turn on a short session; the visual checkpoint can win on a long history or a route with cheap image tokens. Cache-read discounts, image pricing and turn count decide the bill: a smaller checkpoint is not proof of a lower bill.
 - **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
 - **FILES is a tool-observed index, not a snapshot.** It covers read/write/edit calls in the compacted range plus earlier snapcompact FILES blocks, is capped at 20 sorted paths, and does not see `bash` or apply-patch changes. Paths elided from an earlier checkpoint are not re-indexed; the archive and recall remain exact.

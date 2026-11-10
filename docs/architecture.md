@@ -72,6 +72,8 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 
 The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot fit the checkpoint budget implied by the trigger, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
 
+The frame projection is a continuous text flow: rows wrap at the frame edge, one `¶` marks each source newline, and leading indentation is preserved. Frames are one-bit grayscale PNGs because the bundled bitmap font is already two-tone. Neither the marker nor the encoding is part of the archive: exact head/tail text plus the sha256 archive remain the source of truth, and `snapcompact_recall` returns the original bytes.
+
 The checkpoint also carries a bounded `FILES` text block outside the frames. It is derived deterministically from read/write/edit tool arguments and earlier snapcompact checkpoints; `bash`, apply-patch and other mutation paths are outside its scope. FILES is `(Read)` / `(Write)` / `(RW)` metadata for navigation, not a filesystem snapshot, and it is included in the checkpoint's token estimate.
 
 It has no generation call, so the first compaction is cheaper in model tokens; its steady-state checkpoint is larger than a terse summary, so the advantage depends on the turn horizon and on cache/image pricing.

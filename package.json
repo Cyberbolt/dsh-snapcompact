@@ -91,7 +91,6 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "3.19.0",
-    "pngjs": "7.0.0",
     "zod": "4.4.3"
   },
   "peerDependencies": {
@@ -123,6 +122,7 @@
     "@types/node": "24.10.0",
     "@types/pngjs": "6.0.5",
     "eslint": "9.39.1",
+    "pngjs": "7.0.0",
     "prettier": "3.6.2",
     "typescript": "5.9.3",
     "typescript-eslint": "8.46.4",
