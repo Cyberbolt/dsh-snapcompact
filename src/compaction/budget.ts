@@ -16,11 +16,19 @@ export interface TargetPolicy {
   readonly retainTokens?: number;
 }
 
+/** Absolute clamp shared by the source floor and the status floor. */
+export const MIN_USEFUL_TOKENS = 1_024;
+
+/** Tolerance for ratio arithmetic such as `0.26 - 0.16`. */
+const RATIO_EPSILON = 1e-9;
+
 export type PressureBudget =
   | {
       readonly kind: 'ok';
       readonly thresholdTokens: number;
       readonly retainTokens: number;
+      /** Space a checkpoint may actually replace: `max(0, threshold - retained tail)`. */
+      readonly compactableTokens: number;
       readonly retainTooLarge: boolean;
       readonly messageBudgetTokens: number;
     }
@@ -91,9 +99,64 @@ export function resolvePressureBudget(
     kind: 'ok',
     thresholdTokens,
     retainTokens,
+    compactableTokens: Math.max(0, thresholdTokens - retainTokens),
     retainTooLarge: retainTokens >= thresholdTokens,
     messageBudgetTokens,
   };
+}
+
+/**
+ * Per-window fraction of the room left for a checkpoint, formatted for errors.
+ * One decimal keeps `0.26 - 0.16` human-readable without float noise.
+ */
+function formatCompactablePercent(ratio: number): string {
+  return `${Math.round(ratio * 1000) / 10}%`;
+}
+
+/**
+ * Reject retention policies that leave a window with no room to pay for a
+ * checkpoint.
+ *
+ * The native backend already rejects `retainRatio >= thresholdRatio`, but it
+ * cannot know that a 4% gap still costs more than the checkpoint saves: at a
+ * 1M window, the default 16% tail leaves about 41K squeeze room, while a
+ * checkpoint plus the retained text costs far more. Only the ratio form is
+ * checked here; an absolute `retainTokens` budget is window-dependent and is
+ * reported by `/snapcompact status` instead.
+ *
+ * @param config - resolved native policy after defaults were applied.
+ * @param minimumCompactableRatio - smallest `thresholdRatio - retainRatio`
+ *   that may load; `0` disables the check.
+ * @returns actionable English messages, one per infeasible scope.
+ */
+export function collectPolicyViabilityProblems(
+  config: ResolvedConfig,
+  minimumCompactableRatio: number,
+): string[] {
+  if (!Number.isFinite(minimumCompactableRatio) || minimumCompactableRatio <= 0) return [];
+  const problems: string[] = [];
+  // An empty target can never match a model override: provider/model are
+  // validated non-empty by the native backend, so this resolves the defaults.
+  const check = (label: string, policy: TargetPolicy): void => {
+    if (policy.retainTokens !== undefined) return;
+    const retainRatio = policy.retainRatio ?? 0;
+    const compactable = policy.thresholdRatio - retainRatio;
+    if (compactable + RATIO_EPSILON >= minimumCompactableRatio) return;
+    problems.push(
+      `${label}: thresholdRatio ${policy.thresholdRatio} - retainRatio ${retainRatio} leaves ` +
+        `only ${formatCompactablePercent(compactable)} of the window compactable, below ` +
+        `guard.minCompactableRatio ${minimumCompactableRatio}; raise thresholdRatio or lower ` +
+        'retainRatio/retainTokens.',
+    );
+  };
+  check('policy', resolveTargetPolicy(config, '', ''));
+  config.modelPolicies.forEach((policy, index) => {
+    check(
+      `modelPolicies[${index}] (${policy.provider}/${policy.model})`,
+      resolveTargetPolicy(config, policy.provider, policy.model),
+    );
+  });
+  return problems;
 }
 
 export interface CheckpointBudgetInput {

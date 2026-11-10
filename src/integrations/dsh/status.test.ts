@@ -39,6 +39,7 @@ describe('trigger budget display', () => {
       kind: 'ok',
       thresholdTokens: 134_464,
       retainTokens: 32_000,
+      compactableTokens: 102_464,
       retainTooLarge: false,
       messageBudgetTokens: 200_000,
     });
@@ -46,6 +47,7 @@ describe('trigger budget display', () => {
       kind: 'ok',
       thresholdTokens: 800_000,
       retainTokens: 158_720,
+      compactableTokens: 641_280,
       retainTooLarge: false,
       messageBudgetTokens: 992_000,
     });
@@ -53,6 +55,7 @@ describe('trigger budget display', () => {
       kind: 'ok',
       thresholdTokens: 26_272,
       retainTokens: 14_689,
+      compactableTokens: 11_583,
       retainTooLarge: false,
       messageBudgetTokens: 91_808,
     });
@@ -122,11 +125,60 @@ describe('status command text', () => {
     expect(text).toContain('链预设：视觉优先（默认）');
     expect(text).toContain('200,000');
     expect(text).toContain('134,464');
+    expect(text).toContain('保留尾部：32,000 tokens（retainRatio 0.16；占窗口 16%）');
+    expect(text).toContain('可压空间：102,464 tokens（窗口 51%；阈值 − 保留尾部；下限 20,000）');
+    expect(text).toContain(
+      '收益门槛：源历史少于 2,000 tokens 时跳过压缩（guard.minSourceRatio 0.01）',
+    );
     expect(text).toContain('snapcompact：会尝试');
     expect(text).toContain('handoff：会尝试');
     expect(text).toContain('shake：会跳过');
     expect(text).toContain('soft：兜底');
     expect(text).not.toContain('警告：');
+  });
+
+  it('warns when the threshold leaves less room than the guard minimum', async () => {
+    const fixture = await createHarness();
+    cleanups.push(fixture.dispose);
+    const text = await formatStatus(
+      fixture.ctx,
+      resolveConfig({}),
+      { ...BASE_CONFIG, thresholdRatio: 0.2, headroomTokens: 0 },
+      NO_ARCHIVES,
+      fixture.agent,
+      new AbortController().signal,
+    );
+    expect(text).toContain('触发阈值：40,000');
+    expect(text).toContain('可压空间：8,000 tokens（窗口 4%；阈值 − 保留尾部；下限 20,000）');
+    expect(text).toContain('警告：可压空间低于下限');
+  });
+
+  it('reports a disabled source floor and an absolute retained tail', async () => {
+    const fixture = await createHarness();
+    cleanups.push(fixture.dispose);
+    const absoluteRetention: ResolvedConfig = {
+      thresholdRatio: 0.8,
+      headroomTokens: 65_536,
+      retainTokens: 16_000,
+      summarizationProvider: '',
+      summarizationModel: '',
+      maxTokens: 65_536,
+      compactionRetries: 1,
+      maxOverflowRetries: 1,
+      modelPolicies: [],
+      auto: true,
+    };
+    const text = await formatStatus(
+      fixture.ctx,
+      resolveConfig({ guard: { minSourceRatio: 0, minCompactableRatio: 0 } }),
+      absoluteRetention,
+      NO_ARCHIVES,
+      fixture.agent,
+      new AbortController().signal,
+    );
+    expect(text).toContain('保留尾部：16,000 tokens（retainTokens 指定；占窗口 8%）');
+    expect(text).toContain('可压空间：118,464 tokens（窗口 59%；阈值 − 保留尾部）');
+    expect(text).toContain('收益门槛：已关闭（guard.minSourceRatio 0）');
   });
 
   it('reports text fallback when the route cannot read images', async () => {

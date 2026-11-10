@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import schema from '@deepseek-ai/schemastery';
 import {
   DEFAULT_USER_CHAIN,
+  MIN_RETAIN_TOKENS,
   readUserSettings,
   SETTINGS_FIELDS,
   SETTINGS_SERVICE,
@@ -41,12 +42,28 @@ export const Config = schema.object({
     .default([...DEFAULT_USER_CHAIN])
     .description(descriptionOf('methodOrder'))
     .volatile(),
+  // Accepts the old 0.2 card minimum so a profile that already saved it still
+  // loads and can be repaired. `readUserSettings` drops sub-0.5 values and the
+  // card never writes one, so the effective minimum is the card's 0.5.
   thresholdRatio: schema
     .number()
     .step(0.01)
     .min(0.2)
     .max(0.95)
     .description(descriptionOf('thresholdRatio'))
+    .volatile(),
+  retainRatio: schema
+    .number()
+    .step(0.01)
+    .min(0.01)
+    .max(0.5)
+    .description(descriptionOf('retainRatio'))
+    .volatile(),
+  retainTokens: schema
+    .number()
+    .step(MIN_RETAIN_TOKENS)
+    .min(MIN_RETAIN_TOKENS)
+    .description(descriptionOf('retainTokens'))
     .volatile(),
   frameSize: schema
     .number()

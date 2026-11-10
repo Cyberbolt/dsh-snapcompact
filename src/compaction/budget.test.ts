@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCheckpointBudget } from './budget.js';
+import type { ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
+import {
+  collectPolicyViabilityProblems,
+  resolveCheckpointBudget,
+  resolvePressureBudget,
+  resolveTargetPolicy,
+} from './budget.js';
 
 describe('checkpoint budget', () => {
   it('spends half of the trigger room when the source folds into it', () => {
@@ -80,5 +86,114 @@ describe('checkpoint budget', () => {
       expect(fixed + budget.tokens).toBeLessThan(threshold);
       expect(budget.tokens).toBeLessThanOrEqual(source / 2);
     }
+  });
+});
+
+const BASE_CONFIG: ResolvedConfig = {
+  thresholdRatio: 0.8,
+  headroomTokens: 65_536,
+  retainRatio: 0.16,
+  summarizationProvider: '',
+  summarizationModel: '',
+  maxTokens: 65_536,
+  compactionRetries: 1,
+  maxOverflowRetries: 1,
+  modelPolicies: [],
+  auto: true,
+};
+
+describe('pressure budget compactable space', () => {
+  it('reports the room left between the threshold and the retained tail', () => {
+    expect(resolvePressureBudget(BASE_CONFIG, 200_000, 0)).toMatchObject({
+      kind: 'ok',
+      thresholdTokens: 134_464,
+      retainTokens: 32_000,
+      compactableTokens: 102_464,
+    });
+  });
+
+  it('never reports a negative compactable space', () => {
+    expect(
+      resolvePressureBudget(
+        { thresholdRatio: 0.2, headroomTokens: 0, retainTokens: 50_000 },
+        200_000,
+        0,
+      ),
+    ).toMatchObject({ retainTooLarge: true, compactableTokens: 0 });
+  });
+});
+
+describe('policy viability', () => {
+  it('rejects the 0.2 threshold with the native 0.16 tail', () => {
+    const problems = collectPolicyViabilityProblems({ ...BASE_CONFIG, thresholdRatio: 0.2 }, 0.1);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('policy:');
+    expect(problems[0]).toContain('4%');
+    expect(problems[0]).toContain('guard.minCompactableRatio 0.1');
+  });
+
+  it('accepts a gap at or above the minimum despite float error', () => {
+    expect(
+      collectPolicyViabilityProblems(
+        { ...BASE_CONFIG, thresholdRatio: 0.26, retainRatio: 0.16 },
+        0.1,
+      ),
+    ).toEqual([]);
+    expect(
+      collectPolicyViabilityProblems(
+        { ...BASE_CONFIG, thresholdRatio: 0.6, retainRatio: 0.16 },
+        0.1,
+      ),
+    ).toEqual([]);
+  });
+
+  it('skips the absolute token form because it depends on the window', () => {
+    const tokensConfig: ResolvedConfig = {
+      thresholdRatio: 0.2,
+      headroomTokens: 65_536,
+      retainTokens: 20_000,
+      summarizationProvider: '',
+      summarizationModel: '',
+      maxTokens: 65_536,
+      compactionRetries: 1,
+      maxOverflowRetries: 1,
+      modelPolicies: [],
+      auto: true,
+    };
+    expect(collectPolicyViabilityProblems(tokensConfig, 0.1)).toEqual([]);
+  });
+
+  it('checks every exact model override after native inheritance', () => {
+    const problems = collectPolicyViabilityProblems(
+      {
+        ...BASE_CONFIG,
+        thresholdRatio: 0.6,
+        modelPolicies: [
+          { provider: 'a', model: 'tight', thresholdRatio: 0.2 },
+          { provider: 'a', model: 'tokens', retainTokens: 8_000 },
+        ],
+      },
+      0.1,
+    );
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('modelPolicies[0] (a/tight)');
+    expect(problems[0]).toContain('4%');
+  });
+
+  it('is disabled when the minimum is zero', () => {
+    expect(collectPolicyViabilityProblems({ ...BASE_CONFIG, thresholdRatio: 0.2 }, 0)).toEqual([]);
+  });
+
+  it('resolves overrides exactly like the native merge', () => {
+    expect(
+      resolveTargetPolicy(
+        {
+          ...BASE_CONFIG,
+          modelPolicies: [{ provider: 'a', model: 'b', retainTokens: 4_096 }],
+        },
+        'a',
+        'b',
+      ),
+    ).toMatchObject({ thresholdRatio: 0.8, retainTokens: 4_096 });
   });
 });

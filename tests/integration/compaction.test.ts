@@ -414,6 +414,45 @@ describe('native region transaction with plugin candidates', () => {
     ).toHaveLength(0);
   });
 
+  it('refuses to mount an infeasible threshold/retention pair', async () => {
+    const harness = await createHarness();
+    const rendererModule: typeof RendererModule = await import(
+      /* @vite-ignore */ new URL('../../dist/rendering/worker-client.js', import.meta.url).href
+    );
+    const renderer = rendererModule.createRenderer();
+    try {
+      const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
+      expect(
+        () =>
+          new SnapcompactEngine(
+            harness.ctx,
+            resolveConfig({ policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2 } }),
+            archives,
+            renderer,
+            new AbortController().signal,
+          ),
+      ).toThrow(/Snapcompact cannot start: policy: .*4%.*guard\.minCompactableRatio 0\.1/);
+    } finally {
+      await renderer.dispose();
+      await harness.dispose();
+    }
+  });
+
+  it('skips a source below the guard floor before any method or model call', async () => {
+    const test = await setup(['snapcompact', 'handoff', 'soft']);
+    const source = test.appendText('Tiny history.');
+    test.session.append('turn/start', { turn: 1 });
+    const before = test.session.deriveMessages();
+    await expect(test.engine.compactRegion(source.seq, source.seq, test.agent)).rejects.toThrow(
+      /below the 2000-token floor .*no method ran/,
+    );
+    expect(test.adapter.calls).toHaveLength(0);
+    expect(test.session.deriveMessages()).toEqual(before);
+    expect(
+      test.session.snapshotEvents().filter((event) => event.type === 'compaction/summary'),
+    ).toHaveLength(0);
+  });
+
   it('supports the native idle/manual maintenance entry without requiring an open turn', async () => {
     const test = await setup(['soft']);
     test.appendText(longSource);
