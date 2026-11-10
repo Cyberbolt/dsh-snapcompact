@@ -99,7 +99,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.4.2`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.4.3`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，在 preset 选择器中选择 **Snapcompact**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
 
@@ -108,7 +108,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.4.2
+dsh plugin --profile web add dsh-snapcompact@0.4.3
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -120,11 +120,11 @@ dsh plugin --profile web add dsh-snapcompact@0.4.2
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.3.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.3.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
