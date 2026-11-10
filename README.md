@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Snapcompact compacts a long conversation by rendering it, not summarizing it.** DSH selects a safe history region; Snapcompact serializes the discarded middle into dense PNG frames of pixel-font text that a vision model reads directly, and keeps exact head/tail text plus a sha256-addressed archive behind the checkpoint. Rendering is local and deterministic: the visual path makes no summarizer call and needs no API key or network, and `snapcompact_recall` can still recover exact commands, paths and identifiers from the archive. If the route cannot take images, it falls back through the configured text methods and finally to DSH's native summary. Install it as an opt-in DSH preset; the default preset and running sessions are unchanged.
+**Snapcompact compacts a long conversation by rendering it, not summarizing it.** DSH selects a safe history region; Snapcompact serializes the discarded middle into dense PNG frames of pixel-font text that a vision model reads directly, and keeps exact head/tail text plus a sha256-addressed archive behind the checkpoint. Rendering is local and deterministic: the visual path makes no summarizer call and needs no API key or network, and `snapcompact_recall` can still recover exact commands, paths and identifiers from the archive. If the route cannot take images, it falls back through the configured text methods and finally to DSH's native summary. It ships as opt-in presets for DSH's **standard**, **PTC** and **Cordis** modes; the official presets and running sessions are unchanged.
 
 **Where it pays off.** Against raw history it spends fewer prompt tokens for the same recall. Against a native summary it keeps far more of the original and costs no generation call, but its checkpoint is larger on every later turn; on a short session a terse summary is cheaper. This is measurable, not a slogan: run `/snapcompact benchmark` on your route instead of assuming a fixed ratio.
 
@@ -99,16 +99,16 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.5.0` and click **Install**.
+2. Paste `dsh-snapcompact@0.5.1` and click **Install**.
 3. Follow the page's restart prompt if one appears.
-4. Start a **new session** and select **Snapcompact** in the preset picker. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
+4. Start a **new session** and pick the Snapcompact variant that matches how you work: **Snapcompact (Standard)**, **Snapcompact (PTC)** or **Snapcompact (Cordis)**. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
 Pin the version to install exactly this release. Without a version, the package manager resolves the newest published release.
 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.0
+dsh plugin --profile web add dsh-snapcompact@0.5.1
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -120,26 +120,35 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.1.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.0.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.1.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
 
-### Enable the preset
+### Enable a preset
 
-Installation adds an **opt-in preset**; it does not change the default preset or any running session. Create a new session, choose **Snapcompact**, and continue there.
+Installation adds **opt-in presets**; it does not change the official presets or any running session. Create a new session, choose one of the Snapcompact variants, and continue there.
 
-Selecting it is the enable action. DSH mounts each agent's compaction backend inside the preset's isolated group, so a profile-plane plugin cannot replace the native backend globally. Once **Snapcompact** is selected, `compaction-basic` is not mounted and both `/compact` and automatic compaction resolve to the Snapcompact chain. This is a DSH isolation boundary, not an extra per-turn mode.
+Each variant copies the official preset it mirrors and swaps only the compaction backend: `compaction-basic` out, the Snapcompact chain in. The destructive result pruner stays out because shake archives before externalizing. Choosing a variant is the enable action. DSH mounts each agent's compaction backend inside the preset's isolated group, so a profile-plane plugin cannot replace the native backend globally, and a shipped preset cannot be extended in place. This is a DSH isolation boundary, not an extra per-turn mode.
+
+| Official mode | Choose                     | What you keep                                                                                                                                                                               |
+| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `standard`    | **Snapcompact (Standard)** | The regular tool set: shell, file tools, search, subagents and workflows, web, plan mode.                                                                                                   |
+| `ptc`         | **Snapcompact (PTC)**      | `run_code` as the only direct tool; every other tool stays reachable through `tools.*`, including `snapcompact_recall`. Workflows and the plugin manager keep the official PTC disablement. |
+| `cordis`      | **Snapcompact (Cordis)**   | `tool-cordis` plus the official Cordis authoring skills mounted from the shipped `@deepseek-ai/dsh-agent-preset` skills directory.                                                          |
+| `minimal`     | not provided               | Minimal deliberately omits read/write/edit and the full tool surface; adding image frames and archive recall would defeat its purpose, so it is out of scope.                               |
+
+The settings card is shared: it edits the profile-plane `snapcompact-settings` row, and whichever variant a session selects reads it at mount time.
 
 ## Use it
 
 | Entry point              | What it does                                                                                                                                             |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH's standard manual compaction command; inside the Snapcompact preset it runs the Snapcompact chain.                                                   |
+| `/compact`               | DSH's standard manual compaction command; inside any Snapcompact preset it runs the Snapcompact chain.                                                   |
 | `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold in tokens, per-method availability and the archive count. |
 | `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                         |
 | `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                             |
@@ -158,7 +167,7 @@ Archive IDs must be referenced by a completed compaction in the owning session (
 
 ## Configuration
 
-Configuration lives on the `snapcompact` row inside the Snapcompact preset's isolated compaction group. The settings card on the **Plugins → Snapcompact** page covers the common keys; the preset/config editor covers everything else. Both write into the active profile's configuration patch, so neither requires editing profile files by hand.
+Configuration lives on the `snapcompact` row inside the selected Snapcompact preset's isolated compaction group. The settings card on the **Plugins → Snapcompact** page covers the common keys; the preset/config editor covers everything else. Both write into the active profile's configuration patch, so neither requires editing profile files by hand.
 
 ```yaml
 methodOrder: [snapcompact, handoff, shake, soft]
@@ -257,9 +266,9 @@ Compatibility is intentionally pinned while the upstream plugin API is still a r
 ## Troubleshooting
 
 <details>
-<summary>I installed it, but the Snapcompact preset is not in the picker</summary>
+<summary>I installed it, but the Snapcompact presets are not in the picker</summary>
 
-Confirm the plugin appears as installed, restart DSH if the Plugins page asks for it, and create a **new** session. Existing sessions keep the preset they started with. On DSH Desktop, make sure you installed through the app's Plugins page rather than a CLI profile the desktop app does not use.
+Confirm the plugin appears as installed, restart DSH if the Plugins page asks for it, and create a **new** session. Look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, make sure you installed through the app's Plugins page rather than a CLI profile the desktop app does not use.
 
 </details>
 

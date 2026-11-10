@@ -34,11 +34,25 @@
 
 ## Preset 文件的单一来源
 
-[独立条目列表](../../presets/snapcompact.yml) 是人工维护的源；构建脚本将它缩进为 [bundle patch](../../cordis.patch.yml) 的字面声明。生成文件不手工编辑，不使用依赖运行时 base URL 的相对 include。这样既方便阅读条目，也能让插件管理器直接校验和挂载声明。
+三个[人工维护的条目列表](../../presets/) 是源：每个受支持的官方模式一份完整列表。[preset-variants.ts](../../scripts/preset-variants.ts) 集中声明每个变体的显示元数据与排序；构建脚本把每份列表缩进为 [bundle patch](../../cordis.patch.yml) 中一条字面 `@deepseek-ai/dsh-agent-preset` 声明。生成文件不手工编辑，不使用依赖运行时 base URL 的相对 include。这样既方便阅读条目，也能让插件管理器直接校验和挂载声明；`build-preset.ts --check` 会在提交的 patch 过期时报错。
+
+## 模式覆盖
+
+每个变体完整复制它对应的官方 preset，然后做一处替换和两处省略：
+
+- `compaction-basic` 换成 `snapcompact`，保留 `command-compact`，因此 `/compact` 和自动压缩都解析到 Snapcompact 链。
+- 省略破坏性的 `tool-result-pruner`：shake 会先归档大结果再外置，pruner 会删掉归档仍需要引用的内容。
+- 省略处于禁用状态的 `tool-plugin-market`：它不贡献任何能力，保留只会增加对「并非每个宿主都附带」的插件的解析依赖。
+
+其余内容与官方列表语义一致：工具行及其顺序、`disabled` 标记、`group`/`isolate` 隔离域，以及 `!!js` 表达式。PTC 变体保留 `tool-executor-ptc` 和官方对 workflow / 插件管理器的禁用；Cordis 变体保留 `tool-cordis`，以及从宿主安装中挂载 `@deepseek-ai/dsh-agent-preset` 官方技能目录的 `customSkillDirs` 表达式。
+
+`minimal` 有意不支持。它的组合刻意去掉 read/write/edit 和完整工具面；加入图像帧、FILES 索引与归档回查会违背该 preset 的定位。这是产品边界，不是技术限制。
+
+[官方快照](../../tests/fixtures/official-presets/) 固定到声明的 `engines.dsh`。升级 DSH peer 版本时，从 `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`（桌面端位于 `app.asar` 内）替换三份快照并重跑 `pnpm check`；parity 测试会逐行指出任何非预期漂移。
 
 ## 为什么是独立 preset
 
-DSH 把 Agent 的压缩后端和它的消费者放在同一个 `cordis:group` 隔离域里。profile 平面的插件无法把后端发布进这个域；而用户覆盖内置 preset 时只能整表替换子列表，不能只改其中一个嵌套行。因此，在 `standard` 里替换 `compaction-basic` 就等于复制整份内置组合，并随每个 DSH 版本漂移。独立的 opt-in preset 是受支持的边界；选中后，`/compact` 和自动压缩都会解析到该 preset 挂载的后端。
+DSH 把 Agent 的压缩后端和它的消费者放在同一个 `cordis:group` 隔离域里。profile 平面的插件无法把后端发布进这个域；而用户覆盖内置 preset 时只能整表替换子列表，不能只改其中一个嵌套行。因此，在 `standard` 里替换 `compaction-basic` 就等于复制整份内置组合，并随每个 DSH 版本漂移。独立的 opt-in preset 是受支持的边界；选中后，`/compact` 和自动压缩都会解析到该 preset 挂载的后端。这个边界按模式分别落地：提供三个完整 opt-in preset，而不是一个能切换模式的 preset，因为声明之间不支持继承。
 
 ## 发布流水线
 
@@ -48,7 +62,7 @@ registry 校验放在最后，并且足够有耐心。`npm publish` 返回时公
 
 ## 生命周期与并发
 
-Preset 的 compaction 组隔离后端和其消费者。安装只增加一个 opt-in preset，不取代其他 preset；新选择应在新会话验证。DSH 原生事务拥有会话锁和维护任务准入，插件没有第二套互相竞争的锁。
+每个 preset 的 compaction 组各自隔离后端和其消费者。安装只增加 opt-in preset，不取代官方 preset；新选择应在新会话验证。DSH 原生事务拥有会话锁和维护任务准入，插件没有第二套互相竞争的锁。
 
 工作线程的队列受限、超时包括等待和冷启动。拥有者卸载时负责终止其渲染资源，不应影响另一个 preset 的任务。附件存储由宿主拥有，失败产生的未引用对象不由插件擅自删除。
 

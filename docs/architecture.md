@@ -36,11 +36,25 @@ Read the composition root, configuration, engine and method contract first. Then
 
 ## Preset source of truth
 
-The [standalone entry list](../presets/snapcompact.yml) is human-maintained. The build script emits a literal declaration into the [bundle patch](../cordis.patch.yml). Do not edit generated output. A literal patch avoids a runtime include's ambiguous relative base URL while keeping the source list readable.
+The three [human-edited entry lists](../presets/) are the source: one complete list per supported official mode. [preset-variants.ts](../scripts/preset-variants.ts) names each variant, its display metadata and roster order; the build script emits one literal `@deepseek-ai/dsh-agent-preset` declaration per list into the [bundle patch](../cordis.patch.yml). Do not edit generated output. A literal patch avoids a runtime include's ambiguous relative base URL while keeping the source lists readable, and `build-preset.ts --check` fails when the committed patch is stale.
+
+## Mode coverage
+
+Each variant copies the complete official preset it mirrors, then applies one substitution and two omissions:
+
+- `compaction-basic` becomes `snapcompact`; `command-compact` stays, so `/compact` and automatic compaction resolve to the Snapcompact chain.
+- The destructive `tool-result-pruner` is omitted: shake archives large results before externalizing, so the pruner would destroy content the archive still needs to reference.
+- The disabled `tool-plugin-market` row is omitted: it contributes nothing and would add a resolution dependency on a plugin not every host build ships.
+
+Everything else stays semantically equal to the official list: tool rows and their order, `disabled` flags, `group`/`isolate` realms, and `!!js` expressions. The PTC variant keeps `tool-executor-ptc` and the official workflow/plugin-manager disablement; the Cordis variant keeps `tool-cordis` and the official `customSkillDirs` expression that mounts the shipped `@deepseek-ai/dsh-agent-preset` skills from the host installation.
+
+`minimal` is intentionally unsupported. Its composition omits read/write/edit and the full tool surface; adding image frames, a FILES index and archive recall would contradict that preset's purpose. This is a product boundary, not a technical one.
+
+The [vendored official snapshots](../tests/fixtures/official-presets/) are pinned to the declared `engines.dsh`. When the DSH peer version changes, replace them from `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml` (inside `app.asar` on Desktop) and rerun `pnpm check`; the parity test fails row-by-row on any unintended drift.
 
 ## Why a separate preset
 
-DSH mounts an agent's compaction backend and its consumers in one `cordis:group` isolation realm. A profile-plane plugin cannot publish a backend into that realm, and a user override of a shipped preset replaces its complete child list rather than patching one nested row. Swapping `compaction-basic` inside `standard` would therefore copy the whole built-in composition and drift with every DSH release. The standalone opt-in preset is the supported boundary; once selected, `/compact` and automatic compaction resolve to the backend that preset mounts.
+DSH mounts an agent's compaction backend and its consumers in one `cordis:group` isolation realm. A profile-plane plugin cannot publish a backend into that realm, and a user override of a shipped preset replaces its complete child list rather than patching one nested row. Swapping `compaction-basic` inside `standard` would therefore copy the whole built-in composition and drift with every DSH release. The standalone opt-in preset is the supported boundary; once selected, `/compact` and automatic compaction resolve to the backend that preset mounts. The same boundary applies per mode: there are three complete opt-in presets rather than one preset that switches modes, because a declaration cannot extend another preset.
 
 ## Release pipeline
 
@@ -50,7 +64,7 @@ The registry assertion runs last and is patient. `npm publish` returns before th
 
 ## Lifetime and concurrency
 
-The preset isolates compaction and its consumers. Installation adds an opt-in preset without changing existing defaults or active sessions. DSH owns maintenance admission and transaction locks; the plugin adds no competing session lock.
+Each preset isolates compaction and its consumers. Installation adds opt-in presets without changing the official presets or active sessions. DSH owns maintenance admission and transaction locks; the plugin adds no competing session lock.
 
 Each plugin/preset owns a renderer instance with a bounded queue. Its deadline includes queue wait and cold startup. Disposal permanently rejects new work, terminates the worker and does not affect another preset's queue. Attachment storage belongs to the host; the plugin does not delete user data or unreachable objects left by failed attempts.
 

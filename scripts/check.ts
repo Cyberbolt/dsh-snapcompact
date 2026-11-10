@@ -22,7 +22,10 @@ const checks: readonly Check[] = [
     label: 'ESM and portable declarations',
     args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.build.json'],
   },
-  { label: 'Preset declaration', args: ['--experimental-strip-types', 'scripts/build-preset.ts'] },
+  {
+    label: 'Preset declaration up to date',
+    args: ['--experimental-strip-types', 'scripts/build-preset.ts', '--check'],
+  },
   {
     label: 'Client bundle up to date',
     args: ['--experimental-strip-types', 'scripts/build-client.ts', '--check'],

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRESET_VARIANTS } from './preset-variants.ts';
 
 /**
  * Installability contract check for the packaged plugin.
@@ -446,15 +447,19 @@ async function main(): Promise<void> {
     !/skipping profile bundle/u.test(dump.stderr),
     `The host skipped the bundle:\n${dump.stderr}`,
   );
-  assert(
-    dump.stdout.includes('preset-snapcompact'),
-    `The composed configuration has no Snapcompact preset:\n${tail(dump)}`,
-  );
+  for (const variant of PRESET_VARIANTS) {
+    assert(
+      dump.stdout.includes(`preset-${variant.id}`),
+      `The composed configuration has no ${variant.name} preset:\n${tail(dump)}`,
+    );
+  }
   assert(
     dump.stdout.includes(`name: ${name}`),
     `The composed configuration does not mount ${name}:\n${tail(dump)}`,
   );
-  process.stdout.write('      Snapcompact preset composed; the host skipped no bundle\n');
+  process.stdout.write(
+    `      ${String(PRESET_VARIANTS.length)} Snapcompact presets composed; the host skipped no bundle\n`,
+  );
 
   process.stdout.write('\n[4/5] Checking runtime imports against the installation\n');
   const packageDir = join(profileDir, 'node_modules', name);

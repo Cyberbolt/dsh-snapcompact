@@ -5,5 +5,6 @@ coverage/
 pnpm-lock.yaml
 cordis.patch.yml
 assets/fonts/
+tests/fixtures/official-presets/
 AGENTS.md
 client/client.js

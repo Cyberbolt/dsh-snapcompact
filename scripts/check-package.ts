@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { parseDocument } from 'yaml';
+import { PRESET_VARIANTS } from './preset-variants.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = z
@@ -37,7 +38,7 @@ const required = [
   'dist/settings-entry.d.ts',
   'dist/rendering/worker.js',
   manifest.dsh.bundle.patch,
-  'presets/snapcompact.yml',
+  ...PRESET_VARIANTS.map((variant) => `presets/${variant.source}`),
   'client/client.js',
   'locale/en.json',
   'locale/zh.json',
@@ -95,7 +96,10 @@ assert.equal(
   createHash('sha256').update(font).digest('hex'),
   '14c96e497466a82e46cf20032ce510e186bdc8658c9158e2290f452cda9bc498',
 );
-for (const path of [manifest.dsh.bundle.patch, 'presets/snapcompact.yml']) {
+for (const path of [
+  manifest.dsh.bundle.patch,
+  ...PRESET_VARIANTS.map((variant) => `presets/${variant.source}`),
+]) {
   const document = parseDocument(await readFile(resolve(root, path), 'utf8'), {
     customTags: [
       { tag: 'tag:yaml.org,2002:js', resolve: (value: string) => ({ __jsExpr: value }) },

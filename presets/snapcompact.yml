@@ -1,4 +1,7 @@
-# Separate opt-in preset: existing presets and running sessions are unchanged.
+# Opt-in standard mode: existing presets and running sessions are unchanged.
+# Mirrors the shipped standard preset; only the compaction backend, the
+# destructive result pruner and the disabled market row differ.
+# tests/preset-parity.test.ts enforces that difference.
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
@@ -96,9 +99,6 @@
         provider: spawn
     - id: tool-workflow
       name: '@deepseek-ai/dsh-tool-workflow'
-- id: tool-plugin-manager
-  name: '@deepseek-ai/dsh-plugin-manager/tools'
-  disabled: !!js "!ctx.get('profileContext')"
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'
 - id: tool-todo
@@ -112,3 +112,6 @@
     searchTimeoutMs: 60000
 - id: present
   name: '@deepseek-ai/dsh-tool-present'
+- id: tool-plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager/tools'
+  disabled: !!js "!ctx.get('profileContext')"
