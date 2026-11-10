@@ -50,7 +50,7 @@ Everything else stays semantically equal to the official list: tool rows and the
 
 `minimal` is intentionally unsupported. Its composition omits read/write/edit and the full tool surface; adding image frames, a FILES index and archive recall would contradict that preset's purpose. This is a product boundary, not a technical one.
 
-The [vendored official snapshots](../tests/fixtures/official-presets/) are pinned to the declared `engines.dsh`. When the DSH peer version changes, replace them from `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml` (inside `app.asar` on Desktop) and rerun `pnpm check`; the parity test fails row-by-row on any unintended drift.
+The [vendored official snapshots](../tests/fixtures/official-presets/) are pinned to `DSH_VERIFIED_VERSION` in [scripts/compat.ts](../scripts/compat.ts), the same single source that declares the published range. When that floor moves, replace them from `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml` (inside `app.asar` on Desktop) and rerun `pnpm check`; the parity test fails row-by-row on any unintended drift. Widening the ceiling is a reviewed decision: parity is proven for the verified floor, while the install-check matrix proves that newer hosts still install and mount.
 
 ## Why a separate preset
 

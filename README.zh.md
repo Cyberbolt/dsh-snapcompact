@@ -7,7 +7,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-snapcompact?logo=npm&label=npm)](https://www.npmjs.com/package/dsh-snapcompact)
 [![downloads](https://img.shields.io/npm/dt/dsh-snapcompact?logo=npm&label=downloads)](https://www.npmjs.com/package/dsh-snapcompact)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-0.2.2--rc.1-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
 **Snapcompact 用“渲染”而不是“总结”来压缩长对话。** DSH 选出安全的压缩区间后，Snapcompact 把被丢弃的中段序列化成像素字体的密集 PNG 帧，交给视觉模型直接阅读；checkpoint 前后保留精确头尾文本，背后是 sha256 归档，`snapcompact_recall` 仍可逐字取回命令、路径和标识符。渲染是本地、确定性的：视觉路径不调用摘要模型，也不需要 API key 或网络。路由不支持图片时，按配置的文本方法链回退，最后回退 DSH 原生摘要。它提供面向 DSH **standard**、**PTC** 和 **Cordis** 模式的可选 preset；官方 preset 和运行中的会话保持不变。
@@ -87,14 +87,14 @@ snapcompact.ts (RW)
 
 ## 安装
 
-Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未声明兼容；宿主可能直接拒绝安装，而不是运行未经验证的代码。
+Snapcompact 声明兼容 **DeepSeek Harness `^0.2.2-rc.1`**（0.2.x 线），并在 `0.2.2-rc.1` 上验证。0.2.x 的 patch 或 prerelease 可直接安装，不需要精确版本豁免；下一条 minor 只在安装与激活检查通过后才会声明。
 
-| 要求           | 值                               |
-| -------------- | -------------------------------- |
-| DSH            | `0.2.2-rc.1`（精确）             |
-| Node.js        | 24 或更新（宿主的要求）          |
-| 构建步骤       | 无；npm 包已包含编译后的 `dist/` |
-| 安装期构建脚本 | 无                               |
+| 要求           | 值                                             |
+| -------------- | ---------------------------------------------- |
+| DSH            | `^0.2.2-rc.1`（0.2.x；在 `0.2.2-rc.1` 上验证） |
+| Node.js        | 24 或更新（宿主的要求）                        |
+| 构建步骤       | 无；npm 包已包含编译后的 `dist/`               |
+| 安装期构建脚本 | 无                                             |
 
 ### 通过插件页安装（推荐）
 
@@ -245,12 +245,12 @@ routePolicies:
 
 | 组件     | 支持范围                        |
 | -------- | ------------------------------- |
-| DSH      | 仅 `0.2.2-rc.1`                 |
+| DSH      | `^0.2.2-rc.1`（0.2.x）          |
 | Node.js  | 24+                             |
 | DSH 包   | 由宿主提供的 peer，无需本地副本 |
 | npm 安装 | 预构建包，无安装脚本            |
 
-上游插件 API 仍处于 release candidate 阶段，因此这里刻意锁定精确版本。DSH 会检查声明的版本，并可能拒绝在不同宿主上安装。放宽范围需要重新验证类型、原生集成、包内容和真实 preset 激活；不要通过修改 profile 文件绕过检查。
+插件声明的是有上界的区间，而不是单个版本。宿主用 semver 判定：下界是本构建最近验证过的宿主版本，上界是下一条 minor。兼容的 patch 不需要重新发布插件即可安装；更新的 minor 则一直会被拒绝，直到它通过同样的验证——类型、原生集成、包内容与真实 preset 激活——并随新的插件版本发布。不要通过修改 profile 元数据绕过宿主检查。
 
 ## 限制与隐私
 
@@ -296,7 +296,7 @@ routePolicies:
 <details>
 <summary>安装被判定为不兼容</summary>
 
-这个版本只支持 DSH `0.2.2-rc.1`。请升级或切换到该版本，不要修改兼容性检查来绕过。经过验证的更宽范围会在后续版本发布。
+这个构建声明 DSH `^0.2.2-rc.1`，并在 `0.2.2-rc.1` 上验证。请升级或切换到 0.2.x 的宿主，或安装声明了你所用 minor 的 Snapcompact 版本。不要手改兼容性检查来强装。
 
 </details>
 

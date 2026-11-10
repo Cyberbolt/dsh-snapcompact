@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { parseDocument } from 'yaml';
+import { DSH_COMPAT_RANGE, DSH_VERIFIED_VERSION, compatibilityProblems } from './compat.ts';
 import { PRESET_VARIANTS } from './preset-variants.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -12,12 +13,29 @@ const manifest = z
   .object({
     name: z.literal('dsh-snapcompact'),
     version: z.string(),
-    engines: z.object({ node: z.literal('>=24'), dsh: z.literal('0.2.2-rc.1') }),
+    engines: z.object({ node: z.literal('>=24'), dsh: z.string() }),
+    peerDependencies: z.record(z.string(), z.string()),
+    devDependencies: z.record(z.string(), z.string()),
     dsh: z.object({ bundle: z.object({ patch: z.string() }) }),
     files: z.array(z.string()),
   })
   .passthrough()
   .parse(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')));
+
+// package.json cannot import the claim, so the manifest is checked against the
+// single source instead of both drifting. A passing claim is a bounded caret
+// range whose floor is exactly the newest install-checked host release.
+const problems = compatibilityProblems({
+  range: DSH_COMPAT_RANGE,
+  verified: DSH_VERIFIED_VERSION,
+  enginesDsh: manifest.engines.dsh,
+  peerDependencies: manifest.peerDependencies,
+  devDependencies: manifest.devDependencies,
+});
+assert(
+  problems.length === 0,
+  `DSH compatibility claim is inconsistent:\n  - ${problems.join('\n  - ')}`,
+);
 
 // Install instructions pin the release version, so a stable release must keep
 // both READMEs in step with package.json. Prereleases are not announced there.
@@ -68,6 +86,24 @@ for (const path of required) {
   assert(
     manifest.files.some((entry) => packagePath === entry || packagePath.startsWith(`${entry}/`)),
     `Resource omitted from files: ${path}`,
+  );
+}
+// The prose cannot import the claim either, so both languages must repeat the
+// exact range and floor. Changing the floor then fails until the docs agree.
+for (const path of [
+  'README.md',
+  'README.zh.md',
+  'docs/configuration.md',
+  'docs/zh/configuration.md',
+]) {
+  const text = await readFile(resolve(root, path), 'utf8');
+  assert(
+    text.includes(DSH_COMPAT_RANGE),
+    `${path} must state the compatibility range ${DSH_COMPAT_RANGE}`,
+  );
+  assert(
+    text.includes(DSH_VERIFIED_VERSION),
+    `${path} must state the verified DSH version ${DSH_VERIFIED_VERSION}`,
   );
 }
 const metadata = z.object({
