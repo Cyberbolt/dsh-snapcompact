@@ -36,6 +36,8 @@ describe('settings entry', () => {
     expect(current['frameSize']).toBe(1568);
     expect(current['archiveMaxBytes']).toBe(64 * 1024 * 1024);
     expect(current['thresholdRatio']).toBeUndefined();
+    expect(current['retainRatio']).toBeUndefined();
+    expect(current['retainTokens']).toBeUndefined();
   });
 
   it('accepts every legal value shape', () => {
@@ -57,8 +59,17 @@ describe('settings entry', () => {
       handoffMaxTokens: 1024,
       shakeThresholdChars: 2048,
     });
-    expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
+    expect(resolve({ thresholdRatio: 0.5 }).thresholdRatio).toBe(0.5);
     expect(resolve({ maxFrames: 64 }).maxFrames).toBe(64);
+    expect(resolve({ retainRatio: 0.16 }).retainRatio).toBe(0.16);
+    expect(resolve({ retainRatio: 0.01 }).retainRatio).toBe(0.01);
+    expect(resolve({ retainTokens: 32768 }).retainTokens).toBe(32768);
+  });
+
+  it('still parses a legacy 0.2 threshold so an old row can be repaired', () => {
+    // The carrier stays permissive on purpose; `readUserSettings` drops the
+    // value and the card floor is 0.5.
+    expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
   });
 
   it.each([
@@ -70,6 +81,9 @@ describe('settings entry', () => {
     { maxFrames: 65 },
     { archiveMaxBytes: 0 },
     { handoffMaxTokens: 128 },
+    { retainRatio: 0.005 },
+    { retainRatio: 0.51 },
+    { retainTokens: 512 },
   ])('rejects %#', (config) => {
     expect(() => Config(config as never)).toThrow();
   });

@@ -12,6 +12,11 @@ policy:
   retainRatio: 0.16
   # Smaller model windows need less headroom; native validation applies.
   headroomTokens: 65536
+guard:
+  # thresholdRatio − retainRatio 低于该值时拒绝挂载；0 关闭。
+  minCompactableRatio: 0.1
+  # 源历史低于 max(1024, 窗口 × 该比例) 时跳过本次压缩；0 关闭。
+  minSourceRatio: 0.01
 rendering:
   width: 1568
   height: 1568
@@ -40,12 +45,13 @@ routePolicies: []
 
 **插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次，因此一张卡配置所有 Snapcompact 变体。
 
-卡片管理 8 个键：
+卡片管理 9 个键：
 
 | 界面项         | 配置路径                                | 默认                                  |
 | -------------- | --------------------------------------- | ------------------------------------- |
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
+| 保留尾部       | `policy.retainRatio` 或 `retainTokens`  | 不设置（原生默认 0.16）               |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
@@ -56,18 +62,19 @@ routePolicies: []
 
 - 写入走 DSH 的设置服务，落到 profile 的配置补丁；重启后仍在，“恢复默认”（单字段或整卡）会移除覆盖。
 - 卡片保存的值覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：未开启自定义阈值时该键不存在，所以 preset 里的 `policy.thresholdRatio` 仍然生效。
+- 保留尾部只有一个三态控件（继承 0.16 / 按比例 / 按绝对 tokens）。`retainRatio` 与 `retainTokens` 互斥：保存其中一种会从合并结果里移除另一种，手写 YAML 同时给出两者会被严格解析器拒绝。
 - 引擎在会话挂载 preset 时构造，因此改动对**新会话**生效；已有会话里 `/snapcompact status` 仍显示它启动时的配置。
 - 设置 schema 无法表达方法链顺序，所以为空、重复或不以 `soft` 结尾的已存值会被插件忽略；严格解析器仍是最后一道校验。
 
 bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模块 `dsh-snapcompact`），配置是 `role: ui`。DSH 的浏览器模块扫描只读取「裸包名」Loader 行的 `dsh.client`，这一行就是让配置卡能被加载的入口；它不注册压缩、工具或命令。请保持启用：禁用后插件页不再显示设置卡（preset 本身仍然可用）。
 
-7 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
+9 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`guard`、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
 
 ## 原生策略
 
 `policy` 传入 `BasicCompactionEngine`。支持 thresholdRatio、headroomTokens、retainRatio/retainTokens（互斥）、summarizationProvider/summarizationModel（成对）、maxTokens、compactionRetries、maxOverflowRetries、auto、modelPolicies。空对象使用宿主原生默认。
 
-不要为小窗口模型盲目沿用 65,536 token headroom。原生后端会按目标模型的容量、输出预留和尾部保留预算验证。
+不要为小窗口模型盲目沿用 65,536 token headroom。原生后端会按目标模型的容量、输出预留和尾部保留预算验证。插件还会在挂载时额外校验阈值与保留尾部之间的差值（见[保留尾部与收益守卫](#保留尾部与收益守卫)）。
 
 ## 方法链与回退顺序
 
@@ -99,7 +106,30 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 
 `W` 是适配器声明的上下文窗口，`O` 是本次请求的输出预留，`headroomTokens` 是容量安全余量。`thresholdRatio` 是窗口比例，不是绝对 token 数；小窗口模型通常需要更低的阈值和更小的 headroom。`retainRatio`/`retainTokens` 必须小于阈值，否则原生后端会拒绝该路由。
 
-`/snapcompact status` 会解析精确路由，打印当前 tokens、`W`、阈值 tokens、保留 tokens 以及是否已越过阈值。这个展示只是对上述公式的解释，实际触发仍由原生引擎决定。阈值是配置期设置（修改后需重载），且不会关闭宿主的上下文溢出恢复。没有绝对 token 数阈值；请使用 `thresholdRatio`，并用 `/snapcompact status` 查看换算后的 token 数。
+`/snapcompact status` 会解析精确路由，打印当前 tokens、`W`、阈值 tokens、保留 tokens、两者之间的可压空间、守卫下限以及是否已越过阈值。这个展示只是对上述公式的解释，实际触发仍由原生引擎决定。阈值是配置期设置（修改后需重载），且不会关闭宿主的上下文溢出恢复。没有绝对 token 数阈值；请使用 `thresholdRatio`，并用 `/snapcompact status` 查看换算后的 token 数。
+
+### 保留尾部与收益守卫
+
+触发阈值只有和保留尾部放在一起才有意义：
+
+```text
+可压空间 = 触发阈值 − 保留尾部
+```
+
+在 1M 窗口下，原生 `retainRatio: 0.16` 会预留约 158,720 token，因此 `thresholdRatio: 0.2` 只剩约 4% 的窗口（约 41K token）。checkpoint 加上保留文本很容易超过这个空间——这就是“占用 20%”在完整压缩后四舍五入成“19%”的原因。原生后端只拒绝 `retainRatio >= thresholdRatio`，无法判断这个差值是否小到不值得压缩。
+
+`guard` 补上了这项检查：
+
+| 键                    | 默认   | 含义                                                                         |
+| --------------------- | ------ | ---------------------------------------------------------------------------- |
+| `minCompactableRatio` | `0.1`  | `thresholdRatio - retainRatio` 低于该值时拒绝挂载；`0` 关闭该校验。          |
+| `minSourceRatio`      | `0.01` | 单次压缩的源历史低于 `max(1024, 窗口 × 比例)` token 时跳过；`0` 关闭该检查。 |
+
+挂载校验在引擎构造函数里、原生默认值解析之后运行，因此同时覆盖全局 policy 和每个精确 `modelPolicies` 条目（沿用同一套继承规则）；错误会列出所有不可行的 scope、实际比例和修复方法。绝对 `retainTokens` 形式依赖具体窗口，不在挂载期判定；`/snapcompact status` 会打印真实可压空间，并在低于 `max(1024, 窗口 × minCompactableRatio)` 时警告。
+
+收益门槛在测量完源历史之后、创建归档和调用任何方法之前运行：源太小会立即失败，不产生模型调用。手动 `/compact` 同样受该守卫约束；需要小规模手动压缩时调低 `guard.minSourceRatio`。
+
+因此，升级后同时带有 `thresholdRatio: 0.2` 和默认尾部的 profile 会在挂载时失败。修复方式：提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）、降低尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K），或显式设置 `guard.minCompactableRatio: 0`。
 
 ### checkpoint 预算
 
@@ -136,6 +166,6 @@ provider/model 精确匹配，不做模糊别名或跨模型沿用。估算/上�
 
 配置允许缩小但不能超过首版安全边界：2048×2048 帧、每次 checkpoint 默认 20 帧且上限 64；宿主对单条消息的图片上限（默认 20 张）仍会钳制实际帧数，要真正用满需同时调高宿主的 `maxImagesPerMessage`。总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
 
-图片失败、未知价格、无收益会回退；所有候选失败则保留原会话区间并返回原生压缩错误。取消不触发下一方法。
+图片失败、未知价格、无收益会回退；所有候选失败则保留原会话区间并返回原生压缩错误。取消不触发下一方法。阈值与保留尾部低于可压下限时拒绝挂载；源历史低于收益门槛时在创建归档和调用方法之前失败。
 
 Snapcompact 声明 `^0.2.2-rc.1`（0.2.x），并在 `0.2.2-rc.1` 上验证。只有在新宿主上通过安装与激活检查后，才移动下界；上界始终保留：放宽前需验证类型、集成、包内容与真实预设挂载。不要用版本豁免强装。

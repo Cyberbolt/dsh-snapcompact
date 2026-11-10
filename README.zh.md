@@ -146,12 +146,12 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 
 ## 使用
 
-| 入口                     | 作用                                                                                          |
-| ------------------------ | --------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH 标准手动压缩命令；在任一 Snapcompact preset 内由 Snapcompact 链执行。                     |
-| `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值 tokens、每个方法的可用性，以及归档数量。 |
-| `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                            |
-| `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                |
+| 入口                     | 作用                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `/compact`               | DSH 标准手动压缩命令；在任一 Snapcompact preset 内由 Snapcompact 链执行。                        |
+| `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值与可压空间、每个方法的可用性，以及归档数量。 |
+| `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                               |
+| `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                   |
 
 回查示例：
 
@@ -175,6 +175,13 @@ policy:
   auto: true
   # 窗口使用到 80% 时触发；/snapcompact status 会显示等价的 token 数。
   thresholdRatio: 0.8
+  # 压缩后原样保留的尾部；与 retainTokens 互斥。
+  retainRatio: 0.16
+guard:
+  # 当 thresholdRatio − retainRatio 低于该值时拒绝挂载；0 关闭。
+  minCompactableRatio: 0.1
+  # 源历史低于 max(1024, 窗口 × 该比例) 时跳过本次压缩；0 关闭。
+  minSourceRatio: 0.01
 rendering:
   width: 1568
   height: 1568
@@ -201,6 +208,7 @@ serialization:
 | -------------- | --------------------------------------- | ------------------------------------- |
 | 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
+| 保留尾部       | `policy.retainRatio` 或 `retainTokens`  | 不设置（宿主默认 0.16）               |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
@@ -211,8 +219,28 @@ serialization:
 
 - 引擎在会话挂载 preset 时构造，所以**保存后的改动对新会话生效**；运行中的会话保持原配置。
 - 卡片托管的键，其保存值会覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：只有打开“自定义触发阈值”后才会覆盖，否则 preset 里的 `policy.thresholdRatio` 仍然生效。
+- 保留尾部只有一个三态控件：继承原生 0.16、按比例、或按绝对 tokens。`retainRatio` 与 `retainTokens` 互斥；保存其中一种会自动移除另一种，手写 YAML 同时给出两者会被拒绝。
+- `guard` 只能在 YAML 里配置；两个守卫默认开启，都接受 `0` 表示关闭。
 - “恢复默认”会移除覆盖，回到插件默认值（阈值则回到 YAML）。
 - 其它内容——`policy` 的其余字段、`serialization`、`routePolicies`、渲染超时——仍然只走 YAML。
+
+### 保留尾部与收益守卫
+
+触发阈值只有和保留尾部放在一起看才有意义：
+
+```text
+可压空间 = 触发阈值 − 保留尾部
+```
+
+在 1M 窗口下，原生的 0.16 尾部约 160K token，所以 `thresholdRatio: 0.2` 只剩约 4% 的窗口（约 41K token）来支付 checkpoint——这就是“20% 永远变不成 19%”的陷阱：估算收益比取整步长还小。
+
+现在插件会直接拒绝这种组合，而不是静默挂载：当 `thresholdRatio - retainRatio` 低于 `guard.minCompactableRatio`（默认 0.1）时，引擎拒绝启动，错误信息给出具体数值和修复方法。`/snapcompact status` 会打印同样的算式——保留尾部、可压空间、下限，以及低于下限时的警告。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
+
+升级后，当前 profile 里 `thresholdRatio: 0.2` 加默认保留尾部的配置会被拒绝挂载。三种修复方式任选：
+
+- 提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）；或
+- 降低保留尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K）；或
+- 设置 `guard.minCompactableRatio: 0` 关闭挂载校验（不推荐）。
 
 ### 自定义方法链与阈值
 
@@ -228,7 +256,7 @@ serialization:
 
 两点容易误解：`shake` 只要存在一个超过 `shakeThresholdChars` 的工具输出就会成功，放在前面会抢先于视觉路径；checkpoint 预算（触发阈值下剩余空间的一半）只约束 `snapcompact`，其它方法只要求 checkpoint 比源历史小。
 
-触发阈值仍是原生 `policy.thresholdRatio`（窗口百分比，默认 0.8）。`/snapcompact status` 会把它换算成当前路由上的具体 token 数，并显示每个方法是会尝试还是会跳过。
+触发阈值仍是原生 `policy.thresholdRatio`（窗口百分比，默认 0.8）。`/snapcompact status` 会把它换算成当前路由上的具体 token 数，同时打印保留尾部和两者之间的可压空间，并显示每个方法是会尝试还是会跳过。
 
 如果模型确实支持图片输入且有已知价格，但 DSH 适配器没有暴露图片计价：DeepSeek 模型会使用带标签的 1024 token/帧保守估算；其他模型可以显式声明一个保守上限：
 
@@ -283,6 +311,20 @@ routePolicies:
 <summary>压缩失败，提示 “No compaction method produced a safe smaller checkpoint”</summary>
 
 说明所有候选都被跳过或未通过预算检查。先看 `/snapcompact status`，等历史更长一些再试，或换用文本摘要可用的路由。错误信息会列出每个方法的原因；取消是单独报告的，不会继续回退。
+
+</details>
+
+<details>
+<summary>启动被拒绝，提示 “leaves only … of the window compactable”</summary>
+
+当前阈值和保留尾部给 checkpoint 留下的空间太小，收益不足以抵消开销，所以插件拒绝挂载，而不是白烧模型调用。用 `/snapcompact status` 看具体 token 数，然后提高 `policy.thresholdRatio`、降低 `policy.retainRatio`/`retainTokens`，或设置 `guard.minCompactableRatio: 0` 关闭挂载校验。
+
+</details>
+
+<details>
+<summary>压缩失败，提示 “below the …-token floor”</summary>
+
+本次源历史小于 `max(1024, 窗口 × guard.minSourceRatio)`。等历史更长再压缩，或调低 `guard.minSourceRatio`（设为 `0` 关闭收益门槛）。该守卫在创建归档和调用方法之前运行，所以没有产生任何开销。
 
 </details>
 

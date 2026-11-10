@@ -69,6 +69,16 @@ window.__ModuleLoader__.load({
       triggerHint: '上下文占用超过阈值时触发压缩。关闭自定义即沿用宿主原生策略（默认 0.8）。',
       thresholdCustom: '自定义触发阈值',
       thresholdAuto: '自动 · 0.80',
+      retainTitle: '保留尾部',
+      retainInherit: '继承原生 0.16',
+      retainByRatio: '按比例',
+      retainByTokens: '按 tokens',
+      retainRatioAria: '保留尾部比例',
+      retainTokensAria: '保留尾部 tokens',
+      retainHint: '压缩后原样保留的最近历史。可压空间 = 触发阈值 − 保留尾部。',
+      compactablePrefix: '可压空间',
+      compactableWarn: '小于 0.10 时插件会拒绝启动；请提高阈值或降低保留尾部。',
+      retainTokensNote: '精确可压空间请用 /snapcompact status 查看。',
       renderTitle: '渲染',
       frameSize: '帧尺寸',
       frameSizeHint: '方形帧的边长；越大越清晰，也越占 token。',
@@ -139,6 +149,18 @@ window.__ModuleLoader__.load({
         'Compaction starts once context occupancy crosses the threshold. Turning the override off keeps the host policy default (0.8).',
       thresholdCustom: 'Custom trigger threshold',
       thresholdAuto: 'Automatic · 0.80',
+      retainTitle: 'Retained tail',
+      retainInherit: 'Inherit native 0.16',
+      retainByRatio: 'By ratio',
+      retainByTokens: 'By absolute tokens',
+      retainRatioAria: 'Retained-tail ratio',
+      retainTokensAria: 'Retained-tail tokens',
+      retainHint:
+        'Recent history kept verbatim after compaction. Compactable space = threshold − retained tail.',
+      compactablePrefix: 'Compactable space',
+      compactableWarn:
+        'Less than 0.10 leaves too little room: the plugin will refuse to start. Raise the threshold or lower the retained tail.',
+      retainTokensNote: 'Use /snapcompact status for the exact compactable space.',
       renderTitle: 'Rendering',
       frameSize: 'Frame size',
       frameSizeHint: 'Edge length of a square frame; larger is sharper and costs more tokens.',
@@ -217,6 +239,7 @@ window.__ModuleLoader__.load({
       '.sc-actions{display:flex;align-items:center;gap:8px}',
       '.sc-ok{color:var(--dsw-alias-state-success-primary);font-size:12px}',
       '.sc-error{color:var(--dsw-alias-state-error-primary);font-size:12px}',
+      '.sc-warn{color:var(--dsw-alias-state-warn-primary)}',
       '.sc-btn-primary{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
       '.sc-code{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere}',
     ].join('');
@@ -371,6 +394,21 @@ window.__ModuleLoader__.load({
         (field) => snapshot.user && snapshot.user[field.key] !== undefined,
       ).length;
 
+      // One three-state control keeps the two native retention forms exclusive.
+      const retainMode =
+        draft.retainTokens !== undefined
+          ? 'tokens'
+          : draft.retainRatio !== undefined
+            ? 'ratio'
+            : 'inherit';
+      const effectiveThreshold = draft.thresholdRatio ?? 0.8;
+      // Mirrors the host default the card inherits; only shown for the ratio form.
+      const effectiveRetain = retainMode === 'ratio' ? draft.retainRatio : 0.16;
+      const compactable = effectiveThreshold - effectiveRetain;
+      // Mirrors GUARD_DEFAULTS.minCompactableRatio (config.ts) for a local hint;
+      // the Host remains the authority and refuses to mount below the real value.
+      const compactableWarning = retainMode !== 'tokens' && compactable < 0.1;
+
       function edit(key, value) {
         setDraft((previous) => ({ ...previous, [key]: value }));
         setDirty((previous) => {
@@ -384,6 +422,25 @@ window.__ModuleLoader__.load({
 
       function setChain(next) {
         edit('methodOrder', sanitizeChain(next));
+      }
+
+      /** Write both retention keys so saving also removes the inactive form. */
+      function setRetention(ratio, tokens) {
+        setDraft((previous) => ({ ...previous, retainRatio: ratio, retainTokens: tokens }));
+        setDirty((previous) => {
+          const next = new Set(previous);
+          next.add('retainRatio');
+          next.add('retainTokens');
+          return next;
+        });
+        setNotice(null);
+        setError(null);
+      }
+
+      function setRetentionMode(mode) {
+        if (mode === 'ratio') setRetention(draft.retainRatio ?? 0.16, undefined);
+        else if (mode === 'tokens') setRetention(undefined, draft.retainTokens ?? 32768);
+        else setRetention(undefined, undefined);
       }
 
       function moveMethod(index, delta) {
@@ -418,9 +475,17 @@ window.__ModuleLoader__.load({
           const field = fieldOf(key);
           if (field === undefined) continue;
           const value = draft[key];
-          const reset =
-            value === undefined ||
-            (field.defaultValue !== undefined && sameValue(value, field.defaultValue));
+          const isOverridden = Boolean(snapshot.user && snapshot.user[key] !== undefined);
+          const isDefault =
+            field.defaultValue !== undefined && sameValue(value, field.defaultValue);
+          // Nothing to remove and nothing to write: the active form already
+          // lacks this key, so skipping avoids a failed `unset` on a clean row.
+          if (value === undefined) {
+            if (!isOverridden) continue;
+          } else if (isDefault && !isOverridden) {
+            continue;
+          }
+          const reset = value === undefined || isDefault;
           let accepted = false;
           try {
             accepted = reset
@@ -673,9 +738,12 @@ window.__ModuleLoader__.load({
                     { className: 'sc-slider' },
                     h('input', {
                       type: 'range',
-                      min: 0.2,
-                      max: 0.95,
-                      step: 0.01,
+                      // Bounds come from the generated field table; the card
+                      // floor is 0.5 so an early-trigger dead zone cannot be
+                      // saved from here.
+                      min: fieldOf('thresholdRatio')?.min ?? 0.5,
+                      max: fieldOf('thresholdRatio')?.max ?? 0.95,
+                      step: fieldOf('thresholdRatio')?.step ?? 0.01,
                       value: draft.thresholdRatio,
                       disabled: readOnly || busy,
                       'aria-label': t('thresholdCustom'),
@@ -685,6 +753,65 @@ window.__ModuleLoader__.load({
                   )
                 : h('span', { className: 'sc-muted' }, t('thresholdAuto')),
               resetButton('thresholdRatio'),
+            ),
+            h(
+              'div',
+              { className: 'sc-field', key: 'retain' },
+              h('span', { className: 'sc-field-label' }, t('retainTitle')),
+              h(
+                'select',
+                {
+                  value: retainMode,
+                  disabled: readOnly || busy,
+                  'aria-label': t('retainTitle'),
+                  onChange: (event) => setRetentionMode(event.target.value),
+                },
+                h('option', { value: 'inherit' }, t('retainInherit')),
+                h('option', { value: 'ratio' }, t('retainByRatio')),
+                h('option', { value: 'tokens' }, t('retainByTokens')),
+              ),
+              retainMode === 'ratio'
+                ? h(
+                    'div',
+                    { className: 'sc-slider' },
+                    h('input', {
+                      type: 'range',
+                      // Bounds come from the generated field table.
+                      min: fieldOf('retainRatio')?.min ?? 0.01,
+                      max: fieldOf('retainRatio')?.max ?? 0.5,
+                      step: fieldOf('retainRatio')?.step ?? 0.01,
+                      value: draft.retainRatio,
+                      disabled: readOnly || busy,
+                      'aria-label': t('retainRatioAria'),
+                      onChange: (event) => edit('retainRatio', Number(event.target.value)),
+                    }),
+                    h('span', { className: 'sc-value' }, Number(draft.retainRatio).toFixed(2)),
+                  )
+                : null,
+              retainMode === 'tokens'
+                ? h(NumberField, {
+                    field: fieldOf('retainTokens'),
+                    value: draft.retainTokens,
+                    label: t('retainTokensAria'),
+                    unit: t('unitTokens'),
+                    disabled: readOnly || busy,
+                    onChange: (value) => edit('retainTokens', value),
+                  })
+                : null,
+              retainMode === 'ratio' ? resetButton('retainRatio') : null,
+              retainMode === 'tokens' ? resetButton('retainTokens') : null,
+              h('p', { className: 'sc-field-hint' }, t('retainHint')),
+              retainMode === 'tokens'
+                ? h('p', { className: 'sc-field-hint' }, t('retainTokensNote'))
+                : h(
+                    'p',
+                    { className: 'sc-field-hint' },
+                    `${t('compactablePrefix')} ${effectiveThreshold.toFixed(2)} − ` +
+                      `${effectiveRetain.toFixed(2)} = ${compactable.toFixed(2)}`,
+                  ),
+              retainMode !== 'tokens' && compactableWarning
+                ? h('p', { className: 'sc-field-hint sc-warn' }, t('compactableWarn'))
+                : null,
             ),
           ],
         }),

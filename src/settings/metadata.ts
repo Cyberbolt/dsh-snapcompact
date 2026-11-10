@@ -57,6 +57,9 @@ export interface SettingsField {
 
 const MIB = 1024 * 1024;
 
+/** Granularity of the absolute retained-tail field. */
+export const MIN_RETAIN_TOKENS = 1_024;
+
 /** Ordered as rendered on the plugin page. */
 export const SETTINGS_FIELDS: readonly SettingsField[] = [
   {
@@ -73,11 +76,32 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     paths: [['policy', 'thresholdRatio']],
     kind: 'number',
     group: 'trigger',
-    min: 0.2,
+    min: 0.5,
     max: 0.95,
     step: 0.01,
     description:
-      'Share of the context window that triggers compaction. Leave unset to inherit the host policy default (0.8).',
+      'Share of the context window that triggers compaction; the card floor is 0.5. Leave unset to inherit the host policy default (0.8).',
+  },
+  {
+    key: 'retainRatio',
+    paths: [['policy', 'retainRatio']],
+    kind: 'number',
+    group: 'trigger',
+    min: 0.01,
+    max: 0.5,
+    step: 0.01,
+    description:
+      'Fraction of the message budget kept verbatim after compaction; mutually exclusive with retainTokens. Leave unset to inherit the host default (0.16).',
+  },
+  {
+    key: 'retainTokens',
+    paths: [['policy', 'retainTokens']],
+    kind: 'number',
+    group: 'trigger',
+    min: MIN_RETAIN_TOKENS,
+    step: MIN_RETAIN_TOKENS,
+    description:
+      'Absolute token budget kept verbatim after compaction; mutually exclusive with retainRatio. Leave unset to inherit the host default ratio.',
   },
   {
     key: 'frameSize',
@@ -207,6 +231,27 @@ function withPath(source: unknown, path: readonly string[], value: unknown): unk
 }
 
 /**
+ * Keep the two retention forms mutually exclusive after merging.
+ *
+ * The native backend rejects a policy that carries both `retainRatio` and
+ * `retainTokens`. A card override therefore removes the other form from the
+ * preset's `policy`; when a hand-written settings document supplies both, the
+ * absolute token form wins so the mounted engine never sees the conflict.
+ */
+function normalizeRetention(input: unknown, settings: UserSettings): unknown {
+  const tokensApplied = settings.retainTokens !== undefined;
+  const ratioApplied = settings.retainRatio !== undefined;
+  if (!tokensApplied && !ratioApplied) return input;
+  const drop = tokensApplied ? 'retainRatio' : 'retainTokens';
+  if (!isRecord(input)) return input;
+  const policy = input.policy;
+  if (!isRecord(policy) || !(drop in policy)) return input;
+  const next = { ...policy };
+  delete next[drop];
+  return { ...input, policy: next };
+}
+
+/**
  * Layer user settings over the preset row's config.
  *
  * A field is applied only when it carries a value, so leaving `thresholdRatio`
@@ -230,7 +275,7 @@ export function applyUserSettings(input: unknown, settings: UserSettings | undef
       );
     }
   }
-  return result;
+  return normalizeRetention(result, settings);
 }
 
 /** Defaults declared by the settings schema, keyed by settings field. */

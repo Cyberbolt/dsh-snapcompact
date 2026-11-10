@@ -17,6 +17,19 @@ export const DEFAULT_METHOD_ORDER = Object.freeze([
   'soft',
 ] as const satisfies readonly MethodName[]);
 
+/**
+ * Defaults for the usefulness guards.
+ *
+ * `minCompactableRatio` rejects a threshold/retention pair at mount time when
+ * the window fraction left for a checkpoint is too small to pay for itself.
+ * `minSourceRatio` skips a single compaction whose source history is below a
+ * fraction of the window. Setting either to zero disables that guard.
+ */
+export const GUARD_DEFAULTS = Object.freeze({
+  minCompactableRatio: 0.1,
+  minSourceRatio: 0.01,
+});
+
 /** Defaults shared by the strict runtime parser and the loader-facing schema. */
 export const SERIALIZATION_DEFAULTS = Object.freeze({
   toolResultMaxChars: 2_000,
@@ -88,6 +101,12 @@ const configSchema = z
           .max(64 * 1024 * 1024)
           .default(64 * 1024 * 1024),
         timeoutMs: z.number().int().positive().max(15_000).default(15_000),
+      })
+      .prefault({}),
+    guard: z
+      .strictObject({
+        minCompactableRatio: z.number().gte(0).lt(1).default(GUARD_DEFAULTS.minCompactableRatio),
+        minSourceRatio: z.number().gte(0).lt(1).default(GUARD_DEFAULTS.minSourceRatio),
       })
       .prefault({}),
     serialization: z
@@ -170,6 +189,24 @@ const configSchema = z
         message: 'Route policies must be unique.',
       });
     }
+    // Mirror the native backend's retention exclusivity earlier and with a
+    // field path, so the loader rejects the conflict before any service mounts.
+    const rejectRetentionConflict = (
+      policy: { retainRatio?: number | undefined; retainTokens?: number | undefined },
+      path: readonly (string | number)[],
+    ): void => {
+      if (policy.retainRatio !== undefined && policy.retainTokens !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: [...path, 'retainTokens'],
+          message: 'retainRatio and retainTokens are mutually exclusive.',
+        });
+      }
+    };
+    rejectRetentionConflict(config.policy, ['policy']);
+    config.policy.modelPolicies?.forEach((policy, index) => {
+      rejectRetentionConflict(policy, ['policy', 'modelPolicies', index]);
+    });
   });
 
 export type SnapcompactConfig = z.infer<typeof configSchema>;
@@ -260,6 +297,26 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       .max(64 * 1024 * 1024)
       .default(64 * 1024 * 1024),
     timeoutMs: schema.number().step(1).min(1).max(15_000).default(15_000),
+  }),
+  guard: schema.object({
+    minCompactableRatio: schema
+      .number()
+      .step(0.01)
+      .min(0)
+      .max(0.99)
+      .default(GUARD_DEFAULTS.minCompactableRatio)
+      .description(
+        '挂载期校验：thresholdRatio 减去保留尾部比例后，若低于该值则拒绝启动；0 关闭该校验。',
+      ),
+    minSourceRatio: schema
+      .number()
+      .step(0.01)
+      .min(0)
+      .max(0.99)
+      .default(GUARD_DEFAULTS.minSourceRatio)
+      .description(
+        '单次压缩的收益门槛：源历史低于 max(1024, 上下文窗口 × 该比例) 时跳过压缩；0 关闭。',
+      ),
   }),
   serialization: schema.object({
     toolResultMaxChars: schema
