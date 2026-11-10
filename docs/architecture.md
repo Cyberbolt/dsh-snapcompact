@@ -56,7 +56,7 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 
 ## Deliberate tradeoffs
 
-The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot satisfy the reduction ratio, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
+The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot fit the checkpoint budget implied by the trigger, an independent text handoff remains. Exact strings and uncertain facts still require archive recall.
 
 The checkpoint also carries a bounded `FILES` text block outside the frames. It is derived deterministically from read/write/edit tool arguments and earlier snapcompact checkpoints; `bash`, apply-patch and other mutation paths are outside its scope. FILES is `(Read)` / `(Write)` / `(RW)` metadata for navigation, not a filesystem snapshot, and it is included in the checkpoint's token estimate.
 

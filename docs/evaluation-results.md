@@ -16,7 +16,7 @@ The table below is the 08:11 UTC run. An earlier run of the same fixture is reco
 
 The native summary used 112 input, 14,464 cache-read and 1,476 output tokens (16,052 total). The visual arm made no handoff call; it rendered and read bitmap frames.
 
-The benchmark calls the visual method directly. In a normal session the method must also satisfy the configured `minCompressionRatio` on the engine's own estimate, so a short history can fall back to text even when the measured checkpoint is smaller.
+The benchmark calls the visual method directly and applies the same half-of-the-source cap the engine falls back to without a live trigger. In a normal session the checkpoint must fit the trigger-relative budget instead (half of the room under the threshold, never more than half of the source), so a short history can fall back to text even when the measured checkpoint is smaller.
 
 ## Token accounting
 

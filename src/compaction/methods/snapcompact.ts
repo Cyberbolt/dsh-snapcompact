@@ -158,8 +158,8 @@ export const snapcompact: CompactionMethod = async (context) => {
   if (!Number.isFinite(price) || price <= 0) {
     return { kind: 'skipped', reason: 'Frame pricing is not a positive finite estimate.' };
   }
-  const ratio = context.config.minCompressionRatio;
-  const budget = Math.floor((context.sourceTokens / ratio - baseTokens) / price);
+  const target = context.checkpointTargetTokens;
+  const budget = Math.floor((target - baseTokens) / price);
   let plannedFrames = Math.max(0, Math.min(maxNewFrames, budget));
   if (plannedFrames < 1 && filesText.length > 0) {
     // The FILES index is auxiliary; never let it turn a viable visual checkpoint into a fallback.
@@ -169,13 +169,13 @@ export const snapcompact: CompactionMethod = async (context) => {
       context.meter,
       imageRoute,
     );
-    const retryBudget = Math.floor((context.sourceTokens / ratio - withoutFiles) / price);
+    const retryBudget = Math.floor((target - withoutFiles) / price);
     plannedFrames = Math.max(0, Math.min(maxNewFrames, retryBudget));
   }
   if (plannedFrames < 1) {
     return {
       kind: 'skipped',
-      reason: `The ${ratio}× compression budget leaves no room for a readable frame (source ${context.sourceTokens} tokens).`,
+      reason: `The ${target}-token checkpoint budget leaves no room for a readable frame (source ${context.sourceTokens} tokens).`,
     };
   }
 
@@ -246,7 +246,7 @@ export const snapcompact: CompactionMethod = async (context) => {
       context.meter,
       imageRoute,
     );
-    if (tokens * ratio < context.sourceTokens) {
+    if (tokens <= target) {
       selected = kept;
       omittedChars = omitted;
       break;
@@ -255,7 +255,7 @@ export const snapcompact: CompactionMethod = async (context) => {
   if (selected === undefined) {
     return {
       kind: 'skipped',
-      reason: 'No frame subset satisfies the configured compression ratio.',
+      reason: 'No frame subset fits inside the checkpoint budget.',
     };
   }
 
@@ -314,7 +314,7 @@ export const snapcompact: CompactionMethod = async (context) => {
     rendered.unrenderableChars,
   );
   let tokens = estimateCheckpoint(summary, context.meter, imageRoute);
-  if (tokens * ratio >= context.sourceTokens && filesText.length > 0) {
+  if (tokens > target && filesText.length > 0) {
     // The final stored references can be slightly larger than the synthetic price.
     // Drop the auxiliary index before failing a visual checkpoint that would fit without it.
     filesText = '';
@@ -328,10 +328,10 @@ export const snapcompact: CompactionMethod = async (context) => {
     );
     tokens = estimateCheckpoint(summary, context.meter, imageRoute);
   }
-  if (tokens * ratio >= context.sourceTokens) {
+  if (tokens > target) {
     return {
       kind: 'skipped',
-      reason: `The rendered visual checkpoint no longer satisfies the ${ratio}× compression budget.`,
+      reason: `The rendered visual checkpoint exceeds the ${target}-token budget.`,
     };
   }
   return {

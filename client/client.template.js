@@ -75,8 +75,6 @@ window.__ModuleLoader__.load({
       maxFrames: '最多帧数',
       maxFramesHint:
         '单次 checkpoint 最多渲染多少帧；实际帧数还受宿主单条消息图片上限（默认 20）约束。',
-      compressionRatio: '最小压缩比',
-      compressionRatioHint: '视觉路径必须把历史压缩到这个倍数以下才会采用。',
       advancedTitle: '高级',
       advancedHint: '改动较少，保持默认通常最好。',
       archiveMax: '归档上限',
@@ -147,9 +145,6 @@ window.__ModuleLoader__.load({
       maxFrames: 'Maximum frames',
       maxFramesHint:
         'How many frames one checkpoint may render; the host per-message image cap (20 by default) still applies.',
-      compressionRatio: 'Minimum compression ratio',
-      compressionRatioHint:
-        'The visual path must shrink history by at least this factor to be used.',
       advancedTitle: 'Advanced',
       advancedHint: 'Rarely changed; the defaults are usually best.',
       archiveMax: 'Archive limit',
@@ -738,19 +733,6 @@ window.__ModuleLoader__.load({
               ),
               resetButton('maxFrames'),
               h('p', { className: 'sc-field-hint' }, t('maxFramesHint')),
-            ),
-            h(
-              'div',
-              { key: 'ratio', className: 'sc-field-row' },
-              h(NumberField, {
-                field: fieldOf('minCompressionRatio'),
-                value: draft.minCompressionRatio,
-                label: t('compressionRatio'),
-                hint: t('compressionRatioHint'),
-                disabled: readOnly || busy,
-                onChange: (value) => edit('minCompressionRatio', value),
-              }),
-              resetButton('minCompressionRatio'),
             ),
           ],
         }),

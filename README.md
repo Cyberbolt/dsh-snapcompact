@@ -50,11 +50,11 @@ native compaction transaction commits one checkpoint
 
 Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
 
-The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint stays below the configured reduction ratio. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
+The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint fits the room left under the trigger. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
 
 ### Does it save tokens?
 
-The visual path pays no generation cost: the compaction itself makes no model call. On the bundled synthetic fixture it turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. Counting that generation, the visual checkpoint is cheaper for the first compaction; the summary becomes cheaper in raw token count after roughly 2–3 turns. The method must also clear the configured `minCompressionRatio` on DSH's own estimate, so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
+The visual path pays no generation cost: the compaction itself makes no model call. On the bundled synthetic fixture it turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. Counting that generation, the visual checkpoint is cheaper for the first compaction; the summary becomes cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
 
 A checkpoint looks roughly like this (abridged):
 
@@ -99,7 +99,7 @@ Snapcompact requires **DeepSeek Harness `0.2.2-rc.1`**. Other DSH versions are n
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.4.3` and click **Install**.
+2. Paste `dsh-snapcompact@0.5.0` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and select **Snapcompact** in the preset picker. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
@@ -108,7 +108,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.4.3
+dsh plugin --profile web add dsh-snapcompact@0.5.0
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -120,11 +120,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.3.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.3.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.0.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -166,7 +166,6 @@ policy:
   auto: true
   # Trigger at 80% of the window; /snapcompact status shows the effective token count.
   thresholdRatio: 0.8
-minCompressionRatio: 2
 rendering:
   width: 1568
   height: 1568
@@ -183,22 +182,21 @@ serialization:
   maxCarriedImages: 4
 ```
 
-Defaults use 1568×1568 frames and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count. Other limits are 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`.
+Defaults use 1568×1568 frames and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count. Other limits are 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under the checkpoint budget implied by the trigger (see the [configuration reference](docs/configuration.md#trigger-threshold)).
 
 ### In-app settings
 
 The Snapcompact detail page under **Plugins** carries a settings card backed by a `snapcompact-settings` row in the current profile. The card writes through DSH's settings service into that profile's configuration patch, so saved values survive restarts without hand-editing YAML. It manages:
 
-| Control                   | Config path                              | Default                               |
-| ------------------------- | ---------------------------------------- | ------------------------------------- |
-| Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
-| Custom trigger threshold  | `policy.thresholdRatio`                  | unset (host default 0.8)              |
-| Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames            | `rendering.maxFrames`                    | 20 (max 64)                           |
-| Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
-| Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
-| Handoff budget            | `handoffMaxTokens`                       | 4096                                  |
-| Externalize above         | `shakeThresholdChars`                    | 8192                                  |
+| Control                  | Config path                              | Default                               |
+| ------------------------ | ---------------------------------------- | ------------------------------------- |
+| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
+| Custom trigger threshold | `policy.thresholdRatio`                  | unset (host default 0.8)              |
+| Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
+| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
+| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
+| Handoff budget           | `handoffMaxTokens`                       | 4096                                  |
+| Externalize above        | `shakeThresholdChars`                    | 8192                                  |
 
 Rules worth knowing:
 
@@ -219,7 +217,7 @@ Rules worth knowing:
 | Text-first             | `[handoff, shake, soft]`              | Spend one model call on a structured handoff first          |
 | Native-only            | `[soft]`                              | Back to the DSH native summary; archive and recall remain   |
 
-Two easy misreadings: `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so putting it first preempts the visual path; `minCompressionRatio` only constrains `snapcompact`, while every other method merely has to shrink the source.
+Two easy misreadings: `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so putting it first preempts the visual path; and the checkpoint budget (half of the room left under the trigger) only constrains `snapcompact`, while every other method merely has to shrink the source.
 
 The trigger is still the native `policy.thresholdRatio` (a window fraction, default 0.8). `/snapcompact status` converts it into tokens for the current route and explains whether each method will run or be skipped.
 

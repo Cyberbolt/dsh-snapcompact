@@ -136,7 +136,8 @@ const configSchema = z
         }),
       )
       .default([]),
-    minCompressionRatio: z.number().min(1.1).default(2),
+    /** Deprecated: accepted so older rows keep loading, but the checkpoint budget is trigger-relative now. */
+    minCompressionRatio: z.number().min(1.1).optional(),
     archiveMaxBytes: z
       .number()
       .int()
@@ -304,7 +305,6 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       }),
     )
     .default([]),
-  minCompressionRatio: schema.number().min(1.1).default(2),
   archiveMaxBytes: schema
     .number()
     .step(1)

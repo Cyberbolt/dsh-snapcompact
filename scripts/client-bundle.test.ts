@@ -235,7 +235,6 @@ describe('client bundle', () => {
       'thresholdRatio',
       'frameSize',
       'maxFrames',
-      'minCompressionRatio',
       'archiveMaxBytes',
       'handoffMaxTokens',
       'shakeThresholdChars',
@@ -243,6 +242,9 @@ describe('client bundle', () => {
       expect(source).toContain(`"key": "${key}"`);
       expect(metadata).toContain(`key: '${key}'`);
     }
+    // The retired knob must not survive in either the built table or the card.
+    expect(source).not.toContain('minCompressionRatio');
+    expect(metadata).not.toContain('minCompressionRatio');
     expect(source).not.toContain('__SNAPCOMPACT_SETTINGS_FIELDS__');
   });
 });

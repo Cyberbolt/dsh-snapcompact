@@ -219,6 +219,9 @@ export async function evaluate(
       input,
       sourceMessages: messages,
       sourceTokens,
+      // The fixture has no live session surface to price against a trigger, so the
+      // benchmark applies the same half-of-the-source rule the engine falls back to.
+      checkpointTargetTokens: Math.floor(sourceTokens / 2),
       meter: ctx.tokenMeter,
       archive,
       config: settings,

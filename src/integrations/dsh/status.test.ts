@@ -6,7 +6,7 @@ import type { ArchiveIndex } from './archive-projection.js';
 import {
   formatStatus,
   formatTokens,
-  resolveDisplayPolicy,
+  resolveTargetPolicy,
   resolvePressureBudget,
 } from './status.js';
 
@@ -72,7 +72,7 @@ describe('trigger budget display', () => {
   });
 
   it('merges exact-target retention overrides before global retention', () => {
-    expect(resolveDisplayPolicy(BASE_CONFIG, 'test', 'vision')).toEqual({
+    expect(resolveTargetPolicy(BASE_CONFIG, 'test', 'vision')).toEqual({
       thresholdRatio: 0.8,
       headroomTokens: 65_536,
       retainRatio: 0.16,
@@ -89,12 +89,12 @@ describe('trigger budget display', () => {
         },
       ],
     };
-    expect(resolveDisplayPolicy(overridden, 'test', 'vision')).toEqual({
+    expect(resolveTargetPolicy(overridden, 'test', 'vision')).toEqual({
       thresholdRatio: 0.5,
       headroomTokens: 4_096,
       retainTokens: 1_024,
     });
-    expect(resolveDisplayPolicy(overridden, 'test', 'other')).toEqual({
+    expect(resolveTargetPolicy(overridden, 'test', 'other')).toEqual({
       thresholdRatio: 0.8,
       headroomTokens: 65_536,
       retainRatio: 0.16,

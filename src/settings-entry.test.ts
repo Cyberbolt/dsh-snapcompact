@@ -45,7 +45,6 @@ describe('settings entry', () => {
         thresholdRatio: 0.72,
         frameSize: 1024,
         maxFrames: 3,
-        minCompressionRatio: 1.5,
         archiveMaxBytes: 1024 * 1024,
         handoffMaxTokens: 1024,
         shakeThresholdChars: 2048,
@@ -55,7 +54,6 @@ describe('settings entry', () => {
       thresholdRatio: 0.72,
       frameSize: 1024,
       maxFrames: 3,
-      minCompressionRatio: 1.5,
       handoffMaxTokens: 1024,
       shakeThresholdChars: 2048,
     });
@@ -70,7 +68,6 @@ describe('settings entry', () => {
     { thresholdRatio: 0.19 },
     { frameSize: 4096 },
     { maxFrames: 65 },
-    { minCompressionRatio: 1 },
     { archiveMaxBytes: 0 },
     { handoffMaxTokens: 128 },
   ])('rejects %#', (config) => {

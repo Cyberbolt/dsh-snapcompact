@@ -50,11 +50,11 @@ snapcompact → handoff → shake → soft
 
 为什么用图片：视觉模型按面积计费，与帧里塞了多少字符基本无关。在模型可读的前提下，一帧密集位图能比同样的纯文本承载更多字符/token；具体比例取决于帧几何、读图模型计价和文本密度。
 
-只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧，可配到 64），且不会超过宿主对单条消息的图片上限；帧数根据压缩比动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
+只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧，可配到 64），且不会超过宿主对单条消息的图片上限；帧数根据触发阈值下的剩余空间动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
 
 ### 它省 token 吗？
 
-视觉路径没有生成成本：压缩本身不发起模型调用。在内置合成语料上，它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。把生成算进去，视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须通过配置的 `minCompressionRatio`（按 DSH 自己的估算），历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
+视觉路径没有生成成本：压缩本身不发起模型调用。在内置合成语料上，它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。把生成算进去，视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须落在触发阈值下的剩余空间里——最多用掉 checkpoint 无法替代部分的一半，且不超过源历史的一半——历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
 
 一个 checkpoint 大致如下（已删节）：
 
@@ -99,7 +99,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.4.3`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.5.0`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，在 preset 选择器中选择 **Snapcompact**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
 
@@ -108,7 +108,7 @@ Snapcompact 要求 **DeepSeek Harness `0.2.2-rc.1`**。其他 DSH 版本尚未�
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.4.3
+dsh plugin --profile web add dsh-snapcompact@0.5.0
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -120,11 +120,11 @@ dsh plugin --profile web add dsh-snapcompact@0.4.3
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.4.3.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.4.3.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.0.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
@@ -166,7 +166,6 @@ policy:
   auto: true
   # 窗口使用到 80% 时触发；/snapcompact status 会显示等价的 token 数。
   thresholdRatio: 0.8
-minCompressionRatio: 2
 rendering:
   width: 1568
   height: 1568
@@ -183,7 +182,7 @@ serialization:
   maxCarriedImages: 4
 ```
 
-默认使用 1568×1568 帧、每次 checkpoint 20 帧，上限可配到 64；实际帧数仍受宿主对单条消息的图片上限（默认 20 张）约束。其余限制为 16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在 `minCompressionRatio` 约束下动态选择。
+默认使用 1568×1568 帧、每次 checkpoint 20 帧，上限可配到 64；实际帧数仍受宿主对单条消息的图片上限（默认 20 张）约束。其余限制为 16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在触发阈值推出的 checkpoint 预算下动态选择（见[配置参考](docs/zh/configuration.md#触发阈值)）。
 
 ### 在应用内配置
 
@@ -195,7 +194,6 @@ serialization:
 | 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
 | 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
 | 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 最小压缩比     | `minCompressionRatio`                   | 2                                     |
 | 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
 | 交接预算       | `handoffMaxTokens`                      | 4096                                  |
 | 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
@@ -219,7 +217,7 @@ serialization:
 | 文本优先         | `[handoff, shake, soft]`              | 先花一次模型调用生成结构化交接            |
 | 仅原生摘要       | `[soft]`                              | 完全回到 DSH 原生摘要；归档与回查仍然可用 |
 
-两点容易误解：`shake` 只要存在一个超过 `shakeThresholdChars` 的工具输出就会成功，放在前面会抢先于视觉路径；`minCompressionRatio` 只约束 `snapcompact`，其它方法只要求 checkpoint 比源历史小。
+两点容易误解：`shake` 只要存在一个超过 `shakeThresholdChars` 的工具输出就会成功，放在前面会抢先于视觉路径；checkpoint 预算（触发阈值下剩余空间的一半）只约束 `snapcompact`，其它方法只要求 checkpoint 比源历史小。
 
 触发阈值仍是原生 `policy.thresholdRatio`（窗口百分比，默认 0.8）。`/snapcompact status` 会把它换算成当前路由上的具体 token 数，并显示每个方法是会尝试还是会跳过。
 

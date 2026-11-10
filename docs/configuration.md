@@ -32,7 +32,6 @@ serialization:
   tailChars: 2000
   includeReasoning: false
   maxCarriedImages: 4
-minCompressionRatio: 2
 archiveMaxBytes: 67108864
 handoffMaxTokens: 4096
 shakeThresholdChars: 8192
@@ -43,18 +42,17 @@ routePolicies: []
 
 The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts.
 
-The card manages eight keys:
+The card manages seven keys:
 
-| Control                   | Config path                              | Default                               |
-| ------------------------- | ---------------------------------------- | ------------------------------------- |
-| Method chain              | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
-| Custom trigger threshold  | `policy.thresholdRatio`                  | unset (native default 0.8)            |
-| Frame size                | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames            | `rendering.maxFrames`                    | 20 (max 64)                           |
-| Minimum compression ratio | `minCompressionRatio`                    | 2                                     |
-| Archive limit             | `archiveMaxBytes`                        | 64 MiB                                |
-| Handoff budget            | `handoffMaxTokens`                       | 4096                                  |
-| Externalize above         | `shakeThresholdChars`                    | 8192                                  |
+| Control                  | Config path                              | Default                               |
+| ------------------------ | ---------------------------------------- | ------------------------------------- |
+| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
+| Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)            |
+| Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
+| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
+| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
+| Handoff budget           | `handoffMaxTokens`                       | 4096                                  |
+| Externalize above        | `shakeThresholdChars`                    | 8192                                  |
 
 Persistence and precedence:
 
@@ -88,7 +86,7 @@ Do not copy 65,536-token headroom to a small-window model without adjustment. Th
 Semantics that are easy to miss:
 
 - `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so placing it before `snapcompact` preempts the visual path.
-- `minCompressionRatio` only constrains `snapcompact`; every other method only has to produce a checkpoint smaller than the source.
+- The checkpoint budget (half of the room under the trigger) only constrains `snapcompact`; every other method only has to produce a checkpoint smaller than the source.
 - The archive is created before the chain runs, so a `[soft]` chain still keeps `snapcompact_recall` available.
 - Cancellation aborts the transaction; it never falls through to the next method.
 
@@ -105,9 +103,25 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 
 `/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery. There is no absolute token-count trigger; use `thresholdRatio` and inspect the effective token number with `/snapcompact status`.
 
+### Checkpoint budget
+
+`snapcompact` may spend at most half of the room left under that threshold:
+
+```text
+fixed  = max(0, surface - source)
+room   = threshold - fixed
+budget = floor(min(room, source) / 2)    # no declared window: floor(source / 2)
+```
+
+`surface` is the whole request pressure before compaction and `source` the history the checkpoint replaces; both come from the token meter the native engine re-measures after committing. Everything a checkpoint cannot replace — system prompt, tool schemas, output reservation, retained tail — stays in `fixed`.
+
+Spending half of the room keeps the post-compaction total below the threshold with an equal share of headroom, which is the condition the native engine re-checks before it accepts a checkpoint. When automatic pressure fires, `room ≈ source`, so this matches the older "half of the source" rule and only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold, where the room is larger than the source and the source stays the binding half. A route without a declared context window, or a failed model lookup, falls back to `floor(source / 2)`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
+
+The budget is recomputed per compaction from the live route, so it follows `thresholdRatio`, `headroomTokens` and per-model overrides without another setting. Older rows may still carry `minCompressionRatio`; it is accepted for upgrade compatibility and ignored.
+
 ## Visual eligibility
 
-A route must explicitly declare image input and supply image pricing, a configured ceiling, or the labelled DeepSeek estimate. Saved/request images must retain readable bitmap dimensions; otherwise the visual method is skipped. Frames, bytes and pixels must fit the host policy, and the complete checkpoint must meet `minCompressionRatio` estimated reduction.
+A route must explicitly declare image input and supply image pricing, a configured ceiling, or the labelled DeepSeek estimate. Saved/request images must retain readable bitmap dimensions; otherwise the visual method is skipped. Frames, bytes and pixels must fit the host policy, and the complete checkpoint must fit the trigger-relative budget below.
 
 When an adapter has no pricing, DeepSeek model IDs use a labelled 1024-token/frame estimate. Other models can use an explicit conservative route ceiling:
 
@@ -122,7 +136,7 @@ Provider/model matching is exact, with no aliases, fuzzy matching or cross-model
 
 ## Bounds and failure
 
-Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count, so raise both to use more. At most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under `minCompressionRatio`; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
+Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count, so raise both to use more. At most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under the trigger-relative checkpoint budget; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
 
 Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through.
 

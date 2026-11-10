@@ -106,18 +106,6 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
       'Upper bound on rendered frames per checkpoint (at most 64). The host per-message image cap, 20 by default, still clamps the effective count.',
   },
   {
-    key: 'minCompressionRatio',
-    paths: [['minCompressionRatio']],
-    kind: 'number',
-    group: 'rendering',
-    defaultValue: 2,
-    min: 1.1,
-    max: 10,
-    step: 0.1,
-    description:
-      'Minimum reduction the visual checkpoint must reach, measured with the host token estimate.',
-  },
-  {
     key: 'archiveMaxBytes',
     paths: [['archiveMaxBytes']],
     kind: 'number',

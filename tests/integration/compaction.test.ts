@@ -28,6 +28,7 @@ async function setup(
     maxFrames: 6,
     minGlyphPx: 8,
   },
+  policy: Record<string, number | boolean> = {},
 ) {
   const harness = await createHarness(model);
   const rendererModule: typeof RendererModule = await import(
@@ -40,7 +41,7 @@ async function setup(
     harness.ctx,
     resolveConfig({
       methodOrder,
-      policy: { auto: false, maxTokens: 4096 },
+      policy: { auto: false, maxTokens: 4096, ...policy },
       rendering,
     }),
     archives,
@@ -128,6 +129,54 @@ describe('native region transaction with plugin candidates', () => {
     expect(test.adapter.calls).toHaveLength(0);
   });
 
+  it('sizes the checkpoint against the room left under the trigger', async () => {
+    // An 11,000-token trigger leaves about 5,200 tokens of room after the retained
+    // tail, so the budget binds before the frame cap does.
+    const test = await setup(
+      ['snapcompact', 'soft'],
+      'vision',
+      { width: 512, height: 512, maxFrames: 20, minGlyphPx: 8 },
+      { headroomTokens: 189_000 },
+    );
+    test.appendText(longSource);
+    const source = test.appendText(longSource);
+    test.session.append('turn/start', { turn: 1 });
+    const threshold = 200_000 - 189_000;
+    expect(test.ctx.tokenMeter.measure(test.session).totalTokens).toBeGreaterThan(threshold);
+
+    const result = await test.engine.compactRegion(source.seq, source.seq, test.agent);
+
+    const images = result.summary.filter((block) => block.type === 'image');
+    expect(images.length).toBeGreaterThan(0);
+    // Both the room and the source cap the frame count, so the frame maximum alone
+    // cannot explain the result.
+    expect(images.length).toBeLessThan(20);
+    expect(test.ctx.tokenMeter.measure(test.session).totalTokens).toBeLessThan(threshold);
+    expect(test.adapter.calls).toHaveLength(0);
+  });
+
+  it('skips the visual path when retained history already fills the trigger', async () => {
+    // 1,000 tokens of threshold cannot hold the retained tail, so no frame helps.
+    const test = await setup(
+      ['snapcompact', 'soft'],
+      'vision',
+      { width: 512, height: 512, maxFrames: 6, minGlyphPx: 8 },
+      { headroomTokens: 199_000 },
+    );
+    test.appendText(longSource);
+    const source = test.appendText(longSource);
+    test.session.append('turn/start', { turn: 1 });
+
+    const result = await test.engine.compactRegion(source.seq, source.seq, test.agent);
+
+    expect(result.summary.filter((block) => block.type === 'image')).toHaveLength(0);
+    expect(result.summary[0]).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('method=soft'),
+    });
+    expect(test.adapter.calls).toHaveLength(1);
+  });
+
   it('adds a cumulative FILES index to the visual checkpoint', async () => {
     const test = await setup(['snapcompact', 'handoff', 'soft']);
     const sourceMessages = [
@@ -157,12 +206,12 @@ describe('native region transaction with plugin candidates', () => {
       input: { messages: sourceMessages },
       sourceMessages,
       sourceTokens: 100_000,
+      checkpointTargetTokens: 50_000,
       meter: test.ctx.tokenMeter,
       archive: {} as ArchiveRecord,
       route: { provider: 'test', model: 'vision' },
       config: resolveConfig({
         rendering: { width: 512, height: 512, maxFrames: 3, minGlyphPx: 8 },
-        minCompressionRatio: 2,
       }),
       llm: test.ctx.llm,
       attachments: test.ctx.attachments,
