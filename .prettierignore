@@ -1,6 +1,8 @@
 node_modules/
 .pnpm-store/
 dist/
+.agents/
+.artifacts/
 coverage/
 pnpm-lock.yaml
 cordis.patch.yml

@@ -8,6 +8,8 @@ export default tseslint.config(
       'node_modules/**',
       '.pnpm-store/**',
       '.test-artifacts-*/**',
+      '.agents/**',
+      '.artifacts/**',
       'coverage/**',
     ],
   },
