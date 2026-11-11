@@ -16,7 +16,7 @@
 
 适合长代码或调试会话——几十轮之后，你还要精确找回某条命令。不适合短会话、纯文本模型或 minimal 模式。
 
-**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.5.3` → 新建会话 → **Snapcompact (Standard)**。无需构建。
+**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.6.0` → 新建会话 → **Snapcompact (Standard)**。无需构建。
 
 ## 为什么用图片
 
@@ -54,7 +54,7 @@
 需要 DSH `^0.2.2-rc.1`（在 `0.2.2-rc.1` 上验证）和 Node.js 24+。npm 包已包含编译后的 `dist/`，没有构建步骤，也没有安装脚本。0.2.x 的 patch 可以直接安装，不需要重新发布插件；下一条 minor 只在重新验证后才会声明。
 
 1. 打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 安装 `dsh-snapcompact@0.5.3`。
+2. 安装 `dsh-snapcompact@0.6.0`。
 3. 若页面提示重启，按提示完成；然后新建会话，选择变体。
 
 | 官方模式   | 选择                       | 保留的行为                                               |
@@ -68,7 +68,7 @@
 通过命令行安装：
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.3
+dsh plugin --profile web add dsh-snapcompact@0.6.0
 ```
 
 把 `web` 换成你实际使用的 profile。使用 DSH Desktop 时优先用应用内插件页：CLI 可能写入桌面端不使用的 profile。
@@ -81,11 +81,11 @@ dsh plugin --profile web add dsh-snapcompact@0.5.3
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.3.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.6.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.6.0.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
