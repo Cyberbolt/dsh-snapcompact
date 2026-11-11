@@ -7,117 +7,76 @@
 [![npm](https://img.shields.io/npm/v/dsh-snapcompact?logo=npm&label=npm)](https://www.npmjs.com/package/dsh-snapcompact)
 [![downloads](https://img.shields.io/npm/dt/dsh-snapcompact?logo=npm&label=downloads)](https://www.npmjs.com/package/dsh-snapcompact)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/README.zh.md#安装)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Snapcompact 用“渲染”而不是“总结”来压缩长对话。** DSH 选出安全的压缩区间后，Snapcompact 把被丢弃的中段序列化成像素字体的密集 PNG 帧，交给视觉模型直接阅读；checkpoint 前后保留精确头尾文本，背后是 sha256 归档，`snapcompact_recall` 仍可逐字取回命令、路径和标识符。渲染是本地、确定性的：视觉路径不调用摘要模型，也不需要 API key 或网络。路由不支持图片时，按配置的文本方法链回退，最后回退 DSH 原生摘要。它提供面向 DSH **standard**、**PTC** 和 **Cordis** 模式的可选 preset；官方 preset 和运行中的会话保持不变。
+**把长会话渲染成图片来压缩，而不是总结掉。**
 
-**它在哪里划算。** 对比原始历史：同样召回率下 prompt token 更少。对比原生摘要：保留的原文多得多，且没有摘要生成调用，但 checkpoint 在后续每一轮都更大；短会话里精简摘要更便宜。这个取舍可以量：在你的路由上跑 `/snapcompact benchmark`，不要预设固定倍数。
+会话变长时，Snapcompact 把对话中段渲染成密集的 PNG 帧，交给视觉模型直接阅读。视觉路径本身不调用摘要模型；精确头尾文本留在原位，可检索归档保存原文，命令、路径和标识符都能找回。
 
-## 亮点
+适合长代码或调试会话——几十轮之后，你还要精确找回某条命令。不适合短会话、纯文本模型或 minimal 模式。
 
-| 你的需求                     | Snapcompact 提供的能力                                                                                               |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 缩小上下文，但不丢掉原始对话 | 每个 checkpoint 都附带本次选中历史的精确归档。                                                                       |
-| 压缩后仍能找回精确字符串     | 精确头尾文本、归档引用，以及 `snapcompact_recall` 工具。                                                             |
-| 压缩后知道哪些文件在范围内   | 由 read/write/edit 调用生成的有界 `FILES` 索引，支持目录折叠、`(Read)`/`(Write)`/`(RW)` 标记；精确内容仍可回查归档。 |
-| 失败时不冒险                 | 默认链 `snapcompact → handoff → shake → soft` 可配置子集/顺序；无法证明“更小且可读”的候选会被跳过。                  |
-| 保留 DSH 原生行为            | 压缩区间选择、事务锁、恢复和容量校验仍由宿主负责。                                                                   |
-| 常用项不用手写 YAML          | **插件 → Snapcompact** 设置卡可改方法链、阈值、帧预算与上限，并通过 profile 配置补丁保存。                           |
-| 用数据而不是口号说明效果     | `/snapcompact benchmark` 报告文本、摘要和图片三组的召回率、一次性生成成本和每轮 checkpoint 大小。                    |
+**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.5.3` → 新建会话 → **Snapcompact (Standard)**。无需构建。
 
-## 工作原理
+## 为什么用图片
 
-```text
-DSH 选择安全的压缩区间
-        │
-        ▼
-精确归档（sha256:…）  ──┐
-        │                │  在 checkpoint 之后仍然保留
-        ▼                │
-snapcompact → handoff → shake → soft
-        │
-        ▼
-原生压缩事务提交一个 checkpoint
-```
+视觉模型主要按图片面积计费，和图片里塞了多少字符关系不大。在可读的前提下，一帧密集图片用同样的 token 能装下更多字符。于是，被丢弃的中段变成几张可读的图片，而不是一段有损摘要。
 
-| 顺序 | 方法          | 模型调用         | 产出                                                                                  |
-| ---- | ------------- | ---------------- | ------------------------------------------------------------------------------------- |
-| 1    | `snapcompact` | 无（纯本地）     | 把压缩后的中段渲染为有界 1568px 位图帧，保留精确头尾文本、有界 FILES 索引和归档引用。 |
-| 2    | `handoff`     | 一次交接摘要调用 | 结构化任务交接：目标、约束、决策、精确命令、已完成/未完成工作、下一步、关键事实。     |
-| 3    | `shake`       | 无               | 先归档大工具输出，再用有界头尾摘录和回查引用来替代。                                  |
-| 4    | `soft`        | 原生摘要         | DSH 原生文本摘要，作为最后的兜底。                                                    |
+|            | 原始历史 | 原生摘要     | Snapcompact（视觉路径）    |
+| ---------- | -------- | ------------ | -------------------------- |
+| 保留内容   | 全部     | 摘要         | 精确头尾 + 归档中段        |
+| 压缩成本   | 0        | 一次模型调用 | 0（本地渲染）              |
+| 每轮上下文 | 最大     | 通常最小     | 比原始小，通常比精简摘要大 |
+| 精确字符串 | 有       | 可能丢失     | 可从归档回查               |
 
-为什么用图片：视觉模型按面积计费，与帧里塞了多少字符基本无关。在模型可读的前提下，一帧密集位图能比同样的纯文本承载更多字符/token；具体比例取决于帧几何、读图模型计价和文本密度。
+**什么时候划算：** 长历史、图片 token 便宜的路由，以及压缩后仍要精确找回原文的工作。**什么时候不划算：** 短会话、纯文本路由，或者一段精简摘要就够用。
 
-排版是连续文本流，不是“一个源行占一整行”。一行写满后在帧边缘折到下一行，每个源换行由一个 `¶` 标记（连续 `¶` 表示空行），行首空格保留缩进。帧是 1-bit 灰度 PNG：内置字体本身就是两色，因此一帧 1568px 散文约 11 KB。在内置 7 万字符语料上，当前渲染器输出 5 帧、约 13.4k 字符/帧；旧的逐行排版需要 14 帧。这些是本地渲染数字，不是模型召回分数。
+## 你得到什么
 
-只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧，可配到 64），且不会超过宿主对单条消息的图片上限；帧数根据触发阈值下的剩余空间动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
+- **视觉路径不调用摘要模型。** 渲染在本地完成：没有生成成本，不联网，也不需要额外的 API key。
+- **压缩后仍能精确回查。** 精确头尾文本 + 可检索归档；`snapcompact_recall` 可以逐行读取。
+- **文件地图不会丢。** 由 read/write/edit 调用生成的有界 `FILES` 索引，带 `(Read)`/`(Write)`/`(RW)` 标记。
+- **失败有兜底。** `snapcompact → handoff → shake → soft`，原生摘要是最后一步。
+- **保留 DSH 原生行为。** 区间选择、事务锁、恢复和容量校验仍由宿主负责。
 
-### 它省 token 吗？
+## 实测
 
-视觉路径没有生成成本：压缩本身不发起模型调用。v1 对照是 9 道题、旧逐行排版：它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。当前连续流排版和扩充到 40 题的 fixture v2 上，视觉组答对 36/40，使用五帧 1568px 图片，估算 checkpoint 7,607 token；原文组 38/40，原生摘要 40/40，但生成摘要花了 20,361 token。视觉 checkpoint 的 3 轮总量仍然更低（20,151 vs 24,906）；请在你自己的路由上运行 `/snapcompact benchmark` 实测。把生成算进去，v1 视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须落在触发阈值下的剩余空间里——最多用掉 checkpoint 无法替代部分的一半，且不超过源历史的一半——历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
+| 对照（fixture v2，40 题） | 精确匹配 | 中段 probe | 每轮读取 | 一次性生成 | 3 轮合计 |
+| ------------------------- | -------: | ---------: | -------: | ---------: | -------: |
+| 原始历史                  |    38/40 |          — |   15,107 |          0 |   45,321 |
+| 原生摘要                  |    40/40 |          — |    1,515 |     20,361 |   24,906 |
+| Snapcompact               |    36/40 |       8/10 |    6,717 |          0 |   20,151 |
 
-一个 checkpoint 大致如下（已删节）：
-
-```text
-Snapcompact v2; method=snapcompact
-Exact archived history: sha256:…
-Visual snapcompact checkpoint: N frames; M carried images; ¶ marks a source newline; use snapcompact_recall for exact strings.
-FILES (touched by read/write/edit tools; not a current disk-state guarantee)
-(Read) read-only; (Write) written without a read; (RW) read and written
-============================================================
-# src/compaction/
-visual-source.ts (Read)
-## methods/
-snapcompact.ts (RW)
-[精确文本头]
-[image frame 1 of N] … [image frame N of N]
-[精确文本尾]
-[file] snapcompact archive reference
-```
-
-安全性质：
-
-- 图片永远不是任务状态的唯一副本；精确头尾文本和归档始终存在，视觉不可用时还有文本交接兜底。
-- `FILES` 索引来自本次压缩区间内的 read/write/edit 工具调用，以及更早的 snapcompact checkpoint；它是导航辅助，不是磁盘快照，`bash` 和 apply-patch 的修改不计入。
-- 取消会终止本次压缩，不会静默改用下一种方法。
-- 只有在该会话中成功完成的压缩，才会授予对应归档的回查权限。
-- 历史中已有图片或此前的视觉 checkpoint 时，优先携带进新 checkpoint，而不是把附件描述重新渲染成“原始图片”。
-- 视觉能力不明确时按失败关闭处理；仅对 DeepSeek 模型使用带标签的估算价。
-- 不注册自定义 Session event 类型，也不替换宿主的事务引擎。
+视觉检查点（checkpoint）在首次压缩时更便宜（6,717 vs 21,876），3 轮合计也更便宜（20,151 vs 24,906）；摘要大约从第 4 轮开始反超。视觉组答对 8/10 个中段 probe，这是第一个真正依赖帧读取的分数；4 个未命中里有 2 个是头尾事实，归档里仍然保留。固定语料也可能出现顺序反转（原生摘要 40/40，原文 38/40），请在你的路由上跑 `/snapcompact benchmark`。
 
 ## 安装
 
-Snapcompact 声明兼容 **DeepSeek Harness `^0.2.2-rc.1`**（0.2.x 线），并在 `0.2.2-rc.1` 上验证。0.2.x 的 patch 或 prerelease 可直接安装，不需要精确版本豁免；下一条 minor 只在安装与激活检查通过后才会声明。
+需要 DSH `^0.2.2-rc.1`（在 `0.2.2-rc.1` 上验证）和 Node.js 24+。npm 包已包含编译后的 `dist/`，没有构建步骤，也没有安装脚本。0.2.x 的 patch 可以直接安装，不需要重新发布插件；下一条 minor 只在重新验证后才会声明。
 
-| 要求           | 值                                             |
-| -------------- | ---------------------------------------------- |
-| DSH            | `^0.2.2-rc.1`（0.2.x；在 `0.2.2-rc.1` 上验证） |
-| Node.js        | 24 或更新（宿主的要求）                        |
-| 构建步骤       | 无；npm 包已包含编译后的 `dist/`               |
-| 安装期构建脚本 | 无                                             |
+1. 打开 **插件（Plugins）→ 添加插件（Add plugin）**。
+2. 安装 `dsh-snapcompact@0.5.3`。
+3. 若页面提示重启，按提示完成；然后新建会话，选择变体。
 
-### 通过插件页安装（推荐）
+| 官方模式   | 选择                       | 保留的行为                                               |
+| ---------- | -------------------------- | -------------------------------------------------------- |
+| `standard` | **Snapcompact (Standard)** | shell、文件工具、搜索、子代理、workflow、web、plan mode  |
+| `ptc`      | **Snapcompact (PTC)**      | `run_code` 仍是唯一直接工具，其余工具通过 `tools.*` 调用 |
+| `cordis`   | **Snapcompact (Cordis)**   | `tool-cordis` 与官方 Cordis 技能目录                     |
 
-1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.5.3`，点击 **安装（Install）**。
-3. 若页面提示重启，按提示完成。
-4. 新建会话，选择与你工作方式匹配的 Snapcompact 变体：**Snapcompact (Standard)**、**Snapcompact (PTC)** 或 **Snapcompact (Cordis)**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
+安装只会新增可选 preset，不会修改官方 preset 或运行中的会话；选中变体就是启用动作，已有会话保持启动时的 preset。`minimal` 不提供：这个模式刻意去掉 read/write/edit，加入帧和归档回查会违背其定位。
 
-建议带版本号安装，确保拿到的是这个确切版本；不带版本号时，包管理器会解析到最新发布版本。
-
-### 通过命令行安装
+通过命令行安装：
 
 ```sh
 dsh plugin --profile web add dsh-snapcompact@0.5.3
 ```
 
-把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
+把 `web` 换成你实际使用的 profile。使用 DSH Desktop 时优先用应用内插件页：CLI 可能写入桌面端不使用的 profile。
 
-### 其他分发来源
+<details>
+<summary>其他分发来源</summary>
 
-`dsh plugin add` 不只接受 npm 包名，也可以安装本地打包的 tarball 或 tarball URL：
+也可以安装本地打包的 tarball 或 tarball URL：
 
 ```sh
 pnpm install --ignore-scripts
@@ -131,31 +90,58 @@ dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
 
-### 启用 preset
+</details>
 
-安装只会新增**可选 preset**，不会修改官方 preset 或任何运行中的会话。请新建会话并选择任一 Snapcompact 变体。
+## 工作原理
 
-每个变体复制对应的官方 preset，只替换压缩后端：移出原生 `compaction-basic`，换入 Snapcompact 链；破坏性的结果裁剪器保持关闭，因为 shake 会先归档再外置。选中变体就是启用动作——DSH 把每个会话的压缩后端放在 preset 的隔离分组里，profile 平面的插件无法全局替换它，内置 preset 也不能就地扩展。这是 DSH 的隔离边界，不是每轮都要操心的额外模式。
+```text
+DSH 选择安全的压缩区间
+        │
+        ▼
+精确归档（sha256） ── 在 checkpoint 之后仍然保留
+        │
+        ▼
+snapcompact → handoff → shake → soft
+        │
+        ▼
+原生事务提交一个 checkpoint
+```
 
-| 官方模式   | 选择                       | 保留的行为                                                                                                                          |
-| ---------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `standard` | **Snapcompact (Standard)** | 常规工具集：shell、文件工具、搜索、子代理与 workflow、web、plan mode。                                                              |
-| `ptc`      | **Snapcompact (PTC)**      | `run_code` 仍是唯一直接工具；其余工具通过 `tools.*` 调用，包括 `snapcompact_recall`。workflow 和插件管理器沿用官方 PTC 的禁用设置。 |
-| `cordis`   | **Snapcompact (Cordis)**   | `tool-cordis` 与官方 Cordis 技能目录（从随 DSH 分发的 `@deepseek-ai/dsh-agent-preset/skills` 挂载）。                               |
-| `minimal`  | 不提供                     | minimal 刻意去掉 read/write/edit 和完整工具面；加入图像帧与归档回查会违背其定位，因此不在范围内。                                   |
+| 顺序 | 方法          | 模型调用 | 产出                                     |
+| ---- | ------------- | -------- | ---------------------------------------- |
+| 1    | `snapcompact` | 无       | 密集帧、精确头尾、`FILES` 索引、归档引用 |
+| 2    | `handoff`     | 一次调用 | 结构化任务交接                           |
+| 3    | `shake`       | 无       | 大工具输出先归档，再用有界摘录替代       |
+| 4    | `soft`        | 原生摘要 | DSH 原生文本摘要                         |
 
-设置卡是共享的：它编辑 profile 平面的 `snapcompact-settings` 行，会话挂载哪个变体就在挂载时读取它。
+只有当路由声明支持图片输入并提供计价（或带标签的估算），且 checkpoint 放得进触发阈值下的剩余空间时，才会走视觉路径；否则按链回退到文本。取消会终止本次压缩，不会静默改用下一种方法。
+
+一个 checkpoint 大致如下（已删节；示例为实际 checkpoint 的英文格式）：
+
+```text
+Snapcompact v2; method=snapcompact
+Exact archived history: sha256:…
+Visual checkpoint: N frames; ¶ marks a source newline; use snapcompact_recall for exact strings.
+FILES (from read/write/edit; not a disk snapshot)
+(Read) read-only; (Write) written without a read; (RW) read and written
+# src/compaction/
+visual-source.ts (Read)
+## methods/
+snapcompact.ts (RW)
+[exact text head]
+[frame 1 of N] … [frame N of N]
+[exact text tail]
+[file] snapcompact archive reference
+```
 
 ## 使用
 
-| 入口                     | 作用                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------ |
-| `/compact`               | DSH 标准手动压缩命令；在任一 Snapcompact preset 内由 Snapcompact 链执行。                        |
-| `/snapcompact status`    | 查看方法链预设、自动压缩开关、当前路由、换算后的阈值与可压空间、每个方法的可用性，以及归档数量。 |
-| `/snapcompact benchmark` | 运行合成语料对照。这会显式授权最多四次辅助模型请求，可能产生费用。                               |
-| `snapcompact_recall`     | 让模型列举、分页读取或字面量搜索精确归档内容。                                                   |
-
-回查示例：
+| 入口                     | 作用                                                        |
+| ------------------------ | ----------------------------------------------------------- |
+| `/compact`               | 手动压缩；在任一 Snapcompact preset 内由 Snapcompact 链执行 |
+| `/snapcompact status`    | 查看路由、有效阈值、可压空间、各方法可用性和归档数量        |
+| `/snapcompact benchmark` | 运行合成对照；最多四次辅助模型调用，可能产生费用            |
+| `snapcompact_recall`     | 列举、分页读取或字面量搜索归档                              |
 
 ```json
 { "action": "list" }
@@ -163,136 +149,32 @@ npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（�
 { "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
 ```
 
-回查返回物理行号和 `(nextOffset, nextColumn)` 游标；继续读取超长单行时要把两者一起传回。文本分页最多返回 200 行片段和 20,000 个 UTF-16 码元。搜索是区分大小写的字面量子串匹配，不是正则表达式。
-
-归档 ID 必须由当前会话中已完成压缩的 checkpoint 引用（包括继承的历史）；任意路径和其他会话的归档不可访问。
+回查返回物理行号和 `(nextOffset, nextColumn)` 游标。文本分页最多返回 200 行片段和 20,000 个 UTF-16 码元。搜索是区分大小写的字面量子串匹配，不是正则。只有当前会话中已完成压缩引用过的归档 ID 才能访问。
 
 ## 配置
 
-配置位于所选 Snapcompact preset 独立压缩分组内的 `snapcompact` 行。常用项可以直接在 **插件 → Snapcompact** 页面的设置卡里改；其余项仍用 preset/配置编辑器。两者都写入当前 profile 的配置补丁，不需要手工修改 profile 文件。
+**插件 → Snapcompact** 设置卡覆盖常用项，通过 DSH 的设置服务写入当前 profile 的配置补丁。一张卡同时配置三个变体；保存后的改动对新会话生效。
 
-```yaml
-methodOrder: [snapcompact, handoff, shake, soft]
-policy:
-  auto: true
-  # 窗口使用到 80% 时触发；/snapcompact status 会显示等价的 token 数。
-  thresholdRatio: 0.8
-  # 压缩后原样保留的尾部；与 retainTokens 互斥。
-  retainRatio: 0.16
-guard:
-  # 当 thresholdRatio − retainRatio 低于该值时拒绝挂载；0 关闭。
-  minCompactableRatio: 0.1
-  # 源历史低于 max(1024, 窗口 × 该比例) 时跳过本次压缩；0 关闭。
-  minSourceRatio: 0.01
-rendering:
-  width: 1568
-  height: 1568
-  maxFrames: 20
-  lineHeight: 20
-  minGlyphPx: 12
-serialization:
-  toolResultMaxChars: 2000
-  toolArgumentMaxChars: 500
-  messageTextMaxChars: 8000
-  headChars: 2000
-  tailChars: 2000
-  includeReasoning: false
-  maxCarriedImages: 4
-```
+| 界面项   | 配置键                                                                       | 默认                                  |
+| -------- | ---------------------------------------------------------------------------- | ------------------------------------- |
+| 方法链   | `methodOrder`                                                                | `[snapcompact, handoff, shake, soft]` |
+| 触发阈值 | `policy.thresholdRatio`                                                      | 宿主默认 0.8                          |
+| 保留尾部 | 自动派生 `thresholdRatio ÷ 5`；YAML 可用 `retainRatio` / `retainTokens` 覆盖 | 0.8 时 0.16                           |
+| 帧尺寸   | `rendering.width` / `rendering.height`                                       | 1568                                  |
+| 最多帧数 | `rendering.maxFrames`                                                        | 20（上限 64）                         |
+| 归档上限 | `archiveMaxBytes`                                                            | 64 MiB                                |
+| 交接预算 | `handoffMaxTokens`                                                           | 4096                                  |
+| 外置阈值 | `shakeThresholdChars`                                                        | 8192                                  |
 
-默认使用 1568×1568 帧、每次 checkpoint 20 帧，上限可配到 64；实际帧数仍受宿主对单条消息的图片上限（默认 20 张）约束。其余限制为 16 MiB 生成图片、64 MiB 源数据/归档数据，以及 15 秒渲染期限。帧数会在触发阈值推出的 checkpoint 预算下动态选择（见[配置参考](docs/zh/configuration.md#触发阈值)）。
-
-### 在应用内配置
-
-**插件 → Snapcompact** 详情页里有一张设置卡，背后是当前 profile 的 `snapcompact-settings` 行。卡片通过 DSH 的设置服务写入该 profile 的配置补丁，保存后重启仍在，不需要手写 YAML。可调项：
-
-| 界面项             | 配置路径                                | 默认                                  |
-| ------------------ | --------------------------------------- | ------------------------------------- |
-| 方法链             | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
-| 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
-| 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动：触发阈值 ÷ 5（0.8 时 0.16）     |
-| 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 归档上限           | `archiveMaxBytes`                       | 64 MiB                                |
-| 交接预算           | `handoffMaxTokens`                      | 4096                                  |
-| 外置阈值           | `shakeThresholdChars`                   | 8192                                  |
-
-需要知道的规则：
-
-- 引擎在会话挂载 preset 时构造，所以**保存后的改动对新会话生效**；运行中的会话保持原配置。
-- 卡片托管的键，其保存值会覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：只有打开“自定义触发阈值”后才会覆盖，否则 preset 里的 `policy.thresholdRatio` 仍然生效。
-- 保留尾部默认自动派生：`retainRatio = 触发阈值 ÷ 5`，改阈值时同步变化。卡片不显示尾部（减少理解负担）；只有旧版保存过显式值时，才出现一行只读的「自定义」和「恢复自动」。`retainRatio` 与 `retainTokens` 仍互斥，手写 YAML 同时给出两者会被拒绝。
-- `guard` 只能在 YAML 里配置；两个守卫默认开启，都接受 `0` 表示关闭。
-- “恢复默认”会移除覆盖，回到插件默认值（阈值则回到 YAML）。
-- 其它内容——`policy` 的其余字段、`serialization`、`routePolicies`、渲染超时——仍然只走 YAML。
-
-### 保留尾部与收益守卫
-
-保留尾部默认随触发阈值派生：
-
-```text
-retainRatio = thresholdRatio ÷ 5          # 未显式设置时
-retain      = retainTokens ?? floor((W − O) × retainRatio)
-```
-
-阈值保持默认 0.8 时派生 0.16，与宿主原生默认一致；改阈值时尾部一起变（0.6 → 0.12，0.5 → 0.10）。卡片路径因此恒有 `可压空间 = 4/5 × 阈值比例`（0.5 阈值时仍 ≥ 0.4），不会撞上 `guard.minCompactableRatio`（默认 0.1）。守卫现在主要保护 YAML 里显式写死的 retention：
-
-```text
-可压空间 = 触发阈值 − 保留尾部
-```
-
-显式 `retainRatio` / `retainTokens` 仍然优先且互斥。自动规则工作在比例空间：当阈值被 `headroomTokens` 压低时，尾部仍按阈值比例计算，实际 token 占比可能大于 1/5，精确数字以 `/snapcompact status` 为准。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
-
-只有显式 retention 才可能撞上守卫。YAML 里 `thresholdRatio: 0.2` 配 `retainRatio: 0.16` 仍会被拒绝（0.04 < 0.1）；修复方式是提高阈值、降低或删除显式尾部，或设置 `guard.minCompactableRatio: 0`。旧版 profile 保存的自定义尾部不会被改写，卡片上点「恢复自动」即可回到派生值。
-
-### 自定义方法链与阈值
-
-`methodOrder` 决定候选方法的优先级：引擎按顺序尝试，**第一个成功且满足压缩约束的方法会被采用**，所以顺序就是回退顺序；最后必须是 `soft` 兜底。可以只列子集，常用组合：
-
-| 预设             | `methodOrder`                         | 特点                                      |
-| ---------------- | ------------------------------------- | ----------------------------------------- |
-| 视觉优先（默认） | `[snapcompact, handoff, shake, soft]` | 先试本地视觉，失败再交接、摘录、原生摘要  |
-| 视觉 + 原生      | `[snapcompact, soft]`                 | 跳过 handoff/shake，视觉失败直接原生摘要  |
-| 本地优先         | `[snapcompact, shake, soft]`          | 两个本地方法都失败才调用原生摘要          |
-| 文本优先         | `[handoff, shake, soft]`              | 先花一次模型调用生成结构化交接            |
-| 仅原生摘要       | `[soft]`                              | 完全回到 DSH 原生摘要；归档与回查仍然可用 |
-
-两点容易误解：`shake` 只要存在一个超过 `shakeThresholdChars` 的工具输出就会成功，放在前面会抢先于视觉路径；checkpoint 预算（触发阈值下剩余空间的一半）只约束 `snapcompact`，其它方法只要求 checkpoint 比源历史小。
-
-触发阈值仍是原生 `policy.thresholdRatio`（窗口百分比，默认 0.8）。`/snapcompact status` 会把它换算成当前路由上的具体 token 数，同时打印保留尾部和两者之间的可压空间，并显示每个方法是会尝试还是会跳过。
-
-如果模型确实支持图片输入且有已知价格，但 DSH 适配器没有暴露图片计价：DeepSeek 模型会使用带标签的 1024 token/帧保守估算；其他模型可以显式声明一个保守上限：
-
-```yaml
-routePolicies:
-  - provider: your-provider
-    model: exact-model-id
-    visualTokensPerFrame: 4096 # 仅为示例，请按实际模型和帧尺寸校准。
-```
-
-这个上限不是实际用量，也不能凭空赋予模型缺失的图片模态。完整字段、原生 policy 透传和路由匹配规则见[配置文档](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
-
-## 兼容性
-
-| 组件     | 支持范围                        |
-| -------- | ------------------------------- |
-| DSH      | `^0.2.2-rc.1`（0.2.x）          |
-| Node.js  | 24+                             |
-| DSH 包   | 由宿主提供的 peer，无需本地副本 |
-| npm 安装 | 预构建包，无安装脚本            |
-
-插件声明的是有上界的区间，而不是单个版本。宿主用 semver 判定：下界是本构建最近验证过的宿主版本，上界是下一条 minor。兼容的 patch 不需要重新发布插件即可安装；更新的 minor 则一直会被拒绝，直到它通过同样的验证——类型、原生集成、包内容与真实 preset 激活——并随新的插件版本发布。不要通过修改 profile 元数据绕过宿主检查。
+`guard`、`serialization`、`routePolicies` 和渲染上限只在 YAML 里配置。完整字段见[配置文档](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
 
 ## 限制与隐私
 
-- **不是无损压缩。** 位图帧可能漏掉字符（缺失字形、中段被截断），而且它只是视觉投影：不可见的行尾空格会被裁掉，每个源换行变成一个单格 `¶`。精确头尾文本和归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
-- **省不省取决于路由和使用时长。** 上面的数字只来自一条路由上的一份合成语料。短会话里精简摘要的每轮上下文可能更小；长历史或图片单价低的路由上视觉 checkpoint 可能更划算。缓存折扣、图片计价和轮次决定账单——checkpoint 更小不等于账单更低。
-- **图片路径的适用条件很窄。** 路由必须声明图片输入和计价或带标签的估算。无法渲染的字符会变成可见的 `?` 占位，缩放后不可读的帧会被拒绝；预算不足或存储失败会回退文本。视觉中段可能被截断，精确内容仍以归档为准。
-- **FILES 是工具触达索引，不是快照。** 它覆盖本次压缩区间内的 read/write/edit 调用和更早的 snapcompact FILES 块，按路径排序后最多 20 条，不包含 `bash` 或 apply-patch 的修改。更早 checkpoint 中被省略的路径不会重新索引；归档和回查仍然精确。
-- **宿主计量提示。** 适配器不提供图片计价时，DSH 自身的上下文计量在下一次 provider usage 锚定前可能低估图片；插件使用自己的保守帧价做视觉 gate。
-- **评测会产生费用。** `/snapcompact benchmark` 使用内置合成语料，最多发起四次辅助模型调用；它不会读取或上传你的私有会话历史。
-- **归档访问有边界。** 回查只接受当前会话中已完成压缩所引用的归档 ID，没有任意路径或跨会话的入口。
-- **无遥测。** 归档通过 DSH 的 attachment 存储保存在 profile 内；插件不会把对话数据上传到其他地方。
+- **不是无损压缩。** 帧可能漏字符；行尾不可见空格会被裁掉，每个源换行变成 `¶`。以归档为准，但归档也救不回其他插件已经删掉的内容。最多携带 4 张已有图片。
+- **省不省取决于路由和使用时长。** 短会话里精简摘要可能更小；长历史或图片 token 便宜时视觉路径更划算。checkpoint 更小，不等于账单更低。
+- **图片路径的适用条件很窄。** 路由必须声明图片输入和计价；帧不可读或预算不够时回退文本。路由没有图片计价时，DSH 自身的上下文计量可能在下一次 provider usage 锚定前滞后；插件用自己的保守帧价做视觉 gate。
+- **`FILES` 是索引，不是磁盘快照。** 它只看 read/write/edit，不看 `bash` 或 apply-patch。
+- **无遥测。** 归档保存在 profile 的 attachment 存储里，对话数据不会上传到别处。
 
 ## 常见问题
 
@@ -306,7 +188,7 @@ routePolicies:
 <details>
 <summary>总是回退文本，从不渲染图片</summary>
 
-运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。除非你确认模型接受图片并已校准数值，否则不要随意添加 `routePolicies` 上限。历史中已有图片时会优先携带，最多 4 张；没有剩余图片槽位时才回退文本交接。
+运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。历史中已有图片时会优先携带，最多 4 张；没有剩余图片槽位时才回退文本交接。
 
 </details>
 
@@ -320,7 +202,7 @@ routePolicies:
 <details>
 <summary>启动被拒绝，提示 “leaves only … of the window compactable”</summary>
 
-当前阈值和保留尾部给 checkpoint 留下的空间太小，收益不足以抵消开销，所以插件拒绝挂载，而不是白烧模型调用。用 `/snapcompact status` 看具体 token 数，然后提高 `policy.thresholdRatio`、降低 `policy.retainRatio`/`retainTokens`，或设置 `guard.minCompactableRatio: 0` 关闭挂载校验。
+通常是 YAML 里显式写了 `retainRatio`/`retainTokens`，留给 checkpoint 的空间太小。提高 `policy.thresholdRatio`、降低或删除显式尾部，或设置 `guard.minCompactableRatio: 0`。
 
 </details>
 
@@ -332,16 +214,9 @@ routePolicies:
 </details>
 
 <details>
-<summary>回查提示归档未被当前会话引用</summary>
-
-请使用当前会话中已完成压缩生成的 checkpoint 里的归档 ID（继承的历史也算）。来自其他会话、其他 profile 或失败尝试的 ID 会被有意拒绝。
-
-</details>
-
-<details>
 <summary>安装被判定为不兼容</summary>
 
-这个构建声明 DSH `^0.2.2-rc.1`，并在 `0.2.2-rc.1` 上验证。请升级或切换到 0.2.x 的宿主，或安装声明了你所用 minor 的 Snapcompact 版本。不要手改兼容性检查来强装。
+这个构建声明 DSH `^0.2.2-rc.1`，并在 `0.2.2-rc.1` 上验证。请安装声明了你所用 minor 的 Snapcompact 版本；不要手改兼容性检查来强装。
 
 </details>
 
@@ -352,6 +227,7 @@ routePolicies:
 - [评测及解释边界](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation.md)
 - [评测结果与成本口径](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
 - [第三方许可与来源](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.zh.md)
+- [问题与反馈](https://github.com/Cyberbolt/dsh-snapcompact/issues)
 - [English docs](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs)
 
 ## 开发
