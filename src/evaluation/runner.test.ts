@@ -199,7 +199,7 @@ describe('truthful evaluation accounting', () => {
     expect(fixture.adapter.calls).toHaveLength(5);
   });
 
-  it('forces a final answer when the recall tool-call cap is reached', async () => {
+  it('forces a final answer when the recall tool-call budget is exhausted', async () => {
     const fixture = await setup('vision');
     const renderer = await rendererFor();
     cleanups.push(renderer.dispose);
@@ -220,6 +220,9 @@ describe('truthful evaluation accounting', () => {
       toolCall,
       toolCall,
       toolCall,
+      toolCall,
+      toolCall,
+      toolCall,
       { text: answers },
     ];
     const report = await evaluate(
@@ -237,11 +240,11 @@ describe('truthful evaluation accounting', () => {
       new AbortController().signal,
     );
     const recall = report.arms.find((arm) => arm.name === 'snapcompact-recall');
-    expect(recall?.runs[0]).toMatchObject({ status: 'measured', correct: 40, recallCalls: 3 });
-    expect(fixture.adapter.calls).toHaveLength(7);
+    expect(recall?.runs[0]).toMatchObject({ status: 'measured', correct: 40, recallCalls: 6 });
+    expect(fixture.adapter.calls).toHaveLength(10);
     expect(fixture.adapter.calls[3]?.tools?.[0]?.name).toBe('snapcompact_recall');
-    expect(fixture.adapter.calls[6]?.tools).toBeUndefined();
-    expect(JSON.stringify(fixture.adapter.calls[6]?.messages)).toContain(
+    expect(fixture.adapter.calls[9]?.tools).toBeUndefined();
+    expect(JSON.stringify(fixture.adapter.calls[9]?.messages)).toContain(
       'Recall tool-call limit reached',
     );
   });

@@ -46,8 +46,9 @@ export interface EvaluationOptions {
 /** The 40-question fixture can exceed 8k output tokens on reasoning routes. */
 const EVALUATION_MAX_TOKENS = 32_768;
 const MAX_RUNS = 5;
-const MAX_TOOL_ROUNDS = 2;
-const MAX_TOOL_CALLS = 4;
+const MAX_TOOL_ROUNDS = 5;
+/** The production agent has no hard recall cap; keep a generous bench ceiling. */
+const MAX_TOOL_CALLS = 40;
 
 function mergeUsage(
   total: TokenUsage | undefined,
@@ -138,6 +139,8 @@ interface AskOptions {
   readonly run: number;
   readonly content: readonly ContentBlock[];
   readonly withTools?: boolean;
+  /** Appended to the question block when the arm deliberately runs without tools. */
+  readonly note?: string;
   readonly archive?: ArchiveRecord;
 }
 
@@ -146,11 +149,21 @@ async function ask(options: AskOptions): Promise<ArmRun> {
   const messages: RequestMessage[] = [
     {
       role: 'user',
-      content: [...options.content, { type: 'text', text: options.questions }],
+      content: [
+        ...options.content,
+        {
+          type: 'text',
+          text:
+            options.note === undefined
+              ? options.questions
+              : `${options.questions}\n${options.note}`,
+        },
+      ],
     },
   ];
   let usage: TokenUsage | undefined;
   let recallCalls = 0;
+  const recallQueries: string[] = [];
   let toolsAllowed = options.withTools === true;
   const total = Object.keys(options.fixture.questions).length;
 
@@ -210,7 +223,7 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           outputTokens: usage.outputTokens,
           elapsedMs: performance.now() - started,
           parseMode: parsed.mode,
-          ...(options.withTools === true ? { recallCalls } : {}),
+          ...(options.withTools === true ? { recallCalls, recallQueries } : {}),
         };
       }
 
@@ -243,8 +256,10 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           }
           let result: unknown;
           let isError = false;
+          let trace = `invalid:${call.arguments.slice(0, 80)}`;
           try {
             const args = recallArgumentsSchema.parse(JSON.parse(call.arguments));
+            trace = `${args.action}${args.query === undefined ? '' : `:${args.query}`}`;
             if (args.action === 'list') {
               result = {
                 archives: [
@@ -274,6 +289,7 @@ async function ask(options: AskOptions): Promise<ArmRun> {
             };
           }
           recallCalls += 1;
+          recallQueries.push(trace);
           messages.push(
             createToolResultMessage({
               callId: call.id,
@@ -505,6 +521,9 @@ export async function evaluate(
             signal,
             run,
             content: visualSummary,
+            note:
+              'This run provides no tools: answer from the checkpoint content alone and do not ' +
+              'request a recall tool.',
           }),
     );
     recallRuns.push(

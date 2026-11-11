@@ -43,6 +43,27 @@ describe('benchmark scoring', () => {
     expect(constraint).toMatchObject({ correct: true, exact: false, archiveContains: true });
   });
 
+  it('ignores one terminal period from quoting the source sentence', async () => {
+    const fixture = await loadFixture();
+    const messages = buildFixtureMessages(fixture);
+    const { serialized, regions } = classifyQuestionRegions(
+      fixture,
+      messages,
+      config.serialization,
+    );
+    const outcomes = buildOutcomes(
+      fixture,
+      { m_build: '20270131.4.', t_next: 'run integration tests' },
+      regions,
+      serialized,
+    );
+    const build = outcomes.find((outcome) => outcome.key === 'm_build');
+    expect(build).toMatchObject({ correct: true, exact: false });
+    // The period rule never forgives a missing clause.
+    const next = outcomes.find((outcome) => outcome.key === 't_next');
+    expect(next?.correct).toBe(false);
+  });
+
   it('aggregates per-run totals and pools regions', async () => {
     const fixture = await loadFixture();
     const messages = buildFixtureMessages(fixture);

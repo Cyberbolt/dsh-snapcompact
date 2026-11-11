@@ -46,6 +46,8 @@ export interface ArmRun {
   readonly elapsedMs: number;
   readonly parseMode?: ParseMode;
   readonly recallCalls?: number;
+  /** One entry per executed recall call, for evidence in the report. */
+  readonly recallQueries?: readonly string[];
   readonly reason?: string;
 }
 

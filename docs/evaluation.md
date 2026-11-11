@@ -2,7 +2,7 @@
 
 [简体中文](zh/evaluation.md)
 
-`/snapcompact benchmark` **explicitly starts model requests**. A single run makes at most eight auxiliary calls: three single-call QA arms (raw history, native summary, visual OCR), up to four calls for the recall arm (initial answer, two tool rounds and one forced answer), and one native-summary generation. If visuals cannot be generated safely, the visual arms are skipped, not replaced by a text call labeled as vision.
+`/snapcompact benchmark` **explicitly starts model requests**. A single run makes one native-summary generation plus four QA arms: three single-call arms (raw history, native summary, visual OCR) and a recall arm that may use up to five tool rounds and forty executed recall calls before the runner forces one final answer without tools. The OCR arm is explicitly told that its run has no tools, so a model cannot be scored on asking for a recall it does not have. If visuals cannot be generated safely, the visual arms are skipped, not replaced by a text call labeled as vision.
 
 ## Benchmark v3
 
@@ -19,7 +19,7 @@ The report separates four arms:
 
 ### Scoring
 
-- **Accepted match** is the primary score. It compares the answer after trimming outer whitespace against the canonical answer plus fixture-declared equivalent spellings. It fixes rubric noise such as a quoted label prefix.
+- **Accepted match** is the primary score. It compares the answer after trimming outer whitespace against the canonical answer plus fixture-declared equivalent spellings. It fixes rubric noise such as a quoted label prefix, and ignores one terminal `.`/`。` because quoting a whole source sentence appends it.
 - **Strict match** is the secondary score: the canonical answer only, still after outer trim. Internal whitespace and code indentation remain significant.
 - Each question is classified as `head`, `middle` or `tail` from where its exact source line sits in the serialized projection, not from its fixture label alone. Questions that cannot be located are `unknown` and reported.
 - Every run records raw answers, the parse mode (`raw`, `extracted`, `failed`), per-region and per-kind tallies, and token usage.
@@ -27,7 +27,7 @@ The report separates four arms:
 
 ### Recall arm
 
-The recall arm receives the same checkpoint plus the production `snapcompact_recall` schema. A tool call runs against the benchmark's own archive, with the same page reader the registered tool uses. It is capped at two tool rounds and four executed tool calls; if the model asks for more, the runner forces one final answer without tools. The benchmark archive is created directly rather than by a committed compaction, so the arm bypasses the session index; the page/query semantics are identical. If a route rejects tools, only this arm fails and the OCR arm still runs.
+The recall arm receives the same checkpoint plus the production `snapcompact_recall` schema. A tool call runs against the benchmark's own archive, with the same page reader the registered tool uses. It is capped at five tool rounds and forty executed tool calls; if the model asks for more, the runner forces one final answer without tools. The cap tracks the production agent, which has no per-turn recall limit of its own. The benchmark archive is created directly rather than by a committed compaction, so the arm bypasses the session index; the page/query semantics are identical. If a route rejects tools, only this arm fails and the OCR arm still runs.
 
 ### Archive integrity
 

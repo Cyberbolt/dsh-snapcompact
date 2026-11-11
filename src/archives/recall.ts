@@ -8,7 +8,8 @@ export const recallArgumentsSchema = z.strictObject({
   action: z.enum(['list', 'read', 'search']),
   archiveId: z
     .string()
-    .regex(/^sha256:[a-f0-9]{64}$/)
+    .regex(/^(?:sha256:)?[a-f0-9]{64}$/u)
+    .transform((value) => (value.startsWith('sha256:') ? value : `sha256:${value}`))
     .optional(),
   query: z.string().min(1).max(1_024).optional(),
   offset: z.number().int().nonnegative().default(0),
@@ -32,7 +33,9 @@ export const recallToolSchema: ToolSchema = {
       action: { type: 'string', enum: ['list', 'read', 'search'] },
       archiveId: {
         type: 'string',
-        description: 'Attachment ID from the checkpoint or list result; required for read/search.',
+        description:
+          'Attachment ID from the checkpoint or list result; required for read/search. ' +
+          'The sha256: prefix is optional.',
       },
       query: {
         type: 'string',

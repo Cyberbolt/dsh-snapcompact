@@ -16,7 +16,7 @@
 
 适合长代码或调试会话——几十轮之后，你还要精确找回某条命令。不适合短会话、纯文本模型或 minimal 模式。
 
-**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.6.1` → 新建会话 → **Snapcompact (Standard)**。无需构建。
+**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.6.2` → 新建会话 → **Snapcompact (Standard)**。无需构建。
 
 ## 为什么用图片
 
@@ -41,21 +41,21 @@
 
 ## 实测
 
-| 对照（fixture v3，单次） | 接受匹配 | 严格匹配 |  中段 | 每轮读取 | 一次性生成 |
-| ------------------------ | -------: | -------: | ----: | -------: | ---------: |
-| 原始历史                 |    40/40 |    40/40 | 20/20 |   15,963 |          0 |
-| 原生摘要                 |    38/40 |    37/40 | 20/20 |    1,623 |     20,440 |
-| Snapcompact              |    33/40 |    32/40 | 14/20 |    6,710 |          0 |
-| Snapcompact + recall     |    34/40 |    34/40 | 15/20 |   23,650 |          0 |
+| 对照（fixture v3，三次）         | 接受匹配 | 严格匹配 |  中段 | 每轮读取 | 一次性生成 |
+| -------------------------------- | -------: | -------: | ----: | -------: | ---------: |
+| 原始历史                         |    40/40 |  38.7/40 | 60/60 |   15,955 |          0 |
+| 原生摘要                         |  38.3/40 |  37.3/40 | 59/60 |    1,701 |     24,409 |
+| Snapcompact（仅帧）              |  34.0/40 |  33.7/40 | 43/60 |    6,803 |          0 |
+| Snapcompact + recall（出厂配置） |    40/40 |  36.7/40 | 60/60 |   30,841 |          0 |
 
-**2026-11-11** 用路由 `opencode-go/deepseek-v4.1-flash` 的真实单次运行。原生摘要更可答（38/40 vs 33/40），并保住了全部中段事实；视觉 checkpoint 没有生成调用，每轮携带 6,710 token。3 轮上下文视觉仍更便宜（20,130 vs 25,309）。recall 臂调用 4 次，只多 1 道接受匹配，读取涨到 23,650 token。单次运行可能波动一两题；需要范围请在自己的路由上跑 `/snapcompact benchmark 3`。协议见 [evaluation.md](docs/zh/evaluation.md)，明细见 [evaluation-results.md](docs/zh/evaluation-results.md)。
+**2026-11-11** 用路由 `opencode-go/deepseek-v4.1-flash` 的真实三次运行。出厂配置——帧加 `snapcompact_recall`——在接受匹配上打平未压缩原文（三次都是 40/40），并超过原生摘要（38.3/40）；checkpoint 本身用 6,803 token 承载 63,423 字符历史。只用帧是 34/40：剩下的中段标识符需要每道精确串题做一次 search，所以 recall 臂的每轮读取更高——那是单回合回答 40 题时 24 次校验调用，不是稳态成本。严格匹配更低，因为带标签的引用算接受匹配但不算逐字相同。协议见 [evaluation.md](docs/zh/evaluation.md)，明细见 [evaluation-results.md](docs/zh/evaluation-results.md)。
 
 ## 安装
 
 需要 DSH `^0.2.2-rc.1`（在 `0.2.2-rc.1` 上验证）和 Node.js 24+。npm 包已包含编译后的 `dist/`，没有构建步骤，也没有安装脚本。0.2.x 的 patch 可以直接安装，不需要重新发布插件；下一条 minor 只在重新验证后才会声明。
 
 1. 打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 安装 `dsh-snapcompact@0.6.1`。
+2. 安装 `dsh-snapcompact@0.6.2`。
 3. 若页面提示重启，按提示完成；然后新建会话，选择变体。
 
 | 官方模式   | 选择                       | 保留的行为                                               |
@@ -69,7 +69,7 @@
 通过命令行安装：
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.6.1
+dsh plugin --profile web add dsh-snapcompact@0.6.2
 ```
 
 把 `web` 换成你实际使用的 profile。使用 DSH Desktop 时优先用应用内插件页：CLI 可能写入桌面端不使用的 profile。

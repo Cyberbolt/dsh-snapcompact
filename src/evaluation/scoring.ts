@@ -15,6 +15,14 @@ export function normalizeAnswer(text: string): string {
   return text.trim();
 }
 
+/**
+ * Quoting a whole source sentence appends that sentence's terminal period. That
+ * is punctuation, not a different fact, so the accepted comparison drops one.
+ */
+export function withoutTerminalPeriod(text: string): string {
+  return /[.。]$/u.test(text) ? text.slice(0, -1) : text;
+}
+
 /** Canonical answer plus every fixture-declared equivalent spelling. */
 export function acceptedAnswers(question: Fixture['questions'][string]): string[] {
   return [question.answer, ...question.accept].map(normalizeAnswer);
@@ -70,6 +78,7 @@ export function buildOutcomes(
     const given = answers[key] ?? null;
     const normalized = given === null ? null : normalizeAnswer(given);
     const accepted = acceptedAnswers(question);
+    const bare = normalized === null ? null : withoutTerminalPeriod(normalized);
     const region = regions.get(key) ?? 'unknown';
     outcomes.push({
       key,
@@ -80,7 +89,10 @@ export function buildOutcomes(
       region,
       declaredRegion: question.region,
       kind: question.kind,
-      correct: normalized !== null && accepted.includes(normalized),
+      correct:
+        normalized !== null &&
+        (accepted.includes(normalized) ||
+          (bare !== null && accepted.some((answer) => withoutTerminalPeriod(answer) === bare))),
       exact: normalized !== null && normalized === normalizeAnswer(question.answer),
       archiveContains: transcript.includes(question.source),
     });

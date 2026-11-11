@@ -16,7 +16,7 @@ When a session gets long, Snapcompact turns the middle of the transcript into de
 
 Use it for long coding or debugging sessions where you still need the exact command from forty turns ago. It is not for short chats, text-only routes, or minimal mode.
 
-**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.1` → new session → **Snapcompact (Standard)**. No build step.
+**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.2` → new session → **Snapcompact (Standard)**. No build step.
 
 ## Why render?
 
@@ -41,21 +41,21 @@ A vision model is billed largely by image area, not by how many characters the i
 
 ## Benchmark
 
-| Arm (fixture v3, one run) | Accepted | Strict | Middle | Per-turn read | One-time generation |
-| ------------------------- | -------: | -----: | -----: | ------------: | ------------------: |
-| Raw history               |    40/40 |  40/40 |  20/20 |        15,963 |                   0 |
-| Native summary            |    38/40 |  37/40 |  20/20 |         1,623 |              20,440 |
-| Snapcompact               |    33/40 |  32/40 |  14/20 |         6,710 |                   0 |
-| Snapcompact + recall      |    34/40 |  34/40 |  15/20 |        23,650 |                   0 |
+| Arm (fixture v3, three runs)   | Accepted |  Strict | Middle | Per-turn read | One-time generation |
+| ------------------------------ | -------: | ------: | -----: | ------------: | ------------------: |
+| Raw history                    |    40/40 | 38.7/40 |  60/60 |        15,955 |                   0 |
+| Native summary                 |  38.3/40 | 37.3/40 |  59/60 |         1,701 |              24,409 |
+| Snapcompact (frames only)      |  34.0/40 | 33.7/40 |  43/60 |         6,803 |                   0 |
+| Snapcompact + recall (shipped) |    40/40 | 36.7/40 |  60/60 |        30,841 |                   0 |
 
-Real run on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`, one run. The native summary was more answerable (38/40 vs 33/40) and kept every middle fact; the visual checkpoint paid no generation call and carried 6,710 tokens per turn. At three turns the visual context is still cheaper (20,130 vs 25,309). The recall arm made 4 calls for one extra accepted answer, at 23,650 read tokens. One run can move a question or two; run `/snapcompact benchmark 3` on your route for a range. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
+Real three-run measurement on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`. The shipped configuration — frames plus `snapcompact_recall` — matched the uncompressed control on accepted matches (40/40 in all three runs) and beat the native summary (38.3/40); the checkpoint itself is 6,803 tokens for 63,423 characters of history. Frames alone answer 34/40: the remaining middle identifiers need one search per exact-string question, which is why the recall arm's per-turn read is higher — 24 verification calls inside a single 40-question turn, not a steady-state cost. Strict matching is lower because quoted labels count as accepted but not exact. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
 
 ## Install
 
 Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
 
 1. Open **Plugins → Add plugin**.
-2. Install `dsh-snapcompact@0.6.1`.
+2. Install `dsh-snapcompact@0.6.2`.
 3. Restart if prompted, then create a new session and choose a variant.
 
 | Official mode | Choose                     | What you keep                                                         |
@@ -69,7 +69,7 @@ Installation adds opt-in presets. It does not change official presets or running
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.6.1
+dsh plugin --profile web add dsh-snapcompact@0.6.2
 ```
 
 Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
