@@ -427,6 +427,7 @@
     "m_flag": {
       "question": "Return the FEATURE_ROLLOUT value from Observation 120.",
       "answer": "canary-9",
+      "accept": ["FEATURE_ROLLOUT=canary-9"],
       "source": "Observation 120: the rollout flag is FEATURE_ROLLOUT=canary-9.",
       "region": "middle",
       "kind": "config"
@@ -462,6 +463,7 @@
     "m_failover": {
       "question": "Return the failover mode from Observation 420.",
       "answer": "PRIMARY-ONLY",
+      "accept": ["PRIMARY-ONLY until further notice"],
       "source": "Observation 420: the failover mode is PRIMARY-ONLY until further notice.",
       "region": "middle",
       "kind": "identifier"
@@ -511,6 +513,7 @@
     "m_header": {
       "question": "Return the trace value from Observation 840.",
       "answer": "5b7e9c1d",
+      "accept": ["X-Snap-Trace: 5b7e9c1d"],
       "source": "Observation 840: the trace header is X-Snap-Trace: 5b7e9c1d.",
       "region": "middle",
       "kind": "identifier"

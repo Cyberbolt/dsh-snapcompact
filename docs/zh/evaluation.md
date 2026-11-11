@@ -2,7 +2,7 @@
 
 [English](../evaluation.md)
 
-执行 `/snapcompact benchmark` 是**显式发起模型调用**。单次运行最多八次辅助调用：三个单次 QA 臂（原始历史、原生摘要、视觉 OCR）、recall 臂最多四次调用（首次回答 + 两轮工具 + 一次强制作答），以及一次原生摘要生成。无法安全生成图片时跳过视觉臂，不用文本调用冒充视觉成绩。
+执行 `/snapcompact benchmark` 是**显式发起模型调用**。单次运行包含一次原生摘要生成和四个 QA 臂：三个单次臂（原始历史、原生摘要、视觉 OCR），以及一个 recall 臂——最多五轮工具、四十次实际调用，超过后 runner 会在无工具的情况下强制一次最终作答。OCR 臂会明确告知本回合没有工具，因此不会因为“模型请求了不存在的 recall”而扣分。无法安全生成图片时跳过视觉臂，不用文本调用冒充视觉成绩。
 
 ## 评测 v3
 
@@ -19,7 +19,7 @@
 
 ### 评分
 
-- **接受匹配**是主分。只裁掉答案外层空白，然后与 canonical answer 及 fixture 声明的等价写法比较，消除“引文带标签前缀”这类评分噪声。
+- **接受匹配**是主分。只裁掉答案外层空白，然后与 canonical answer 及 fixture 声明的等价写法比较，消除“引文带标签前缀”这类评分噪声；同时忽略一个结尾的 `.`/`。`，因为引用整句原文会把这个标点带出来。
 - **严格匹配**是副分。只与 canonical answer 比较，仍然只裁外层空白；内部空白和代码缩进保持有效。
 - 每题按 exact source 在序列化投影中的实际位置归入 `head`、`middle` 或 `tail`，不只依赖 fixture 的声明。找不到 source 的题标为 `unknown` 并报告。
 - 每次运行都记录 raw answer、解析模式（`raw`、`extracted`、`failed`）、分区/题型计数和 token usage。
@@ -27,7 +27,7 @@
 
 ### Recall 臂
 
-recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；最多两轮工具、四次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
+recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；最多五轮工具、四十次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。这个上限对齐生产 agent：真实 agent 本身没有每回合 recall 次数限制。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
 
 ### 归档完整性
 

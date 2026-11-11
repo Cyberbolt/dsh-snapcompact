@@ -41,14 +41,14 @@ A vision model is billed largely by image area, not by how many characters the i
 
 ## Benchmark
 
-| Arm (fixture v3, one run) | Accepted | Strict | Middle | Per-turn read | One-time generation |
-| ------------------------- | -------: | -----: | -----: | ------------: | ------------------: |
-| Raw history               |    40/40 |  40/40 |  20/20 |        15,963 |                   0 |
-| Native summary            |    38/40 |  37/40 |  20/20 |         1,623 |              20,440 |
-| Snapcompact               |    33/40 |  32/40 |  14/20 |         6,710 |                   0 |
-| Snapcompact + recall      |    34/40 |  34/40 |  15/20 |        23,650 |                   0 |
+| Arm (fixture v3, three runs)   | Accepted |  Strict | Middle | Per-turn read | One-time generation |
+| ------------------------------ | -------: | ------: | -----: | ------------: | ------------------: |
+| Raw history                    |    40/40 | 38.7/40 |  60/60 |        15,955 |                   0 |
+| Native summary                 |  38.3/40 | 37.3/40 |  59/60 |         1,701 |              24,409 |
+| Snapcompact (frames only)      |  34.0/40 | 33.7/40 |  43/60 |         6,803 |                   0 |
+| Snapcompact + recall (shipped) |    40/40 | 36.7/40 |  60/60 |        30,841 |                   0 |
 
-Real run on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`, one run. The native summary was more answerable (38/40 vs 33/40) and kept every middle fact; the visual checkpoint paid no generation call and carried 6,710 tokens per turn. At three turns the visual context is still cheaper (20,130 vs 25,309). The recall arm made 4 calls for one extra accepted answer, at 23,650 read tokens. One run can move a question or two; run `/snapcompact benchmark 3` on your route for a range. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
+Real three-run measurement on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`. The shipped configuration — frames plus `snapcompact_recall` — matched the uncompressed control on accepted matches (40/40 in all three runs) and beat the native summary (38.3/40); the checkpoint itself is 6,803 tokens for 63,423 characters of history. Frames alone answer 34/40: the remaining middle identifiers need one search per exact-string question, which is why the recall arm's per-turn read is higher — 24 verification calls inside a single 40-question turn, not a steady-state cost. Strict matching is lower because quoted labels count as accepted but not exact. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
 
 ## Install
 
