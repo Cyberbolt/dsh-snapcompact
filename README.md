@@ -39,17 +39,6 @@ A vision model is billed largely by image area, not by how many characters the i
 - **A safe fallback.** `snapcompact → shake → soft`; the native summary is last.
 - **Native DSH behavior.** Region selection, transaction locks, recovery and capacity checks stay in the host.
 
-## Benchmark
-
-| Arm (fixture v3, three runs)   | Accepted |  Strict | Middle | Per-turn read | One-time generation |
-| ------------------------------ | -------: | ------: | -----: | ------------: | ------------------: |
-| Raw history                    |    40/40 | 38.7/40 |  60/60 |        15,955 |                   0 |
-| Native summary                 |  38.3/40 | 37.3/40 |  59/60 |         1,701 |              24,409 |
-| Snapcompact (frames only)      |  34.0/40 | 33.7/40 |  43/60 |         6,803 |                   0 |
-| Snapcompact + recall (shipped) |    40/40 | 36.7/40 |  60/60 |        30,841 |                   0 |
-
-Real three-run measurement on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`. The shipped configuration — frames plus `snapcompact_recall` — matched the uncompressed control on accepted matches (40/40 in all three runs) and beat the native summary (38.3/40); the checkpoint itself is 6,803 tokens for 63,423 characters of history. Frames alone answer 34/40: the remaining middle identifiers need one search per exact-string question, which is why the recall arm's per-turn read is higher — 24 verification calls inside a single 40-question turn, not a steady-state cost. Strict matching is lower because quoted labels count as accepted but not exact. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
-
 ## Install
 
 Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
