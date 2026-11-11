@@ -16,7 +16,7 @@
 
 适合长代码或调试会话——几十轮之后，你还要精确找回某条命令。不适合短会话、纯文本模型或 minimal 模式。
 
-**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.6.0` → 新建会话 → **Snapcompact (Standard)**。无需构建。
+**安装：** 插件 → 添加插件 → `dsh-snapcompact@0.6.1` → 新建会话 → **Snapcompact (Standard)**。无需构建。
 
 ## 为什么用图片
 
@@ -41,20 +41,21 @@
 
 ## 实测
 
-| 对照（fixture v2，40 题） | 精确匹配 | 中段 probe | 每轮读取 | 一次性生成 | 3 轮合计 |
-| ------------------------- | -------: | ---------: | -------: | ---------: | -------: |
-| 原始历史                  |    38/40 |          — |   15,107 |          0 |   45,321 |
-| 原生摘要                  |    40/40 |          — |    1,515 |     20,361 |   24,906 |
-| Snapcompact               |    36/40 |       8/10 |    6,717 |          0 |   20,151 |
+| 对照（fixture v3，单次） | 接受匹配 | 严格匹配 |  中段 | 每轮读取 | 一次性生成 |
+| ------------------------ | -------: | -------: | ----: | -------: | ---------: |
+| 原始历史                 |    40/40 |    40/40 | 20/20 |   15,963 |          0 |
+| 原生摘要                 |    38/40 |    37/40 | 20/20 |    1,623 |     20,440 |
+| Snapcompact              |    33/40 |    32/40 | 14/20 |    6,710 |          0 |
+| Snapcompact + recall     |    34/40 |    34/40 | 15/20 |   23,650 |          0 |
 
-视觉检查点（checkpoint）在首次压缩时更便宜（6,717 vs 21,876），3 轮合计也更便宜（20,151 vs 24,906）；摘要大约从第 4 轮开始反超。视觉组答对 8/10 个中段 probe，这是第一个真正依赖帧读取的分数；4 个未命中里有 2 个是头尾事实，归档里仍然保留。固定语料也可能出现顺序反转（原生摘要 40/40，原文 38/40），请在你的路由上跑 `/snapcompact benchmark`。
+**2026-11-11** 用路由 `opencode-go/deepseek-v4.1-flash` 的真实单次运行。原生摘要更可答（38/40 vs 33/40），并保住了全部中段事实；视觉 checkpoint 没有生成调用，每轮携带 6,710 token。3 轮上下文视觉仍更便宜（20,130 vs 25,309）。recall 臂调用 4 次，只多 1 道接受匹配，读取涨到 23,650 token。单次运行可能波动一两题；需要范围请在自己的路由上跑 `/snapcompact benchmark 3`。协议见 [evaluation.md](docs/zh/evaluation.md)，明细见 [evaluation-results.md](docs/zh/evaluation-results.md)。
 
 ## 安装
 
 需要 DSH `^0.2.2-rc.1`（在 `0.2.2-rc.1` 上验证）和 Node.js 24+。npm 包已包含编译后的 `dist/`，没有构建步骤，也没有安装脚本。0.2.x 的 patch 可以直接安装，不需要重新发布插件；下一条 minor 只在重新验证后才会声明。
 
 1. 打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 安装 `dsh-snapcompact@0.6.0`。
+2. 安装 `dsh-snapcompact@0.6.1`。
 3. 若页面提示重启，按提示完成；然后新建会话，选择变体。
 
 | 官方模式   | 选择                       | 保留的行为                                               |
@@ -68,7 +69,7 @@
 通过命令行安装：
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.6.0
+dsh plugin --profile web add dsh-snapcompact@0.6.1
 ```
 
 把 `web` 换成你实际使用的 profile。使用 DSH Desktop 时优先用应用内插件页：CLI 可能写入桌面端不使用的 profile。
@@ -135,12 +136,12 @@ snapcompact.ts (RW)
 
 ## 使用
 
-| 入口                     | 作用                                                        |
-| ------------------------ | ----------------------------------------------------------- |
-| `/compact`               | 手动压缩；在任一 Snapcompact preset 内由 Snapcompact 链执行 |
-| `/snapcompact status`    | 查看路由、有效阈值、可压空间、各方法可用性和归档数量        |
-| `/snapcompact benchmark` | 运行合成对照；最多四次辅助模型调用，可能产生费用            |
-| `snapcompact_recall`     | 列举、分页读取或字面量搜索归档                              |
+| 入口                           | 作用                                                        |
+| ------------------------------ | ----------------------------------------------------------- |
+| `/compact`                     | 手动压缩；在任一 Snapcompact preset 内由 Snapcompact 链执行 |
+| `/snapcompact status`          | 查看路由、有效阈值、可压空间、各方法可用性和归档数量        |
+| `/snapcompact benchmark [1-5]` | 运行合成 v3 对照；单次最多八次辅助调用，可能产生费用        |
+| `snapcompact_recall`           | 列举、分页读取或字面量搜索归档                              |
 
 ```json
 { "action": "list" }
@@ -223,7 +224,6 @@ snapcompact.ts (RW)
 - [配置与路由计价](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)
 - [架构与代码阅读顺序](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/architecture.md)
 - [评测及解释边界](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation.md)
-- [评测结果与成本口径](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
 - [第三方许可与来源](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.zh.md)
 - [问题与反馈](https://github.com/Cyberbolt/dsh-snapcompact/issues)
 - [English docs](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs)

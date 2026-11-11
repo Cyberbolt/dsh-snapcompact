@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ArchiveService } from '../../archives/service.js';
 import type { SnapcompactEngine } from '../../compaction/engine.js';
 import type { ArchiveIndex } from './archive-projection.js';
-import { registerCommands } from './commands.js';
+import { parseBenchmarkRuns, registerCommands } from './commands.js';
 
 interface CapturedCommand {
   readonly name: string;
@@ -47,12 +47,21 @@ function register(ctx: Context): void {
 }
 
 describe('snapcompact command', () => {
-  it('advertises /compact as the manual compaction entry point', () => {
+  it('advertises the run-count syntax and /compact as the manual entry point', () => {
     const { ctx, command } = captureCommand();
     register(ctx);
     expect(command().description).toContain('/compact');
-    expect(command().input?.hint).toBe('status | benchmark（最多四次辅助模型调用）');
+    expect(command().input?.hint).toBe('status | benchmark [1-5]');
     expect(command().input?.hint).not.toContain('run');
+  });
+
+  it('parses benchmark, benchmark 3 and rejects invalid counts', () => {
+    expect(parseBenchmarkRuns('benchmark')).toEqual({ runs: 1 });
+    expect(parseBenchmarkRuns('benchmark 3')).toEqual({ runs: 3 });
+    expect(parseBenchmarkRuns('status')).toBeNull();
+    for (const invalid of ['benchmark 0', 'benchmark 6', 'benchmark abc', 'benchmark 1 2']) {
+      expect(parseBenchmarkRuns(invalid), invalid).toHaveProperty('error');
+    }
   });
 
   it('rejects run with a pointer to /compact instead of compacting', async () => {
@@ -79,7 +88,7 @@ describe('snapcompact command', () => {
       commandId: 'test-command',
     });
     expect(result.kind).toBe('error');
-    expect(result.text).toContain('用法：/snapcompact status | benchmark');
+    expect(result.text).toContain('用法：/snapcompact status | benchmark [1-5]');
     expect(result.text).toContain('/compact');
   });
 });

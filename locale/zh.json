@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "一个 DeepSeek Harness 插件：把长对话中被丢弃的历史渲染成视觉模型可直接阅读的位图帧来压缩上下文，本地、确定性、图片路径不调用摘要模型；同时保留精确头尾文本与可检索归档。"
+    "description": "DeepSeek Harness 上下文压缩插件：把长会话的中段渲染成视觉模型可读的图片，不调用摘要模型，保留精确文本与可检索归档。"
   }
 }
