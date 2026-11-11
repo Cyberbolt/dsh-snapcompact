@@ -36,7 +36,7 @@
 - **视觉路径不调用摘要模型。** 渲染在本地完成：没有生成成本，不联网，也不需要额外的 API key。
 - **压缩后仍能精确回查。** 精确头尾文本 + 可检索归档；`snapcompact_recall` 可以逐行读取。
 - **文件地图不会丢。** 由 read/write/edit 调用生成的有界 `FILES` 索引，带 `(Read)`/`(Write)`/`(RW)` 标记。
-- **失败有兜底。** `snapcompact → handoff → shake → soft`，原生摘要是最后一步。
+- **失败有兜底。** `snapcompact → shake → soft`，原生摘要是最后一步。
 - **保留 DSH 原生行为。** 区间选择、事务锁、恢复和容量校验仍由宿主负责。
 
 ## 实测
@@ -101,7 +101,7 @@ DSH 选择安全的压缩区间
 精确归档（sha256） ── 在 checkpoint 之后仍然保留
         │
         ▼
-snapcompact → handoff → shake → soft
+snapcompact → shake → soft
         │
         ▼
 原生事务提交一个 checkpoint
@@ -110,9 +110,8 @@ snapcompact → handoff → shake → soft
 | 顺序 | 方法          | 模型调用 | 产出                                     |
 | ---- | ------------- | -------- | ---------------------------------------- |
 | 1    | `snapcompact` | 无       | 密集帧、精确头尾、`FILES` 索引、归档引用 |
-| 2    | `handoff`     | 一次调用 | 结构化任务交接                           |
-| 3    | `shake`       | 无       | 大工具输出先归档，再用有界摘录替代       |
-| 4    | `soft`        | 原生摘要 | DSH 原生文本摘要                         |
+| 2    | `shake`       | 无       | 大工具输出先归档，再用有界摘录替代       |
+| 3    | `soft`        | 原生摘要 | DSH 原生文本摘要                         |
 
 只有当路由声明支持图片输入并提供计价（或带标签的估算），且 checkpoint 放得进触发阈值下的剩余空间时，才会走视觉路径；否则按链回退到文本。取消会终止本次压缩，不会静默改用下一种方法。
 
@@ -155,16 +154,15 @@ snapcompact.ts (RW)
 
 **插件 → Snapcompact** 设置卡覆盖常用项，通过 DSH 的设置服务写入当前 profile 的配置补丁。一张卡同时配置三个变体；保存后的改动对新会话生效。
 
-| 界面项   | 配置键                                                                       | 默认                                  |
-| -------- | ---------------------------------------------------------------------------- | ------------------------------------- |
-| 方法链   | `methodOrder`                                                                | `[snapcompact, handoff, shake, soft]` |
-| 触发阈值 | `policy.thresholdRatio`                                                      | 宿主默认 0.8                          |
-| 保留尾部 | 自动派生 `thresholdRatio ÷ 5`；YAML 可用 `retainRatio` / `retainTokens` 覆盖 | 0.8 时 0.16                           |
-| 帧尺寸   | `rendering.width` / `rendering.height`                                       | 1568                                  |
-| 最多帧数 | `rendering.maxFrames`                                                        | 20（上限 64）                         |
-| 归档上限 | `archiveMaxBytes`                                                            | 64 MiB                                |
-| 交接预算 | `handoffMaxTokens`                                                           | 4096                                  |
-| 外置阈值 | `shakeThresholdChars`                                                        | 8192                                  |
+| 界面项   | 配置键                                                                       | 默认                         |
+| -------- | ---------------------------------------------------------------------------- | ---------------------------- |
+| 方法链   | `methodOrder`                                                                | `[snapcompact, shake, soft]` |
+| 触发阈值 | `policy.thresholdRatio`                                                      | 宿主默认 0.8                 |
+| 保留尾部 | 自动派生 `thresholdRatio ÷ 5`；YAML 可用 `retainRatio` / `retainTokens` 覆盖 | 0.8 时 0.16                  |
+| 帧尺寸   | `rendering.width` / `rendering.height`                                       | 1568                         |
+| 最多帧数 | `rendering.maxFrames`                                                        | 20（上限 64）                |
+| 归档上限 | `archiveMaxBytes`                                                            | 64 MiB                       |
+| 外置阈值 | `shakeThresholdChars`                                                        | 8192                         |
 
 `guard`、`serialization`、`routePolicies` 和渲染上限只在 YAML 里配置。完整字段见[配置文档](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
 
@@ -188,7 +186,7 @@ snapcompact.ts (RW)
 <details>
 <summary>总是回退文本，从不渲染图片</summary>
 
-运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。历史中已有图片时会优先携带，最多 4 张；没有剩余图片槽位时才回退文本交接。
+运行 `/snapcompact status`。最常见的原因是当前路由没有声明图片输入或没有图片计价，这是预期的安全行为。历史中已有图片时会优先携带，最多 4 张；没有剩余图片槽位时才回退到文本链（shake 摘录 → 原生摘要）。
 
 </details>
 

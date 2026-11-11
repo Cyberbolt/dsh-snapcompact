@@ -47,7 +47,7 @@ describe('plugin configuration', () => {
   });
   it('supplies conservative detached defaults', () => {
     const config = resolveConfig({});
-    expect(config.methodOrder).toEqual(['snapcompact', 'handoff', 'shake', 'soft']);
+    expect(config.methodOrder).toEqual(['snapcompact', 'shake', 'soft']);
     expect(config.rendering).toMatchObject({
       width: 1568,
       height: 1568,
@@ -63,7 +63,7 @@ describe('plugin configuration', () => {
     });
     expect(config.routePolicies).toEqual([]);
     config.methodOrder.pop();
-    expect(resolveConfig({}).methodOrder).toHaveLength(4);
+    expect(resolveConfig({}).methodOrder).toHaveLength(3);
   });
   it('keeps the loader schema default aligned with the strict parser', () => {
     expect(Config({}).methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
@@ -109,7 +109,8 @@ describe('plugin configuration', () => {
   it.each([
     { methodOrder: [] },
     { methodOrder: ['soft', 'soft'] },
-    { methodOrder: ['handoff'] },
+    { methodOrder: ['shake'] },
+    { methodOrder: ['handoff', 'soft'] },
     { methodOrder: ['remote', 'soft'] },
     { typo: true },
     { guard: { minCompactableRatio: -0.1 } },

@@ -5,7 +5,7 @@
 手动压缩统一用 `/compact`，它解析到 preset 挂载的后端；`/snapcompact status` 只是只读诊断，不是压缩入口。
 
 ```yaml
-methodOrder: [snapcompact, handoff, shake, soft]
+methodOrder: [snapcompact, shake, soft]
 policy:
   auto: true
   thresholdRatio: 0.8
@@ -36,7 +36,6 @@ serialization:
   includeReasoning: false
   maxCarriedImages: 4
 archiveMaxBytes: 67108864
-handoffMaxTokens: 4096
 shakeThresholdChars: 8192
 routePolicies: []
 ```
@@ -45,17 +44,16 @@ routePolicies: []
 
 **插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次，因此一张卡配置所有 Snapcompact 变体。
 
-卡片存储 9 个键，其中 7 个可编辑：
+卡片存储 8 个键，其中 6 个可编辑：
 
 | 界面项             | 配置路径                                | 默认                                          |
 | ------------------ | --------------------------------------- | --------------------------------------------- |
-| 方法链             | `methodOrder`                           | `[snapcompact, handoff, shake, soft]`         |
+| 方法链             | `methodOrder`                           | `[snapcompact, shake, soft]`                  |
 | 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                        |
 | 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动派生：`thresholdRatio ÷ 5`（0.8 时 0.16） |
 | 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                          |
 | 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                                 |
 | 归档上限           | `archiveMaxBytes`                       | 64 MiB                                        |
-| 交接预算           | `handoffMaxTokens`                      | 4096                                          |
 | 外置阈值           | `shakeThresholdChars`                   | 8192                                          |
 
 持久化与优先级：
@@ -80,13 +78,13 @@ bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模�
 
 `methodOrder` 是候选方法的优先级列表。引擎按顺序尝试，在**第一个成功的候选**处停止；顺序就是回退顺序，不是多阶段流水线。方法链必须非空、不重复，并以 `soft` 结尾。以下子集都合法：
 
-| 预设             | `methodOrder`                         | 行为                                     |
-| ---------------- | ------------------------------------- | ---------------------------------------- |
-| 视觉优先（默认） | `[snapcompact, handoff, shake, soft]` | 先试本地视觉，再交接、摘录，最后原生摘要 |
-| 视觉 + 原生      | `[snapcompact, soft]`                 | 跳过 handoff/shake；视觉失败直接原生摘要 |
-| 本地优先         | `[snapcompact, shake, soft]`          | 两个本地路径都失败才调用原生摘要         |
-| 文本优先         | `[handoff, shake, soft]`              | 先花一次模型调用生成结构化交接           |
-| 仅原生摘要       | `[soft]`                              | 回到 DSH 原生摘要；归档与回查仍然可用    |
+| 预设             | `methodOrder`                | 行为                                  |
+| ---------------- | ---------------------------- | ------------------------------------- |
+| 视觉优先（默认） | `[snapcompact, shake, soft]` | 先试本地视觉，再摘录，最后原生摘要    |
+| 视觉 + 原生      | `[snapcompact, soft]`        | 跳过摘录；视觉失败直接原生摘要        |
+| 仅原生摘要       | `[soft]`                     | 回到 DSH 原生摘要；归档与回查仍然可用 |
+
+旧版本保存的方法链会在读取时归一化：`handoff` 被丢弃，其余顺序保留。手写 YAML 里如果仍写着 `handoff`，严格解析器会拒绝，需要删掉这个名字。
 
 容易误解的语义：
 

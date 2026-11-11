@@ -177,7 +177,7 @@ describe('client bundle', () => {
     const text = collectText(tree);
 
     expect(text).toContain('t:title');
-    expect(text).toContain('snapcompact \u2192 handoff \u2192 shake \u2192 soft');
+    expect(text).toContain('snapcompact \u2192 shake \u2192 soft');
     expect(text).toContain('t:chainTitle');
     expect(text).toContain('t:save');
     expect(text).not.toContain('t:unavailableTitle');
@@ -334,15 +334,16 @@ describe('client bundle', () => {
       'frameSize',
       'maxFrames',
       'archiveMaxBytes',
-      'handoffMaxTokens',
       'shakeThresholdChars',
     ]) {
       expect(source).toContain(`"key": "${key}"`);
       expect(metadata).toContain(`key: '${key}'`);
     }
-    // The retired knob must not survive in either the built table or the card.
-    expect(source).not.toContain('minCompressionRatio');
-    expect(metadata).not.toContain('minCompressionRatio');
+    // Retired knobs must not survive in either the built table or the card.
+    for (const retired of ['minCompressionRatio', 'handoffMaxTokens']) {
+      expect(source).not.toContain(retired);
+      expect(metadata).not.toContain(retired);
+    }
     expect(source).not.toContain('__SNAPCOMPACT_SETTINGS_FIELDS__');
   });
 });

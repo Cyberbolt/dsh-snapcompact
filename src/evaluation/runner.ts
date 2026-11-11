@@ -296,7 +296,6 @@ export async function evaluate(
       ),
       signal,
       render,
-      handoff: async () => baseline,
       soft: async () => baseline,
     });
     report.visualPreparationElapsedMs = performance.now() - visualStart;

@@ -20,8 +20,15 @@ describe('method-chain presets', () => {
     }
   });
 
+  it('keeps every preset order distinct', () => {
+    // `matchChainPreset` returns the first exact match, so two presets sharing an
+    // order would make one of them unreachable.
+    const orders = CHAIN_PRESETS.map((preset) => preset.order.join('>'));
+    expect(new Set(orders).size).toBe(orders.length);
+  });
+
   it('falls back to a custom label without guessing', () => {
-    expect(matchChainPreset(['handoff', 'soft'])).toBeUndefined();
-    expect(describeChain(['handoff', 'soft'])).toEqual({ label: '自定义' });
+    expect(matchChainPreset(['shake', 'soft'])).toBeUndefined();
+    expect(describeChain(['shake', 'soft'])).toEqual({ label: '自定义' });
   });
 });

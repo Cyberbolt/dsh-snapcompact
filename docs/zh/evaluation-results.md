@@ -51,7 +51,7 @@
 | native-text | measured | 7/9      |    — | 12.5s | 原生摘要基线                                                            |
 | snapcompact | measured | 8/9      |    6 | 16.3s | 2048×2040 帧，估算 checkpoint 8,786 token；计价来源 `deepseek-estimate` |
 
-原生摘要使用 112 input、14,464 cache-read、1,476 output token（合计 16,052）。视觉组没有 handoff 调用；它渲染并读取位图帧。
+原生摘要使用 112 input、14,464 cache-read、1,476 output token（合计 16,052）。视觉组没有模型调用；它渲染并读取位图帧。
 
 benchmark 直接调用视觉方法，并套用引擎在没有实时触发阈值时使用的“源历史一半”上限。正常会话里 checkpoint 必须落进触发阈值推导出的预算（阈值以下剩余空间的一半，且不超过源历史的一半），所以短历史即使测量出的 checkpoint 更小，也可能回退文本。
 

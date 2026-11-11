@@ -36,7 +36,7 @@ A vision model is billed largely by image area, not by how many characters the i
 - **No summarizer call on the visual path.** Rendering is local: no generation cost, no network call, no extra API key.
 - **Exact recall after compaction.** Head/tail text plus a searchable archive; `snapcompact_recall` reads it line by line.
 - **A file map that survives compaction.** A bounded `FILES` index from read/write/edit calls, with `(Read)`/`(Write)`/`(RW)` markers.
-- **A safe fallback.** `snapcompact → handoff → shake → soft`; the native summary is last.
+- **A safe fallback.** `snapcompact → shake → soft`; the native summary is last.
 - **Native DSH behavior.** Region selection, transaction locks, recovery and capacity checks stay in the host.
 
 ## Benchmark
@@ -101,7 +101,7 @@ DSH selects a safe region
 exact archive (sha256) ── survives the checkpoint
         │
         ▼
-snapcompact → handoff → shake → soft
+snapcompact → shake → soft
         │
         ▼
 one checkpoint committed by DSH
@@ -110,9 +110,8 @@ one checkpoint committed by DSH
 | Order | Method        | Model call     | Output                                                          |
 | ----- | ------------- | -------------- | --------------------------------------------------------------- |
 | 1     | `snapcompact` | none           | Dense frames, exact head/tail, `FILES` index, archive reference |
-| 2     | `handoff`     | one call       | Structured task handoff                                         |
-| 3     | `shake`       | none           | Large tool outputs archived, replaced by bounded excerpts       |
-| 4     | `soft`        | native summary | DSH's native text summary                                       |
+| 2     | `shake`       | none           | Large tool outputs archived, replaced by bounded excerpts       |
+| 3     | `soft`        | native summary | DSH's native text summary                                       |
 
 The visual method runs only when the route declares image input and pricing (or a labelled estimate) and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction; it never silently selects the next method.
 
@@ -155,16 +154,15 @@ Recall returns physical line numbers and `(nextOffset, nextColumn)` cursors. Tex
 
 The **Plugins → Snapcompact** card covers the common keys and writes through DSH's settings service to the profile's config patch. One card configures all three variants; saved values apply to new sessions.
 
-| Control           | Key                                                                        | Default                               |
-| ----------------- | -------------------------------------------------------------------------- | ------------------------------------- |
-| Method chain      | `methodOrder`                                                              | `[snapcompact, handoff, shake, soft]` |
-| Trigger threshold | `policy.thresholdRatio`                                                    | host default 0.8                      |
-| Retained tail     | derived `thresholdRatio ÷ 5`; YAML `retainRatio` / `retainTokens` override | 0.16 at 0.8                           |
-| Frame size        | `rendering.width` / `rendering.height`                                     | 1568                                  |
-| Maximum frames    | `rendering.maxFrames`                                                      | 20 (max 64)                           |
-| Archive limit     | `archiveMaxBytes`                                                          | 64 MiB                                |
-| Handoff budget    | `handoffMaxTokens`                                                         | 4096                                  |
-| Externalize above | `shakeThresholdChars`                                                      | 8192                                  |
+| Control           | Key                                                                        | Default                      |
+| ----------------- | -------------------------------------------------------------------------- | ---------------------------- |
+| Method chain      | `methodOrder`                                                              | `[snapcompact, shake, soft]` |
+| Trigger threshold | `policy.thresholdRatio`                                                    | host default 0.8             |
+| Retained tail     | derived `thresholdRatio ÷ 5`; YAML `retainRatio` / `retainTokens` override | 0.16 at 0.8                  |
+| Frame size        | `rendering.width` / `rendering.height`                                     | 1568                         |
+| Maximum frames    | `rendering.maxFrames`                                                      | 20 (max 64)                  |
+| Archive limit     | `archiveMaxBytes`                                                          | 64 MiB                       |
+| Externalize above | `shakeThresholdChars`                                                      | 8192                         |
 
 `guard`, `serialization`, `routePolicies` and render limits are YAML-only. See the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md) for every field.
 
@@ -188,7 +186,7 @@ Confirm the plugin is installed, restart DSH if the page asks, then create a **n
 <details>
 <summary>It always falls back to text</summary>
 
-Run `/snapcompact status`. The route probably has no declared image input or no usable image price; that is the intended safe behavior. Existing images are carried forward, up to four; if no image slot is left, the text handoff is used.
+Run `/snapcompact status`. The route probably has no declared image input or no usable image price; that is the intended safe behavior. Existing images are carried forward, up to four; if no image slot is left, the text chain (shake excerpts, then the native summary) is used.
 
 </details>
 

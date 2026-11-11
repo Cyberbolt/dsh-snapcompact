@@ -72,7 +72,7 @@
     - id: snapcompact
       name: dsh-snapcompact
       config:
-        methodOrder: [snapcompact, handoff, shake, soft]
+        methodOrder: [snapcompact, shake, soft]
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
 # Deliberately omit the destructive tool-result pruner; shake archives before externalizing.

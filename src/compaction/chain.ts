@@ -3,7 +3,7 @@ import type { MethodName } from '../config.js';
 
 /** One documented method-order recipe; presets never change engine behavior by themselves. */
 export interface ChainPreset {
-  readonly id: 'visual-first' | 'visual-native' | 'local-first' | 'text-first' | 'native-only';
+  readonly id: 'visual-first' | 'visual-native' | 'native-only';
   readonly label: string;
   readonly order: readonly MethodName[];
   readonly note: string;
@@ -18,25 +18,13 @@ export const CHAIN_PRESETS: readonly ChainPreset[] = Object.freeze([
     id: 'visual-first',
     label: '视觉优先（默认）',
     order: DEFAULT_METHOD_ORDER,
-    note: '先试本地视觉；失败后生成交接摘要，再退到工具输出摘录，最后由原生摘要兜底。',
+    note: '先试本地视觉；失败后退到工具输出摘录，最后由原生摘要兜底。',
   },
   {
     id: 'visual-native',
     label: '视觉 + 原生',
     order: ['snapcompact', 'soft'],
-    note: '跳过交接摘要和工具输出摘录；视觉失败直接回到原生摘要。',
-  },
-  {
-    id: 'local-first',
-    label: '本地优先',
-    order: ['snapcompact', 'shake', 'soft'],
-    note: '优先两个不调用模型的本地方法；两者都失败才调用原生摘要。',
-  },
-  {
-    id: 'text-first',
-    label: '文本优先',
-    order: ['handoff', 'shake', 'soft'],
-    note: '先花一次模型调用生成结构化交接，失败再摘录大输出或回到原生摘要。',
+    note: '跳过工具输出摘录；视觉失败直接回到原生摘要。',
   },
   {
     id: 'native-only',

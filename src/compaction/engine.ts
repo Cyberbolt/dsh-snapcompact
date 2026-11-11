@@ -23,13 +23,12 @@ import {
   resolvePressureBudget,
   resolveTargetPolicy,
 } from './budget.js';
-import { generateHandoff, handoff } from './methods/handoff.js';
 import { shake } from './methods/shake.js';
 import { snapcompact } from './methods/snapcompact.js';
 import { soft } from './methods/soft.js';
 import type { Renderer } from '../rendering/worker-client.js';
 
-const methods: Record<MethodName, CompactionMethod> = { snapcompact, handoff, shake, soft };
+const methods: Record<MethodName, CompactionMethod> = { snapcompact, shake, soft };
 
 /** Memoize within one transaction only; a failed promise is also reused, not paid for repeatedly. */
 function once<T>(operation: () => Promise<T>): () => Promise<T> {
@@ -126,7 +125,6 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       ),
       signal,
       render: (text, options, abort) => this.renderer.render(text, options, abort),
-      handoff: once(() => generateHandoff(this.ctx, this.settings, input, agent, signal)),
       soft: once(() => super.summarize(input, agent, signal)),
     };
     const failures: string[] = [];

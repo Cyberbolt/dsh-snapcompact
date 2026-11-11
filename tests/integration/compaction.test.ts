@@ -100,7 +100,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('commits a local visual checkpoint without an auxiliary model call', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'shake', 'soft']);
+    const test = await setup(['snapcompact', 'shake', 'soft']);
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
     const result = await test.engine.compactRegion(source.seq, source.seq, test.agent);
@@ -125,7 +125,7 @@ describe('native region transaction with plugin candidates', () => {
         (block) => block.type === 'text' && block.text.startsWith(FILE_LIST_HEADER),
       ),
     ).toBe(false);
-    // The visual path renders locally and must not spend a handoff/native call.
+    // The visual path renders locally and must not spend a native summary call.
     expect(test.adapter.calls).toHaveLength(0);
   });
 
@@ -178,7 +178,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('adds a cumulative FILES index to the visual checkpoint', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'soft']);
+    const test = await setup(['snapcompact', 'soft']);
     const sourceMessages = [
       createUserMessage({
         source: { kind: 'user' },
@@ -218,9 +218,6 @@ describe('native region transaction with plugin candidates', () => {
       imageSlots: 20,
       signal: new AbortController().signal,
       render: (text, options, signal) => test.renderer.render(text, options, signal),
-      handoff: async () => {
-        throw new Error('Handoff is not expected in this test.');
-      },
       soft: async () => {
         throw new Error('Native summary is not expected in this test.');
       },
@@ -240,7 +237,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('selects a bounded frame subset under a realistic image price', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'soft'], 'vision', {
+    const test = await setup(['snapcompact', 'soft'], 'vision', {
       width: 1024,
       height: 1024,
       maxFrames: 9,
@@ -273,7 +270,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('carries an existing image instead of skipping the visual path', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'soft'], 'vision', {
+    const test = await setup(['snapcompact', 'soft'], 'vision', {
       width: 1024,
       height: 1024,
       maxFrames: 8,
@@ -307,7 +304,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('uses the labelled DeepSeek estimate on a gateway without adapter pricing', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'soft'], 'deepseek-v4.1-flash', {
+    const test = await setup(['snapcompact', 'soft'], 'deepseek-v4.1-flash', {
       width: 1024,
       height: 1024,
       maxFrames: 8,
@@ -340,7 +337,7 @@ describe('native region transaction with plugin candidates', () => {
   it.each(['incomplete', 'oversized'])(
     'falls back when stored image metadata is %s',
     async (failure) => {
-      const test = await setup(['snapcompact', 'handoff', 'soft']);
+      const test = await setup(['snapcompact', 'soft']);
       const save = test.attachments.saveImages.bind(test.attachments);
       vi.spyOn(test.attachments, 'saveImages').mockImplementation(async (inputs) => {
         const references = await save(inputs);
@@ -354,25 +351,26 @@ describe('native region transaction with plugin candidates', () => {
       expect(result.summary.some((block) => block.type === 'image')).toBe(false);
       expect(result.summary[0]).toMatchObject({
         type: 'text',
-        text: expect.stringContaining('method=handoff'),
+        text: expect.stringContaining('method=soft'),
       });
+      expect(test.adapter.calls).toHaveLength(1);
     },
   );
 
   it('does not create images for a text-only model', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'shake', 'soft'], 'text');
+    const test = await setup(['snapcompact', 'shake', 'soft'], 'text');
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
     const result = await test.engine.compactRegion(source.seq, source.seq, test.agent);
     expect(result.summary.some((block) => block.type === 'image')).toBe(false);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=handoff'),
+      text: expect.stringContaining('method=soft'),
     });
   });
 
   it('preserves the surface and closes the bracket after all model candidates fail', async () => {
-    const test = await setup(['handoff', 'soft']);
+    const test = await setup(['soft']);
     test.adapter.reject = true;
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
@@ -385,7 +383,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('does not fall through after cancellation', async () => {
-    const test = await setup(['handoff', 'soft']);
+    const test = await setup(['soft']);
     const controller = new AbortController();
     const reason = new Error('user cancelled');
     test.adapter.beforeStream = async () => controller.abort(reason);
@@ -464,7 +462,7 @@ describe('native region transaction with plugin candidates', () => {
   });
 
   it('skips a source below the guard floor before any method or model call', async () => {
-    const test = await setup(['snapcompact', 'handoff', 'soft']);
+    const test = await setup(['snapcompact', 'soft']);
     const source = test.appendText('Tiny history.');
     test.session.append('turn/start', { turn: 1 });
     const before = test.session.deriveMessages();

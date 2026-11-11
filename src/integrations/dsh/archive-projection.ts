@@ -5,13 +5,15 @@ import type {} from '@deepseek-ai/dsh-compaction';
 import type {} from '@deepseek-ai/dsh-session-projection';
 import { z } from 'zod';
 import { fileAttachmentReferenceSchema, isArchiveReference } from '../../archives/format.js';
-import { methodNameSchema } from '../../config.js';
+import { recordedMethodNameSchema } from '../../config.js';
 
 const entrySchema = z.object({
   reference: fileAttachmentReferenceSchema,
   compactionId: z.string(),
   summarySeq: z.number().int().nonnegative(),
-  method: methodNameSchema,
+  // Superset of the runtime methods: history may name a method this release
+  // no longer ships, and its archive must stay recallable.
+  method: recordedMethodNameSchema,
 });
 const stateSchema = z.object({
   entries: z.array(entrySchema),
@@ -36,7 +38,7 @@ export const archiveProjection = {
     }
     if (event.type === 'compaction/summary') {
       const header = event.data.summary.find((block) => block.type === 'text');
-      const parsed = methodNameSchema.safeParse(
+      const parsed = recordedMethodNameSchema.safeParse(
         header?.type === 'text'
           ? /^Snapcompact v[12]; method=(\w+)/.exec(header.text)?.[1]
           : undefined,

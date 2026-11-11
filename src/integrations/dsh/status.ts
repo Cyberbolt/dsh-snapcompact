@@ -56,7 +56,6 @@ function methodDetails(
         : freeSlots < 1
           ? `可能跳过；当前可见历史已有 ${retainedImages} 张图片，空余槽位可能不足`
           : `会尝试；本地渲染，不调用模型（最多 ${maxNewFrames} 帧）`,
-    handoff: '会尝试；1 次模型调用，需通过结构校验',
     shake:
       shakeCount > 0
         ? `可能尝试；当前可见历史有 ${shakeCount} 个超大工具输出`

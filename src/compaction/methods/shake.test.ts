@@ -69,7 +69,6 @@ describe('recoverable local tool-output externalization', () => {
       attachments: fixture.ctx.attachments,
       imageSlots: 12,
       signal: undefined,
-      handoff: never,
       soft: never,
       render: never,
     });
@@ -96,7 +95,6 @@ describe('recoverable local tool-output externalization', () => {
       attachments: fixture.ctx.attachments,
       imageSlots: 12,
       signal: undefined,
-      handoff: never,
       soft: never,
       render: never,
     });

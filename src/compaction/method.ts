@@ -46,7 +46,6 @@ export interface MethodContext {
   readonly imageSlots: number;
   readonly render: Renderer['render'];
   readonly signal: AbortSignal | undefined;
-  readonly handoff: () => Promise<CompactionSummary>;
   readonly soft: () => Promise<CompactionSummary>;
 }
 
