@@ -91,7 +91,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     max: 0.5,
     step: 0.01,
     description:
-      'Fraction of the message budget kept verbatim after compaction; mutually exclusive with retainTokens. Leave unset to inherit the host default (0.16).',
+      'Advanced override: fraction of the message budget kept verbatim after compaction. Normally derived as thresholdRatio ÷ 5 and hidden from the card; a saved override stays visible read-only. Mutually exclusive with retainTokens.',
   },
   {
     key: 'retainTokens',
@@ -101,7 +101,7 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     min: MIN_RETAIN_TOKENS,
     step: MIN_RETAIN_TOKENS,
     description:
-      'Absolute token budget kept verbatim after compaction; mutually exclusive with retainRatio. Leave unset to inherit the host default ratio.',
+      'Advanced override: absolute token budget kept verbatim after compaction; mutually exclusive with retainRatio and window-dependent. Normally the ratio form derived from thresholdRatio ÷ 5 is used.',
   },
   {
     key: 'frameSize',

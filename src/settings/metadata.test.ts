@@ -172,6 +172,15 @@ describe('settings metadata', () => {
     expect(tokens.policy.retainRatio).toBeUndefined();
   });
 
+  it('keeps the retained-tail keys readable for legacy profiles', () => {
+    // The card no longer edits them, but saved values must keep working and
+    // stay visible until the user restores the automatic tail.
+    expect(SETTINGS_KEYS).toContain('retainRatio');
+    expect(SETTINGS_KEYS).toContain('retainTokens');
+    expect(readUserSettings({ retainRatio: 0.03 })).toEqual({ retainRatio: 0.03 });
+    expect(readUserSettings({ retainTokens: 4_096 })).toEqual({ retainTokens: 4_096 });
+  });
+
   it('lets the absolute token form win when a document carries both', () => {
     const both = resolveConfig(applyUserSettings({}, { retainRatio: 0.03, retainTokens: 8_192 }));
     expect(both.policy.retainTokens).toBe(8_192);

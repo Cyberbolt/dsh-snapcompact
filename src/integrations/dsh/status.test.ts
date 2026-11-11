@@ -137,6 +137,24 @@ describe('status command text', () => {
     expect(text).not.toContain('警告：');
   });
 
+  it('labels the tail derived from a custom trigger', async () => {
+    const fixture = await createHarness();
+    cleanups.push(fixture.dispose);
+    const text = await formatStatus(
+      fixture.ctx,
+      resolveConfig({ policy: { thresholdRatio: 0.6 } }),
+      { ...BASE_CONFIG, thresholdRatio: 0.6, retainRatio: 0.12 },
+      NO_ARCHIVES,
+      fixture.agent,
+      new AbortController().signal,
+    );
+    expect(text).toContain('触发阈值：120,000 tokens（配置 60%）');
+    expect(text).toContain(
+      '保留尾部：24,000 tokens（自动 = 阈值 ÷ 5；retainRatio 0.12；占窗口 12%）',
+    );
+    expect(text).toContain('可压空间：96,000 tokens（窗口 48%；阈值 − 保留尾部；下限 20,000）');
+  });
+
   it('warns when the threshold leaves less room than the guard minimum', async () => {
     const fixture = await createHarness();
     cleanups.push(fixture.dispose);

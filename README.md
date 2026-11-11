@@ -210,7 +210,7 @@ The Snapcompact detail page under **Plugins** carries a settings card backed by 
 | ------------------------ | ---------------------------------------- | ------------------------------------- |
 | Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (host default 0.8)              |
-| Retained tail            | `policy.retainRatio` or `retainTokens`   | unset (host default 0.16)             |
+| Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: threshold ÷ 5 (0.16 at 0.8)  |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
@@ -221,28 +221,29 @@ Rules worth knowing:
 
 - The engine is built when a session mounts the preset, so **saved changes apply to new sessions**; a running session keeps its configuration.
 - For a key the card manages, the saved value overrides the same key in preset YAML. `thresholdRatio` is the exception: it stays unset until you enable the custom threshold, so a preset-level `policy.thresholdRatio` still applies.
-- The retained tail has one three-state control: inherit the native 0.16, set a ratio, or set an absolute token budget. `retainRatio` and `retainTokens` are mutually exclusive; saving one removes the other, and hand-written YAML that sets both is rejected.
+- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`, so it follows the trigger. The card does not show it at all; only a value saved by an older version surfaces, as one read-only “Custom” row with “Restore automatic”. `retainRatio` and `retainTokens` remain mutually exclusive, and hand-written YAML that sets both is rejected.
 - `guard` is YAML-only. Both guards default to on, and both accept `0` to disable them.
 - "Restore default" removes the override and falls back to the plugin default (or to YAML, for the threshold).
 - Everything else — the rest of `policy`, `serialization`, `routePolicies`, render timeouts — remains YAML-only.
 
 ### Retained tail and usefulness guards
 
-The trigger only matters relative to the retained tail:
+The retained tail is derived from the trigger by default:
+
+```text
+retainRatio = thresholdRatio ÷ 5          # when not set explicitly
+retain      = retainTokens ?? floor((W − O) × retainRatio)
+```
+
+At the default 0.8 trigger this yields 0.16, exactly the host default; changing the trigger moves the tail with it (0.6 → 0.12, 0.5 → 0.10). The card path therefore always keeps `compactable = 4/5 × thresholdRatio` (at least 0.4 at the 0.5 card floor), so it never trips `guard.minCompactableRatio` (default 0.1). The guard now mainly protects explicit retention written in YAML:
 
 ```text
 compactable = threshold - retained tail
 ```
 
-At a 1M-token window the native 0.16 tail is about 160K tokens, so `thresholdRatio: 0.2` leaves only about 4% of the window — roughly 41K tokens — to pay for a checkpoint. That is the classic "20% never becomes 19%" trap: the estimated savings are smaller than the rounding step.
+An explicit `retainRatio` or `retainTokens` still wins and the two forms stay mutually exclusive. The rule lives in ratio space: when `headroomTokens` caps the threshold, the tail is still computed from the threshold ratio, so its token share can exceed 1/5 — `/snapcompact status` prints the exact numbers. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
 
-The plugin now fails fast instead of mounting that pair: when `thresholdRatio - retainRatio` is below `guard.minCompactableRatio` (default 0.1), the engine refuses to start and the error names the values and the fix. `/snapcompact status` prints the same arithmetic — retained tail, compactable space, the floor, and a warning when the space is below it. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
-
-Existing profiles that combine `thresholdRatio: 0.2` with the default retained tail will be rejected after upgrading. Fix it in one of three ways:
-
-- raise the trigger (the card floor is `0.5`; the host default is `0.8`), or
-- lower the retained tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or
-- set `guard.minCompactableRatio: 0` to disable the mount check (not recommended).
+Only explicit retention can trip the guard. YAML that pairs `thresholdRatio: 0.2` with `retainRatio: 0.16` is still rejected (0.04 < 0.1); raise the trigger, lower or remove the explicit tail, or set `guard.minCompactableRatio: 0` to disable the mount check. Saved custom tails from older profiles are never rewritten; use “Restore automatic” on the card to return to the derived value.
 
 ### Custom method chains and thresholds
 

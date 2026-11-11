@@ -414,7 +414,7 @@ describe('native region transaction with plugin candidates', () => {
     ).toHaveLength(0);
   });
 
-  it('refuses to mount an infeasible threshold/retention pair', async () => {
+  it('refuses to mount an infeasible explicit threshold/retention pair', async () => {
     const harness = await createHarness();
     const rendererModule: typeof RendererModule = await import(
       /* @vite-ignore */ new URL('../../dist/rendering/worker-client.js', import.meta.url).href
@@ -426,12 +426,37 @@ describe('native region transaction with plugin candidates', () => {
         () =>
           new SnapcompactEngine(
             harness.ctx,
-            resolveConfig({ policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2 } }),
+            resolveConfig({
+              policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2, retainRatio: 0.16 },
+            }),
             archives,
             renderer,
             new AbortController().signal,
           ),
       ).toThrow(/Snapcompact cannot start: policy: .*4%.*guard\.minCompactableRatio 0\.1/);
+    } finally {
+      await renderer.dispose();
+      await harness.dispose();
+    }
+  });
+
+  it('derives the tail so a custom threshold stays mountable', async () => {
+    const harness = await createHarness();
+    const rendererModule: typeof RendererModule = await import(
+      /* @vite-ignore */ new URL('../../dist/rendering/worker-client.js', import.meta.url).href
+    );
+    const renderer = rendererModule.createRenderer();
+    try {
+      const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
+      const engine = new SnapcompactEngine(
+        harness.ctx,
+        resolveConfig({ policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2 } }),
+        archives,
+        renderer,
+        new AbortController().signal,
+      );
+      expect(engine.config.thresholdRatio).toBe(0.2);
+      expect(engine.config.retainRatio).toBe(0.04);
     } finally {
       await renderer.dispose();
       await harness.dispose();

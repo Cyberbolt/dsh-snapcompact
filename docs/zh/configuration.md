@@ -45,24 +45,24 @@ routePolicies: []
 
 **插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次，因此一张卡配置所有 Snapcompact 变体。
 
-卡片管理 9 个键：
+卡片存储 9 个键，其中 7 个可编辑：
 
-| 界面项         | 配置路径                                | 默认                                  |
-| -------------- | --------------------------------------- | ------------------------------------- |
-| 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
-| 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                |
-| 保留尾部       | `policy.retainRatio` 或 `retainTokens`  | 不设置（原生默认 0.16）               |
-| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
-| 交接预算       | `handoffMaxTokens`                      | 4096                                  |
-| 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
+| 界面项             | 配置路径                                | 默认                                          |
+| ------------------ | --------------------------------------- | --------------------------------------------- |
+| 方法链             | `methodOrder`                           | `[snapcompact, handoff, shake, soft]`         |
+| 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                        |
+| 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动派生：`thresholdRatio ÷ 5`（0.8 时 0.16） |
+| 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                          |
+| 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                                 |
+| 归档上限           | `archiveMaxBytes`                       | 64 MiB                                        |
+| 交接预算           | `handoffMaxTokens`                      | 4096                                          |
+| 外置阈值           | `shakeThresholdChars`                   | 8192                                          |
 
 持久化与优先级：
 
 - 写入走 DSH 的设置服务，落到 profile 的配置补丁；重启后仍在，“恢复默认”（单字段或整卡）会移除覆盖。
 - 卡片保存的值覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：未开启自定义阈值时该键不存在，所以 preset 里的 `policy.thresholdRatio` 仍然生效。
-- 保留尾部只有一个三态控件（继承 0.16 / 按比例 / 按绝对 tokens）。`retainRatio` 与 `retainTokens` 互斥：保存其中一种会从合并结果里移除另一种，手写 YAML 同时给出两者会被严格解析器拒绝。
+- 保留尾部自动派生：`retainRatio = thresholdRatio ÷ 5`。卡片不显示该键、也不写入；只有旧版保存过显式值时，才出现一行只读的「自定义」和「恢复自动」。`retainRatio` 与 `retainTokens` 仍然互斥，手写 YAML 同时给出两者会被严格解析器拒绝，YAML 显式覆盖依然可用。
 - 引擎在会话挂载 preset 时构造，因此改动对**新会话**生效；已有会话里 `/snapcompact status` 仍显示它启动时的配置。
 - 设置 schema 无法表达方法链顺序，所以为空、重复或不以 `soft` 结尾的已存值会被插件忽略；严格解析器仍是最后一道校验。
 
@@ -100,11 +100,14 @@ bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模�
 自动压缩在测得的请求压力达到当前路由阈值时触发：
 
 ```text
-threshold = floor(min(W × thresholdRatio, W − O − headroomTokens))
-retain    = retainTokens ?? floor((W − O) × retainRatio)
+threshold   = floor(min(W × thresholdRatio, W − O − headroomTokens))
+retainRatio = thresholdRatio ÷ 5                 # 未显式设置时
+retain      = retainTokens ?? floor((W − O) × retainRatio)
 ```
 
 `W` 是适配器声明的上下文窗口，`O` 是本次请求的输出预留，`headroomTokens` 是容量安全余量。`thresholdRatio` 是窗口比例，不是绝对 token 数；小窗口模型通常需要更低的阈值和更小的 headroom。`retainRatio`/`retainTokens` 必须小于阈值，否则原生后端会拒绝该路由。
+
+派生尾部跟随的是阈值比例，而不是换算后的 token 阈值：当 headroom 压低阈值时，`retain` 仍按 `thresholdRatio` 计算，实际 token 占比可能超过 1/5。当前路由的真实数字以 `/snapcompact status` 为准。
 
 `/snapcompact status` 会解析精确路由，打印当前 tokens、`W`、阈值 tokens、保留 tokens、两者之间的可压空间、守卫下限以及是否已越过阈值。这个展示只是对上述公式的解释，实际触发仍由原生引擎决定。阈值是配置期设置（修改后需重载），且不会关闭宿主的上下文溢出恢复。没有绝对 token 数阈值；请使用 `thresholdRatio`，并用 `/snapcompact status` 查看换算后的 token 数。
 
@@ -116,7 +119,7 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 可压空间 = 触发阈值 − 保留尾部
 ```
 
-在 1M 窗口下，原生 `retainRatio: 0.16` 会预留约 158,720 token，因此 `thresholdRatio: 0.2` 只剩约 4% 的窗口（约 41K token）。checkpoint 加上保留文本很容易超过这个空间——这就是“占用 20%”在完整压缩后四舍五入成“19%”的原因。原生后端只拒绝 `retainRatio >= thresholdRatio`，无法判断这个差值是否小到不值得压缩。
+尾部派生为 `thresholdRatio ÷ 5` 后，卡片路径的可压空间恒为 `4/5 × 阈值比例`（0.5 阈值时仍有 0.4），不会撞上 0.1 守卫。旧陷阱只可能出现在显式 retention 上：在 1M 窗口下，`thresholdRatio: 0.2` 配 `retainRatio: 0.16` 会预留约 158,720 token，只剩约 4% 的窗口（约 41K token）。checkpoint 加上保留文本很容易超过这个空间——这就是“占用 20%”在完整压缩后四舍五入成“19%”的原因。原生后端只拒绝 `retainRatio >= thresholdRatio`，无法判断这个差值是否小到不值得压缩。
 
 `guard` 补上了这项检查：
 
@@ -129,7 +132,7 @@ retain    = retainTokens ?? floor((W − O) × retainRatio)
 
 收益门槛在测量完源历史之后、创建归档和调用任何方法之前运行：源太小会立即失败，不产生模型调用。手动 `/compact` 同样受该守卫约束；需要小规模手动压缩时调低 `guard.minSourceRatio`。
 
-因此，升级后同时带有 `thresholdRatio: 0.2` 和默认尾部的 profile 会在挂载时失败。修复方式：提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）、降低尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K），或显式设置 `guard.minCompactableRatio: 0`。
+因此，显式组合 `thresholdRatio: 0.2` 加 `retainRatio: 0.16` 仍会在挂载时失败。修复方式：提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）、降低或删除显式尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K），或显式设置 `guard.minCompactableRatio: 0`。只保存过自定义阈值的 profile 不受影响：派生尾部替换了原来的默认值。
 
 ### checkpoint 预算
 

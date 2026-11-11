@@ -5,6 +5,7 @@ import type {
   CompactionPolicyConfig,
 } from '@deepseek-ai/dsh-compaction-basic';
 import { z } from 'zod';
+import { withDerivedRetention } from './compaction/retention.js';
 
 export const methodNameSchema = z.enum(['snapcompact', 'handoff', 'shake', 'soft']);
 export type MethodName = z.infer<typeof methodNameSchema>;
@@ -240,15 +241,21 @@ function copyPolicyFields(input: SnapcompactConfig['policy']): CompactionPolicyC
   return result;
 }
 
-/** Convert validated optional values to the native API's exact-optional object contract. */
+/**
+ * Convert validated optional values to the native API's exact-optional object
+ * contract. The retained tail is derived here (1/5 of the trigger ratio) so the
+ * native tail selection, the plugin's budget math and status output all read
+ * the same resolved policy. An explicit retention in a scope is never replaced.
+ */
 export function toNativePolicy(input: SnapcompactConfig['policy']): BasicCompactionConfig {
-  const result: BasicCompactionConfig = copyPolicyFields(input);
-  if (input.auto !== undefined) result.auto = input.auto;
-  if (input.modelPolicies !== undefined) {
-    result.modelPolicies = input.modelPolicies.map((policy) => ({
-      ...copyPolicyFields(policy),
-      provider: policy.provider,
-      model: policy.model,
+  const policy = withDerivedRetention(input);
+  const result: BasicCompactionConfig = copyPolicyFields(policy);
+  if (policy.auto !== undefined) result.auto = policy.auto;
+  if (policy.modelPolicies !== undefined) {
+    result.modelPolicies = policy.modelPolicies.map((route) => ({
+      ...copyPolicyFields(route),
+      provider: route.provider,
+      model: route.model,
     }));
   }
   return result;

@@ -206,43 +206,44 @@ serialization:
 
 **插件 → Snapcompact** 详情页里有一张设置卡，背后是当前 profile 的 `snapcompact-settings` 行。卡片通过 DSH 的设置服务写入该 profile 的配置补丁，保存后重启仍在，不需要手写 YAML。可调项：
 
-| 界面项         | 配置路径                                | 默认                                  |
-| -------------- | --------------------------------------- | ------------------------------------- |
-| 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
-| 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
-| 保留尾部       | `policy.retainRatio` 或 `retainTokens`  | 不设置（宿主默认 0.16）               |
-| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
-| 交接预算       | `handoffMaxTokens`                      | 4096                                  |
-| 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
+| 界面项             | 配置路径                                | 默认                                  |
+| ------------------ | --------------------------------------- | ------------------------------------- |
+| 方法链             | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
+| 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
+| 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动：触发阈值 ÷ 5（0.8 时 0.16）     |
+| 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                  |
+| 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                         |
+| 归档上限           | `archiveMaxBytes`                       | 64 MiB                                |
+| 交接预算           | `handoffMaxTokens`                      | 4096                                  |
+| 外置阈值           | `shakeThresholdChars`                   | 8192                                  |
 
 需要知道的规则：
 
 - 引擎在会话挂载 preset 时构造，所以**保存后的改动对新会话生效**；运行中的会话保持原配置。
 - 卡片托管的键，其保存值会覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：只有打开“自定义触发阈值”后才会覆盖，否则 preset 里的 `policy.thresholdRatio` 仍然生效。
-- 保留尾部只有一个三态控件：继承原生 0.16、按比例、或按绝对 tokens。`retainRatio` 与 `retainTokens` 互斥；保存其中一种会自动移除另一种，手写 YAML 同时给出两者会被拒绝。
+- 保留尾部默认自动派生：`retainRatio = 触发阈值 ÷ 5`，改阈值时同步变化。卡片不显示尾部（减少理解负担）；只有旧版保存过显式值时，才出现一行只读的「自定义」和「恢复自动」。`retainRatio` 与 `retainTokens` 仍互斥，手写 YAML 同时给出两者会被拒绝。
 - `guard` 只能在 YAML 里配置；两个守卫默认开启，都接受 `0` 表示关闭。
 - “恢复默认”会移除覆盖，回到插件默认值（阈值则回到 YAML）。
 - 其它内容——`policy` 的其余字段、`serialization`、`routePolicies`、渲染超时——仍然只走 YAML。
 
 ### 保留尾部与收益守卫
 
-触发阈值只有和保留尾部放在一起看才有意义：
+保留尾部默认随触发阈值派生：
+
+```text
+retainRatio = thresholdRatio ÷ 5          # 未显式设置时
+retain      = retainTokens ?? floor((W − O) × retainRatio)
+```
+
+阈值保持默认 0.8 时派生 0.16，与宿主原生默认一致；改阈值时尾部一起变（0.6 → 0.12，0.5 → 0.10）。卡片路径因此恒有 `可压空间 = 4/5 × 阈值比例`（0.5 阈值时仍 ≥ 0.4），不会撞上 `guard.minCompactableRatio`（默认 0.1）。守卫现在主要保护 YAML 里显式写死的 retention：
 
 ```text
 可压空间 = 触发阈值 − 保留尾部
 ```
 
-在 1M 窗口下，原生的 0.16 尾部约 160K token，所以 `thresholdRatio: 0.2` 只剩约 4% 的窗口（约 41K token）来支付 checkpoint——这就是“20% 永远变不成 19%”的陷阱：估算收益比取整步长还小。
+显式 `retainRatio` / `retainTokens` 仍然优先且互斥。自动规则工作在比例空间：当阈值被 `headroomTokens` 压低时，尾部仍按阈值比例计算，实际 token 占比可能大于 1/5，精确数字以 `/snapcompact status` 为准。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
 
-现在插件会直接拒绝这种组合，而不是静默挂载：当 `thresholdRatio - retainRatio` 低于 `guard.minCompactableRatio`（默认 0.1）时，引擎拒绝启动，错误信息给出具体数值和修复方法。`/snapcompact status` 会打印同样的算式——保留尾部、可压空间、下限，以及低于下限时的警告。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
-
-升级后，当前 profile 里 `thresholdRatio: 0.2` 加默认保留尾部的配置会被拒绝挂载。三种修复方式任选：
-
-- 提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）；或
-- 降低保留尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K）；或
-- 设置 `guard.minCompactableRatio: 0` 关闭挂载校验（不推荐）。
+只有显式 retention 才可能撞上守卫。YAML 里 `thresholdRatio: 0.2` 配 `retainRatio: 0.16` 仍会被拒绝（0.04 < 0.1）；修复方式是提高阈值、降低或删除显式尾部，或设置 `guard.minCompactableRatio: 0`。旧版 profile 保存的自定义尾部不会被改写，卡片上点「恢复自动」即可回到派生值。
 
 ### 自定义方法链与阈值
 
