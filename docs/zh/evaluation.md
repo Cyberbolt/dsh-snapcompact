@@ -27,7 +27,7 @@
 
 ### Recall 臂
 
-recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；最多五轮工具、四十次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。这个上限对齐生产 agent：真实 agent 本身没有每回合 recall 次数限制。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
+recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；页面只带行号、游标和命中数，provenance 留在归档文档里，不会随每次调用重复发送；一次 search 最多可批量查询 20 条独立字面量。报告记录工具调用数、模型轮次和工具结果序列化字节数，因此轮数变化时页面载荷的变化仍然可见；最多五轮工具、四十次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。这个上限对齐生产 agent：真实 agent 本身没有每回合 recall 次数限制。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
 
 ### 归档完整性
 
@@ -45,7 +45,7 @@ recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema�
 
 ## 成本口径
 
-Token 经济性有两个轴：一次性生成和稳态读取。视觉路径没有生成调用，但 checkpoint 更大；原生摘要付一次生成调用，之后读取更小。报告展示生成 token、每轮读取 token、单次运行总 token 和 3 轮上下文投影。图片计价是估算，不是账单。只比较摘要的每轮读取和视觉 checkpoint 的每轮读取，会漏掉摘要生成调用。
+Token 经济性有两个轴：一次性生成和稳态读取。视觉路径没有生成调用，但 checkpoint 更大；原生摘要付一次生成调用，之后读取更小。报告展示生成 token、每轮读取 token、单次运行总 token 和 3 轮上下文投影。图片计价是估算，不是账单。只比较摘要的每轮读取和视觉 checkpoint 的每轮读取，会漏掉摘要生成调用。recall 成本由轮次决定：每个模型轮都会重发 checkpoint，所以读取总量更多跟随轮数而非页面大小；归因页面瘦身前，应同时看 recall 载荷字节和轮次。
 
 ## 解释边界
 

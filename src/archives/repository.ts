@@ -38,14 +38,48 @@ async function abortable<T>(operation: Promise<T>, signal?: AbortSignal): Promis
   });
 }
 
+const CACHE_ENTRIES = 4;
+const CACHE_BYTES = 16 * 1024 * 1024;
+
+interface CacheEntry {
+  readonly document: ArchiveDocument;
+  readonly bytes: number;
+}
+
 export class ArchiveRepository {
+  private readonly cache = new Map<string, CacheEntry>();
+  private cachedBytes = 0;
+
   constructor(
     private readonly store: FileStore,
     private readonly maxBytes: number = MAX_ARCHIVE_BYTES,
+    private readonly cacheBytes: number = Math.min(maxBytes, CACHE_BYTES),
   ) {
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_ARCHIVE_BYTES) {
       throw new RangeError(`Archive byte limit must be between 1 and ${MAX_ARCHIVE_BYTES}`);
     }
+    if (!Number.isSafeInteger(cacheBytes) || cacheBytes < 0 || cacheBytes > maxBytes) {
+      throw new RangeError('Archive cache limit must be between 0 and the archive byte limit');
+    }
+  }
+
+  /** Content-addressed archives are immutable, so a verified parse is safe to reuse. */
+  private remember(attachmentId: string, bytes: number, document: ArchiveDocument): void {
+    if (bytes > this.cacheBytes) return;
+    const existing = this.cache.get(attachmentId);
+    if (existing !== undefined) {
+      this.cachedBytes -= existing.bytes;
+      this.cache.delete(attachmentId);
+    }
+    while (this.cache.size >= CACHE_ENTRIES || this.cachedBytes + bytes > this.cacheBytes) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest === undefined) break;
+      const entry = this.cache.get(oldest);
+      if (entry !== undefined) this.cachedBytes -= entry.bytes;
+      this.cache.delete(oldest);
+    }
+    this.cache.set(attachmentId, { document, bytes });
+    this.cachedBytes += bytes;
   }
 
   async put(document: ArchiveDocument, signal?: AbortSignal): Promise<FileAttachmentRef> {
@@ -75,6 +109,17 @@ export class ArchiveRepository {
     const ref = fileAttachmentReferenceSchema.parse(reference);
     if (!isArchiveReference(ref)) throw new Error('Not a snapcompact archive reference');
     if (ref.bytes > this.maxBytes) throw new RangeError('Archive exceeds byte limit');
+    const cached = this.cache.get(ref.attachmentId);
+    if (
+      cached !== undefined &&
+      cached.bytes === ref.bytes &&
+      ref.name === `${ARCHIVE_FILE_PREFIX}${cached.document.transcriptSha256}.json`
+    ) {
+      // Refresh recency without re-reading or re-validating immutable bytes.
+      this.cache.delete(ref.attachmentId);
+      this.cache.set(ref.attachmentId, cached);
+      return cached.document;
+    }
     const iterator = this.store.readFileStream(ref, signal)[Symbol.asyncIterator]();
     // A fixed bounded buffer also resists millions of tiny/empty chunks from an untrusted store.
     const data = new Uint8Array(ref.bytes);
@@ -119,6 +164,7 @@ export class ArchiveRepository {
       throw new Error('Archive filename does not match its transcript checksum');
     }
     signal?.throwIfAborted();
+    this.remember(ref.attachmentId, ref.bytes, document);
     return document;
   }
 }

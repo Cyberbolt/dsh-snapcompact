@@ -81,9 +81,10 @@ function recallSummary(report: EvaluationReport): string[] {
   const visual = report.arms.find((arm) => arm.name === 'snapcompact');
   const recall = report.arms.find((arm) => arm.name === 'snapcompact-recall');
   if (visual === undefined || recall === undefined) return [];
-  const calls = mean(
-    recall.runs.filter((run) => run.status === 'measured').map((run) => run.recallCalls ?? 0),
-  );
+  const measuredRecallRuns = recall.runs.filter((run) => run.status === 'measured');
+  const calls = mean(measuredRecallRuns.map((run) => run.recallCalls ?? 0));
+  const rounds = mean(measuredRecallRuns.map((run) => run.recallRounds ?? 0));
+  const bytes = mean(measuredRecallRuns.map((run) => run.recallBytes ?? 0));
   const delta =
     recall.measuredRuns === 0 || visual.measuredRuns === 0
       ? '—'
@@ -97,6 +98,8 @@ function recallSummary(report: EvaluationReport): string[] {
     '| 指标 | 值 |',
     '| --- | --- |',
     `| recall 工具调用（每次运行均值） | ${calls.toFixed(1)} |`,
+    `| recall 模型轮次（每次运行均值） | ${rounds.toFixed(1)} |`,
+    `| recall 工具载荷（每次运行均值，字节） | ${bytes.toFixed(0)} |`,
     `| accepted 变化（recall − OCR） | ${delta} |`,
     `| recall 臂 strict 匹配 | ${scoreText(recall, 'exact')} |`,
     ...(recall.measuredRuns === 0

@@ -27,7 +27,7 @@ The report separates four arms:
 
 ### Recall arm
 
-The recall arm receives the same checkpoint plus the production `snapcompact_recall` schema. A tool call runs against the benchmark's own archive, with the same page reader the registered tool uses. It is capped at five tool rounds and forty executed tool calls; if the model asks for more, the runner forces one final answer without tools. The cap tracks the production agent, which has no per-turn recall limit of its own. The benchmark archive is created directly rather than by a committed compaction, so the arm bypasses the session index; the page/query semantics are identical. If a route rejects tools, only this arm fails and the OCR arm still runs.
+The recall arm receives the same checkpoint plus the production `snapcompact_recall` schema. A tool call runs against the benchmark's own archive, with the same page reader the registered tool uses. Pages carry line numbers, cursors and a match count; provenance stays in the archive document, so it is not re-sent on every call. A search may batch up to twenty independent literals in one call. The report records tool calls, model rounds and serialized tool-result bytes, so page-payload changes stay visible when round counts move. It is capped at five tool rounds and forty executed tool calls; if the model asks for more, the runner forces one final answer without tools. The cap tracks the production agent, which has no per-turn recall limit of its own. The benchmark archive is created directly rather than by a committed compaction, so the arm bypasses the session index; the page/query semantics are identical. If a route rejects tools, only this arm fails and the OCR arm still runs.
 
 ### Archive integrity
 
@@ -45,7 +45,7 @@ Before any QA call, the report checks whether every question's exact source line
 
 ## Cost axes
 
-Token economy has a one-time axis and a steady-state axis. The local visual path has no generation call but a larger checkpoint; a native summary pays a summarizer call once and then carries a smaller context. The report shows generation tokens, per-turn read tokens, one-run total tokens and a three-turn context projection. Image pricing is an estimate, not a bill. Never compare a summary's per-turn read against a visual checkpoint's per-turn read without the summarizer call.
+Token economy has a one-time axis and a steady-state axis. The local visual path has no generation call but a larger checkpoint; a native summary pays a summarizer call once and then carries a smaller context. The report shows generation tokens, per-turn read tokens, one-run total tokens and a three-turn context projection. Image pricing is an estimate, not a bill. Never compare a summary's per-turn read against a visual checkpoint's per-turn read without the summarizer call. Recall cost is round-bound: each model round re-sends the checkpoint, so read totals track rounds more than page size. Compare recall payload bytes and rounds alongside tokens before attributing a change to page trimming.
 
 ## Interpretation limits
 

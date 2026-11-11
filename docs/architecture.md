@@ -70,7 +70,7 @@ Each plugin/preset owns a renderer instance with a bounded queue. Its deadline i
 
 ## Deliberate tradeoffs
 
-The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot fit the checkpoint budget implied by the trigger, the text chain (shake excerpts, then the native summary) remains. Exact strings and uncertain facts still require archive recall.
+The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot fit the checkpoint budget implied by the trigger, the text chain (shake excerpts, then the native summary) remains. Exact strings and uncertain facts still require archive recall. Recall pages carry only physical line numbers, paging cursors and a match count; source message IDs stay in the archive document instead of being re-sent with every page.
 
 The frame projection is a continuous text flow: rows wrap at the frame edge, one `¶` marks each source newline, and leading indentation is preserved. Frames are one-bit grayscale PNGs because the bundled bitmap font is already two-tone. Neither the marker nor the encoding is part of the archive: exact head/tail text plus the sha256 archive remain the source of truth, and `snapcompact_recall` returns the original bytes.
 

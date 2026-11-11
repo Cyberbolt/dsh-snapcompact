@@ -46,6 +46,10 @@ export interface ArmRun {
   readonly elapsedMs: number;
   readonly parseMode?: ParseMode;
   readonly recallCalls?: number;
+  /** Model requests in this arm, including the final answer round. */
+  readonly recallRounds?: number;
+  /** Serialized recall tool-result bytes sent back to the model. */
+  readonly recallBytes?: number;
   /** One entry per executed recall call, for evidence in the report. */
   readonly recallQueries?: readonly string[];
   readonly reason?: string;

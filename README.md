@@ -138,7 +138,7 @@ snapcompact.ts (RW)
 { "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
 ```
 
-Recall returns physical line numbers and `(nextOffset, nextColumn)` cursors. Text pages are capped at 200 line fragments and 20,000 UTF-16 code units. Search is a case-sensitive literal substring match, not a regular expression. Archive IDs must be referenced by a completed compaction in the owning session.
+Recall returns physical line numbers, `(nextOffset, nextColumn)` cursors and a `matchCount` for searches. Text pages are capped at 200 line fragments and 20,000 UTF-16 code units. Search is a case-sensitive literal substring match, not a regular expression. `search` also accepts `queries` (up to 20) to batch independent lookups in one call; every tool round re-sends the checkpoint, so batching is cheaper. `archiveId` is optional for read/search and defaults to the newest completed compaction; an explicit ID must belong to a completed compaction in the owning session.
 
 ## Configure
 

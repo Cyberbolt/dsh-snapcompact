@@ -92,6 +92,50 @@ describe('archive recall authorization', () => {
     expect(foreign.total).toBe(0);
   });
 
+  it('defaults read and search to the newest completed archive', async () => {
+    const test = await setup();
+    const page = z
+      .object({ lines: z.array(z.object({ text: z.string() })), matchCount: z.number() })
+      .parse(await test.invoke({ action: 'search', query: '[.*]' }));
+    expect(page.matchCount).toBe(1);
+    expect(page.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
+    await expect(
+      test.invoke({ action: 'search', query: 'anything' }, test.foreign.agent),
+    ).rejects.toThrow('No completed compaction archive');
+  });
+
+  it('searches a batch of literals in one call and rejects ambiguous arguments', async () => {
+    const test = await setup();
+    const batch = z
+      .object({
+        totalLines: z.number(),
+        truncated: z.boolean(),
+        results: z.array(
+          z.object({
+            query: z.string(),
+            lines: z.array(z.object({ text: z.string() })),
+            matchCount: z.number(),
+          }),
+        ),
+      })
+      .parse(await test.invoke({ action: 'search', queries: ['[.*]', 'exact', '[.*]'] }));
+    expect(batch.results).toHaveLength(2);
+    expect(batch.results[0]?.query).toBe('[.*]');
+    expect(batch.results[0]?.matchCount).toBe(1);
+    expect(batch.results[0]?.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
+    expect(batch.results[1]?.matchCount).toBe(1);
+    expect(batch.truncated).toBe(false);
+    await expect(
+      test.invoke({ action: 'search', query: '[.*]', queries: ['exact'] }),
+    ).rejects.toThrow('not both');
+    await expect(test.invoke({ action: 'read', queries: ['exact'] })).rejects.toThrow(
+      'only valid for search',
+    );
+    await expect(test.invoke({ action: 'list', query: 'exact' })).rejects.toThrow(
+      'only valid for search',
+    );
+  });
+
   it('refuses foreign IDs before reading attachment bytes', async () => {
     const test = await setup();
     const read = vi.spyOn(test.archives, 'read');

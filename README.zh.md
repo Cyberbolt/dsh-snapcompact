@@ -138,7 +138,7 @@ snapcompact.ts (RW)
 { "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
 ```
 
-回查返回物理行号和 `(nextOffset, nextColumn)` 游标。文本分页最多返回 200 行片段和 20,000 个 UTF-16 码元。搜索是区分大小写的字面量子串匹配，不是正则。只有当前会话中已完成压缩引用过的归档 ID 才能访问。
+回查返回物理行号、`(nextOffset, nextColumn)` 游标，搜索还会返回 `matchCount`。文本分页最多返回 200 行片段和 20,000 个 UTF-16 码元。搜索是区分大小写的字面量子串匹配，不是正则。`search` 还接受 `queries`（最多 20 条），把独立查询合并到一次调用；每个工具轮都会重发 checkpoint，所以批量查询更省。read/search 的 `archiveId` 可省略，默认使用最新一个已完成压缩；显式传入的 ID 必须属于当前会话中已完成的压缩。
 
 ## 配置
 

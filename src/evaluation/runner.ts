@@ -163,6 +163,8 @@ async function ask(options: AskOptions): Promise<ArmRun> {
   ];
   let usage: TokenUsage | undefined;
   let recallCalls = 0;
+  let recallRounds = 0;
+  let recallBytes = 0;
   const recallQueries: string[] = [];
   let toolsAllowed = options.withTools === true;
   const total = Object.keys(options.fixture.questions).length;
@@ -170,6 +172,7 @@ async function ask(options: AskOptions): Promise<ArmRun> {
   try {
     for (let round = 0; round <= MAX_TOOL_ROUNDS + 1; round += 1) {
       options.signal.throwIfAborted();
+      recallRounds += 1;
       const assembler = new BlockAssembler();
       for await (const chunk of options.ctx.llm.stream({
         ...options.route,
@@ -223,7 +226,9 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           outputTokens: usage.outputTokens,
           elapsedMs: performance.now() - started,
           parseMode: parsed.mode,
-          ...(options.withTools === true ? { recallCalls, recallQueries } : {}),
+          ...(options.withTools === true
+            ? { recallCalls, recallQueries, recallRounds, recallBytes }
+            : {}),
         };
       }
 
@@ -259,7 +264,10 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           let trace = `invalid:${call.arguments.slice(0, 80)}`;
           try {
             const args = recallArgumentsSchema.parse(JSON.parse(call.arguments));
-            trace = `${args.action}${args.query === undefined ? '' : `:${args.query}`}`;
+            trace =
+              `${args.action}` +
+              (args.query === undefined ? '' : `:${args.query}`) +
+              (args.queries === undefined ? '' : `:[q${args.queries.length}]`);
             if (args.action === 'list') {
               result = {
                 archives: [
@@ -290,10 +298,12 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           }
           recallCalls += 1;
           recallQueries.push(trace);
+          const payload = JSON.stringify(result);
+          recallBytes += payload.length;
           messages.push(
             createToolResultMessage({
               callId: call.id,
-              content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+              content: [{ type: 'text', text: payload }],
               isError,
             }),
           );

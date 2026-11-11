@@ -12,9 +12,8 @@ import type { ArchiveRepository } from './repository.js';
 
 export const MAX_ARCHIVE_PAGE_LINES = 200;
 export const MAX_ARCHIVE_PAGE_CHARACTERS = 20_000;
-export const MAX_ARCHIVE_PAGE_SOURCE_IDS = 50;
-export const MAX_ARCHIVE_PAGE_SOURCE_ID_CHARACTERS = 4_096;
-export const ARCHIVE_SEARCH_CONTEXT_LINES = 2;
+export const ARCHIVE_SEARCH_CONTEXT_BEFORE = 2;
+export const ARCHIVE_SEARCH_CONTEXT_AFTER = 4;
 
 export interface ArchiveReadOptions {
   /** Zero-based physical transcript line, also in search mode; never a match ordinal. */
@@ -42,11 +41,11 @@ export interface ArchivePage {
   totalLines: number;
   /** More text remains under the current filter; the archive itself is never truncated. */
   truncated: boolean;
-  sourceSessionId: string;
-  /** At most 50 complete IDs / 4096 characters; the full set remains in the archive. */
-  sourceMessageIds: string[];
-  sourceMessageCount: number;
-  sourceMessageIdsTruncated: boolean;
+  /**
+   * Matching physical lines for a non-empty query, counted across the complete
+   * transcript. null means no query filtered this page.
+   */
+  matchCount: number | null;
 }
 
 export interface ArchiveRecord {
@@ -77,29 +76,34 @@ function* physicalLines(transcript: string): Generator<ArchiveLine> {
   }
 }
 
+interface SelectedLine {
+  readonly line: ArchiveLine;
+  readonly matched: boolean;
+}
+
 /** A rolling context window avoids allocating arrays for all lines or all matches. */
-function* selectedLines(transcript: string, query: string | undefined): Generator<ArchiveLine> {
+function* selectedLines(transcript: string, query: string | undefined): Generator<SelectedLine> {
   if (query === undefined || query === '') {
-    yield* physicalLines(transcript);
+    for (const line of physicalLines(transcript)) yield { line, matched: false };
     return;
   }
-  const pending: { line: ArchiveLine; selected: boolean }[] = [];
+  const pending: { line: ArchiveLine; matched: boolean; selected: boolean }[] = [];
   let following = 0;
   for (const line of physicalLines(transcript)) {
     const matches = line.text.includes(query);
     if (matches) {
       for (const entry of pending) entry.selected = true;
-      following = ARCHIVE_SEARCH_CONTEXT_LINES;
+      following = ARCHIVE_SEARCH_CONTEXT_AFTER;
     }
-    pending.push({ line, selected: matches || following > 0 });
+    pending.push({ line, matched: matches, selected: matches || following > 0 });
     if (!matches && following > 0) following -= 1;
-    if (pending.length > ARCHIVE_SEARCH_CONTEXT_LINES) {
+    if (pending.length > ARCHIVE_SEARCH_CONTEXT_BEFORE) {
       const entry = pending.shift();
-      if (entry?.selected) yield entry.line;
+      if (entry?.selected) yield { line: entry.line, matched: entry.matched };
     }
   }
   for (const entry of pending) {
-    if (entry.selected) yield entry.line;
+    if (entry.selected) yield { line: entry.line, matched: entry.matched };
   }
 }
 
@@ -171,14 +175,20 @@ export class ArchiveService {
     }
     const document = await this.repository.get(reference, signal);
     signal?.throwIfAborted();
+    const filtering = options.query !== undefined && options.query !== '';
     const totalLines = countLines(document.transcript);
     const lines: ArchiveLine[] = [];
     const limit = Math.min(options.limit, MAX_ARCHIVE_PAGE_LINES);
     let remainingCharacters = MAX_ARCHIVE_PAGE_CHARACTERS;
     let nextOffset: number | null = null;
     let nextColumn: number | null = null;
-    for (const line of selectedLines(document.transcript, options.query)) {
+    let matchCount: number | null = filtering ? 0 : null;
+    let pageFull = false;
+    for (const selected of selectedLines(document.transcript, options.query)) {
       signal?.throwIfAborted();
+      if (selected.matched && matchCount !== null) matchCount += 1;
+      if (pageFull) continue;
+      const { line } = selected;
       const offset = line.number - 1;
       if (offset < options.offset) continue;
       const requestedColumn = offset === options.offset ? column : 0;
@@ -189,7 +199,8 @@ export class ArchiveService {
       if (lines.length >= limit || remainingCharacters === 0) {
         nextOffset = offset;
         nextColumn = start;
-        break;
+        pageFull = true;
+        continue;
       }
       const end = codePointBoundary(
         line.text,
@@ -199,7 +210,8 @@ export class ArchiveService {
       if (end === start && start < line.text.length) {
         nextOffset = offset;
         nextColumn = start;
-        break;
+        pageFull = true;
+        continue;
       }
       const text = line.text.slice(start, end);
       lines.push({ number: line.number, text });
@@ -207,31 +219,17 @@ export class ArchiveService {
       if (end < line.text.length) {
         nextOffset = offset;
         nextColumn = end;
-        break;
+        pageFull = true;
       }
     }
     signal?.throwIfAborted();
-    const sourceMessageIds: string[] = [];
-    let metadataCharacters = 0;
-    for (const id of document.sourceMessageIds) {
-      if (
-        sourceMessageIds.length >= MAX_ARCHIVE_PAGE_SOURCE_IDS ||
-        metadataCharacters + id.length > MAX_ARCHIVE_PAGE_SOURCE_ID_CHARACTERS
-      )
-        break;
-      sourceMessageIds.push(id);
-      metadataCharacters += id.length;
-    }
     return {
       lines,
       nextOffset,
       nextColumn,
       totalLines,
       truncated: nextOffset !== null,
-      sourceSessionId: document.sourceSessionId,
-      sourceMessageIds,
-      sourceMessageCount: document.sourceMessageIds.length,
-      sourceMessageIdsTruncated: document.sourceMessageIds.length > sourceMessageIds.length,
+      matchCount,
     };
   }
 }

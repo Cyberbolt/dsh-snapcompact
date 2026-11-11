@@ -193,6 +193,8 @@ describe('truthful evaluation accounting', () => {
     );
     const recall = report.arms.find((arm) => arm.name === 'snapcompact-recall');
     expect(recall?.runs[0]).toMatchObject({ status: 'measured', correct: 40, recallCalls: 1 });
+    expect(recall?.runs[0]?.recallRounds).toBeGreaterThanOrEqual(2);
+    expect(recall?.runs[0]?.recallBytes).toBeGreaterThan(0);
     expect(fixture.adapter.calls[3]?.tools?.[0]?.name).toBe('snapcompact_recall');
     expect(fixture.adapter.calls[0]?.tools).toBeUndefined();
     expect(JSON.stringify(fixture.adapter.calls[4]?.messages)).toContain('E_LOCK_TIMEOUT');

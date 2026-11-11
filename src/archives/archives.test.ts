@@ -430,10 +430,7 @@ describe('archive pages and literal search', () => {
     expect(page.nextOffset).toBe(200);
     expect(page.nextColumn).toBe(0);
     expect(page.truncated).toBe(true);
-    expect(page.sourceSessionId).toBe('origin');
-    expect(page.sourceMessageIds).toEqual(['message-1']);
-    expect(page.sourceMessageCount).toBe(1);
-    expect(page.sourceMessageIdsTruncated).toBe(false);
+    expect(page.matchCount).toBeNull();
     const next = await service.read(reference, { offset: page.nextOffset ?? 0, limit: 200 });
     expect(next.lines[0]).toEqual({ number: 201, text: expected[200] });
     const beyond = await service.read(reference, { offset: expected.length + 99, limit: 200 });
@@ -489,7 +486,7 @@ describe('archive pages and literal search', () => {
     expect(second.lines[0]?.text).toBe('😀last');
   });
 
-  it('searches literal case-sensitive strings with two physical context lines and deduplicated windows', async () => {
+  it('searches literal case-sensitive strings with bounded context windows', async () => {
     const { service } = fixture();
     const text = ['zero', 'one', 'two', '[.*]', 'four', '[.*]', 'six', 'seven', 'eight', 'NOMATCH'];
     const { reference, document } = await service.create({
@@ -498,27 +495,30 @@ describe('archive pages and literal search', () => {
     });
     const raw = document.transcript.split('\n');
     const page = await service.read(reference, { offset: 0, limit: 200, query: '[.*]' });
-    const selected = Array.from({ length: 7 }, (_, index) => index + 3);
+    const selected = Array.from({ length: 9 }, (_, index) => index + 3);
     expect(page.lines).toEqual(selected.map((index) => ({ number: index + 1, text: raw[index] })));
     expect(page.totalLines).toBe(raw.length);
     expect(page.nextOffset).toBeNull();
+    expect(page.matchCount).toBe(2);
+    expect(page).not.toHaveProperty('sourceMessageIds');
     const partial = await service.read(reference, { offset: 0, limit: 2, query: '[.*]' });
     expect(partial.nextOffset).toBe(5);
+    expect(partial.matchCount).toBe(2);
     const next = await service.read(reference, {
       offset: partial.nextOffset ?? 0,
       limit: 200,
       query: '[.*]',
     });
     expect(next.lines[0]?.number).toBe(6);
-    expect(
-      (await service.read(reference, { offset: 0, limit: 200, query: 'nomatch' })).lines,
-    ).toEqual([]);
-    expect(
-      (await service.read(reference, { offset: 0, limit: 200, query: '' })).lines,
-    ).toHaveLength(raw.length);
+    const missing = await service.read(reference, { offset: 0, limit: 200, query: 'nomatch' });
+    expect(missing.lines).toEqual([]);
+    expect(missing.matchCount).toBe(0);
+    const unfiltered = await service.read(reference, { offset: 0, limit: 200, query: '' });
+    expect(unfiltered.lines).toHaveLength(raw.length);
+    expect(unfiltered.matchCount).toBeNull();
   });
 
-  it('bounds metadata for large message sets without truncating original IDs', async () => {
+  it('keeps every source message id in the archive, not in each page', async () => {
     const { service, store, repo } = fixture();
     store.chunkBytes = 64 * 1024;
     const messages = Array.from({ length: 2_000 }, (_, index) =>
@@ -526,34 +526,31 @@ describe('archive pages and literal search', () => {
     );
     const { reference, document } = await service.create({ sessionId: 'large-session', messages });
     const page = await service.read(reference, { offset: 0, limit: 1 });
-    expect(page.sourceMessageCount).toBe(2_000);
-    expect(page.sourceMessageIdsTruncated).toBe(true);
-    expect(page.sourceMessageIds).toEqual(messages.slice(0, 50).map((message) => message.id));
-    expect(page.sourceMessageIds).toHaveLength(50);
-    expect(JSON.stringify(page).length).toBeLessThan(2_000);
+    expect(page).not.toHaveProperty('sourceSessionId');
+    expect(page).not.toHaveProperty('sourceMessageIds');
+    expect(JSON.stringify(page).length).toBeLessThan(400);
     expect(document.sourceMessageIds).toHaveLength(2_000);
     expect(document.sourceMessageIds.at(-1)).toBe('source-message-1999');
     expect((await repo.get(reference)).sourceMessageIds).toEqual(document.sourceMessageIds);
     expect(document.transcript).toContain('id="source-message-1999"');
+    await expect(service.create({ sessionId: 's'.repeat(513), messages: [] })).rejects.toThrow();
   });
 
-  it('bounds metadata characters without cutting a source identifier', async () => {
-    const { service } = fixture();
-    const messages = Array.from({ length: 20 }, (_, index) =>
-      userMessage('text', `${'a'.repeat(500)}-${index}`),
-    );
-    const { reference, document } = await service.create({
-      sessionId: 'session-bounded',
-      messages,
+  it('caches verified documents and skips documents above the cache budget', async () => {
+    const { service, store, repo } = fixture();
+    store.chunkBytes = 64 * 1024;
+    const { reference } = await service.create({
+      sessionId: 'session-cache',
+      messages: [userMessage('cached')],
     });
-    const page = await service.read(reference, { offset: 0, limit: 1 });
-    expect(page.sourceMessageIds.join('').length).toBeLessThanOrEqual(4096);
-    expect(page.sourceMessageIds.length).toBeLessThan(20);
-    expect(page.sourceMessageIdsTruncated).toBe(true);
-    expect(page.sourceMessageIds).toEqual(
-      document.sourceMessageIds.slice(0, page.sourceMessageIds.length),
-    );
-    await expect(service.create({ sessionId: 's'.repeat(513), messages: [] })).rejects.toThrow();
+    const reads = store.reads;
+    expect(await repo.get(reference)).toBe(await repo.get(reference));
+    expect(store.reads).toBe(reads + 1);
+
+    const uncached = new ArchiveRepository(store, MAX_ARCHIVE_BYTES, 0);
+    await uncached.get(reference);
+    await uncached.get(reference);
+    expect(store.reads).toBe(reads + 3);
   });
 
   it('represents an empty archive with zero lines and no continuation', async () => {
