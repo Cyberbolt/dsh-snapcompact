@@ -1,0 +1,562 @@
+{
+  "version": 3,
+  "id": "engineering-recall-v3",
+  "paddingLines": 1000,
+  "head": "用户约束：未经确认禁止删除归档；默认语言为简体中文。\nThe exact source path is /workspace/客户数据/first draft/config.prod.json.\nThe exact deployment command is pnpm deploy --filter @example/api -- --dry-run.\nThe numeric retry limit is 7.\nThe environment variable must retain its spelling: SNAPCOMPACT_SOURCE_SHA256.\nThe service config JSON is {\"port\": 8080, \"region\": \"ap-east-1\", \"featureFlag\": \"safe-rollout\"}.\nNever run migrations with --force.",
+  "text": "The exact lock error code is E_LOCK_TIMEOUT.\nThe verification timeout is 45 seconds.\nThe backup bucket is s3://example-backups/客户数据/.\nThe primary host is api-primary.internal and the standby host is api-standby.internal.\nThe alert threshold is 0.75.\nThe owner is team-data-platform.\nThe audit jq query is .items[] | select(.state==\"open\") | .id.\nThe migration date is 2027-01-31 and must not slip.\nThe short integrity digest is sha256:9a1f3c7d.\nHistorical final correction: the release tag changed from v0.1.0 to v0.1.1-rc.2.\nThe next action is run integration tests; do not deploy yet.\n发布说明：本次迁移只读校验通过后再恢复写入。",
+  "suffix": "",
+  "probes": [
+    {
+      "line": 60,
+      "text": "Observation 60: the pinned runtime version is 4.8.2-rc.1.",
+      "key": "m_version"
+    },
+    {
+      "line": 120,
+      "text": "Observation 120: the rollout flag is FEATURE_ROLLOUT=canary-9.",
+      "key": "m_flag"
+    },
+    {
+      "line": 180,
+      "text": "Observation 180: the rollback script path is /workspace/客户数据/second draft/rollback.sh.",
+      "key": "m_path_cjk"
+    },
+    {
+      "line": 240,
+      "text": "Observation 240: the audit token is AUDIT-9F3C-7Q2.",
+      "key": "m_audit"
+    },
+    {
+      "line": 300,
+      "text": "Observation 300: the primary port is 5432 and the backup port is 5433.",
+      "key": "m_port"
+    },
+    {
+      "line": 360,
+      "text": "Observation 360: the archived helper is:\ndef normalize(value):\n    if value is None:\n        return \"unset\"\n    return value.strip()",
+      "key": "m_indent"
+    },
+    {
+      "line": 420,
+      "text": "Observation 420: the failover mode is PRIMARY-ONLY until further notice.",
+      "key": "m_failover"
+    },
+    {
+      "line": 480,
+      "text": "Observation 480: the batch size is 17 and the retry limit is 7; do not confuse them.",
+      "key": "m_batch"
+    },
+    {
+      "line": 540,
+      "text": "Observation 540: the rollback command is git revert --no-edit 4c1d9e2.",
+      "key": "m_rollback"
+    },
+    {
+      "line": 600,
+      "text": "Observation 600: the release channel alias is amber-42.",
+      "key": "m_channel"
+    },
+    {
+      "line": 660,
+      "text": "Observation 660: the cache digest is sha256:7c1e9b2a.",
+      "key": "m_hash"
+    },
+    {
+      "line": 720,
+      "text": "Observation 720: the request id is req-8f31c2d4e5.",
+      "key": "m_request"
+    },
+    {
+      "line": 780,
+      "text": "Observation 780: the quota warning code is WARN_QUOTA_73.",
+      "key": "m_logcode"
+    },
+    {
+      "line": 840,
+      "text": "Observation 840: the trace header is X-Snap-Trace: 5b7e9c1d.",
+      "key": "m_header"
+    },
+    {
+      "line": 880,
+      "text": "Observation 880: the snapshot epoch is 1735689600.",
+      "key": "m_epoch"
+    },
+    {
+      "line": 910,
+      "text": "Observation 910: the archive checksum is CRC32=9e7f3a1c.",
+      "key": "m_checksum"
+    },
+    {
+      "line": 930,
+      "text": "Observation 930: the standby region is eu-west-1.",
+      "key": "m_region"
+    },
+    {
+      "line": 945,
+      "text": "Observation 945: the per-minute quota is 2400 requests.",
+      "key": "m_quota"
+    },
+    {
+      "line": 955,
+      "text": "Observation 955: the tenant id is tenant-atlas-77.",
+      "key": "m_tenant"
+    },
+    {
+      "line": 965,
+      "text": "Observation 965: the build stamp is 20270131.4.",
+      "key": "m_build"
+    }
+  ],
+  "decoys": [
+    {
+      "line": 30,
+      "text": "Observation 30: cache warm completed for shard 3; no user-visible change."
+    },
+    {
+      "line": 50,
+      "text": "Observation 50: snapshot prune removed four stale entries; counts unchanged."
+    },
+    {
+      "line": 80,
+      "text": "Observation 80: routine compaction check found no action needed."
+    },
+    {
+      "line": 100,
+      "text": "Observation 100: the scheduler tick completed without retries."
+    },
+    {
+      "line": 140,
+      "text": "Observation 140: a stale lock file was ignored by the read-only probe."
+    },
+    {
+      "line": 160,
+      "text": "Observation 160: the heartbeat interval remains at its default."
+    },
+    {
+      "line": 200,
+      "text": "Observation 200: one build artifact was reused from the cache."
+    },
+    {
+      "line": 220,
+      "text": "Observation 220: the drain loop finished after the usual interval."
+    },
+    {
+      "line": 260,
+      "text": "Observation 260: a shard rebalance was deferred to the next window."
+    },
+    {
+      "line": 280,
+      "text": "Observation 280: the metric exporter flushed one batch."
+    },
+    {
+      "line": 330,
+      "text": "Observation 330: the log rotation marker advanced by one."
+    },
+    {
+      "line": 350,
+      "text": "Observation 350: the connection pool returned to its idle size."
+    },
+    {
+      "line": 380,
+      "text": "Observation 380: a retry budget was left untouched by the probe."
+    },
+    {
+      "line": 400,
+      "text": "Observation 400: the queue depth stayed inside the warning band."
+    },
+    {
+      "line": 440,
+      "text": "Observation 440: the feature gate check returned the default branch."
+    },
+    {
+      "line": 460,
+      "text": "Observation 460: the backup index scan completed without matches."
+    },
+    {
+      "line": 500,
+      "text": "Observation 500: the read-only audit skipped a locked table."
+    },
+    {
+      "line": 520,
+      "text": "Observation 520: a warm cache served the status endpoint."
+    },
+    {
+      "line": 560,
+      "text": "Observation 560: the lease renewal used the normal jitter."
+    },
+    {
+      "line": 580,
+      "text": "Observation 580: the tracing sampler kept its configured rate."
+    },
+    {
+      "line": 620,
+      "text": "Observation 620: the snapshot manifest listed no new files."
+    },
+    {
+      "line": 640,
+      "text": "Observation 640: a periodic probe confirmed the replica lag is nominal."
+    },
+    {
+      "line": 680,
+      "text": "Observation 680: the batch worker finished its idle pass."
+    },
+    {
+      "line": 700,
+      "text": "Observation 700: the cleanup task removed one temporary directory."
+    },
+    {
+      "line": 740,
+      "text": "Observation 740: the health check returned the standard payload."
+    },
+    {
+      "line": 760,
+      "text": "Observation 760: the clock skew guard found nothing to report."
+    },
+    {
+      "line": 800,
+      "text": "Observation 800: the archive reader stopped at the end of its page."
+    },
+    {
+      "line": 820,
+      "text": "Observation 820: a queued notification was coalesced with the next one."
+    },
+    {
+      "line": 860,
+      "text": "Observation 860: the retention sweep left the protected window intact."
+    },
+    {
+      "line": 900,
+      "text": "Observation 900: the shard map matched the previous revision."
+    },
+    {
+      "line": 920,
+      "text": "Observation 920: the write-ahead log segment rolled over normally."
+    },
+    {
+      "line": 940,
+      "text": "Observation 940: the exporter dropped one duplicate sample."
+    },
+    {
+      "line": 950,
+      "text": "Observation 950: the maintenance window stayed closed."
+    },
+    {
+      "line": 960,
+      "text": "Observation 960: the consistency probe sampled the usual keys."
+    },
+    {
+      "line": 970,
+      "text": "Observation 970: the leader lease was renewed without contention."
+    },
+    {
+      "line": 975,
+      "text": "Observation 975: the cache namespace stayed at its default size."
+    },
+    {
+      "line": 980,
+      "text": "Observation 980: the alert silencer expired on schedule."
+    },
+    {
+      "line": 985,
+      "text": "Observation 985: the read replica caught up before the probe."
+    },
+    {
+      "line": 990,
+      "text": "Observation 990: the final flush wrote its usual marker."
+    },
+    {
+      "line": 995,
+      "text": "Observation 995: the synthetic history ends after this routine entry."
+    }
+  ],
+  "questions": {
+    "h_constraint": {
+      "question": "Quote the Chinese user constraint verbatim, including punctuation.",
+      "answer": "未经确认禁止删除归档；默认语言为简体中文。",
+      "accept": ["用户约束：未经确认禁止删除归档；默认语言为简体中文。"],
+      "source": "用户约束：未经确认禁止删除归档；默认语言为简体中文。",
+      "region": "head",
+      "kind": "constraint"
+    },
+    "h_path": {
+      "question": "What is the exact source path?",
+      "answer": "/workspace/客户数据/first draft/config.prod.json",
+      "source": "The exact source path is /workspace/客户数据/first draft/config.prod.json.",
+      "region": "head",
+      "kind": "path"
+    },
+    "h_command": {
+      "question": "What is the exact deployment command?",
+      "answer": "pnpm deploy --filter @example/api -- --dry-run",
+      "source": "The exact deployment command is pnpm deploy --filter @example/api -- --dry-run.",
+      "region": "head",
+      "kind": "command"
+    },
+    "h_retries": {
+      "question": "Return the retry limit as a string.",
+      "answer": "7",
+      "source": "The numeric retry limit is 7.",
+      "region": "head",
+      "kind": "numeric"
+    },
+    "h_variable": {
+      "question": "What is the exact environment variable name?",
+      "answer": "SNAPCOMPACT_SOURCE_SHA256",
+      "source": "The environment variable must retain its spelling: SNAPCOMPACT_SOURCE_SHA256.",
+      "region": "head",
+      "kind": "config"
+    },
+    "h_config": {
+      "question": "Return the service config featureFlag value.",
+      "answer": "safe-rollout",
+      "source": "The service config JSON is {\"port\": 8080, \"region\": \"ap-east-1\", \"featureFlag\": \"safe-rollout\"}.",
+      "region": "head",
+      "kind": "config"
+    },
+    "h_negation": {
+      "question": "Quote the sentence that forbids forced migrations verbatim.",
+      "answer": "Never run migrations with --force.",
+      "source": "Never run migrations with --force.",
+      "region": "head",
+      "kind": "negation"
+    },
+    "t_error": {
+      "question": "What is the exact lock error code?",
+      "answer": "E_LOCK_TIMEOUT",
+      "source": "The exact lock error code is E_LOCK_TIMEOUT.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_timeout": {
+      "question": "Return the verification timeout in seconds as digits only.",
+      "answer": "45",
+      "source": "The verification timeout is 45 seconds.",
+      "region": "tail",
+      "kind": "numeric"
+    },
+    "t_bucket": {
+      "question": "What is the backup bucket path?",
+      "answer": "s3://example-backups/客户数据/",
+      "source": "The backup bucket is s3://example-backups/客户数据/.",
+      "region": "tail",
+      "kind": "path"
+    },
+    "t_primary": {
+      "question": "What is the primary host?",
+      "answer": "api-primary.internal",
+      "source": "The primary host is api-primary.internal and the standby host is api-standby.internal.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_standby": {
+      "question": "What is the standby host?",
+      "answer": "api-standby.internal",
+      "source": "The primary host is api-primary.internal and the standby host is api-standby.internal.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_threshold": {
+      "question": "Return the alert threshold as a string.",
+      "answer": "0.75",
+      "source": "The alert threshold is 0.75.",
+      "region": "tail",
+      "kind": "numeric"
+    },
+    "t_owner": {
+      "question": "Who is the owner?",
+      "answer": "team-data-platform",
+      "source": "The owner is team-data-platform.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_jq": {
+      "question": "Return the audit jq query exactly, without the sentence punctuation.",
+      "answer": ".items[] | select(.state==\"open\") | .id",
+      "accept": [".items[] | select(.state==\"open\") | .id."],
+      "source": "The audit jq query is .items[] | select(.state==\"open\") | .id.",
+      "region": "tail",
+      "kind": "code"
+    },
+    "t_date": {
+      "question": "What is the migration date?",
+      "answer": "2027-01-31",
+      "source": "The migration date is 2027-01-31 and must not slip.",
+      "region": "tail",
+      "kind": "numeric"
+    },
+    "t_digest": {
+      "question": "What is the short integrity digest?",
+      "answer": "sha256:9a1f3c7d",
+      "source": "The short integrity digest is sha256:9a1f3c7d.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_release": {
+      "question": "What release tag remains current after the correction?",
+      "answer": "v0.1.1-rc.2",
+      "source": "Historical final correction: the release tag changed from v0.1.0 to v0.1.1-rc.2.",
+      "region": "tail",
+      "kind": "identifier"
+    },
+    "t_next": {
+      "question": "What is the next action? Do not include the leading label.",
+      "answer": "run integration tests; do not deploy yet.",
+      "accept": [
+        "The next action is run integration tests; do not deploy yet.",
+        "Run integration tests; do not deploy yet."
+      ],
+      "source": "The next action is run integration tests; do not deploy yet.",
+      "region": "tail",
+      "kind": "next-action"
+    },
+    "t_cjk_note": {
+      "question": "Quote the Chinese release note verbatim, including punctuation.",
+      "answer": "发布说明：本次迁移只读校验通过后再恢复写入。",
+      "accept": ["本次迁移只读校验通过后再恢复写入。"],
+      "source": "发布说明：本次迁移只读校验通过后再恢复写入。",
+      "region": "tail",
+      "kind": "cjk"
+    },
+    "m_version": {
+      "question": "Return the pinned runtime version from Observation 60.",
+      "answer": "4.8.2-rc.1",
+      "source": "Observation 60: the pinned runtime version is 4.8.2-rc.1.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_flag": {
+      "question": "Return the FEATURE_ROLLOUT value from Observation 120.",
+      "answer": "canary-9",
+      "source": "Observation 120: the rollout flag is FEATURE_ROLLOUT=canary-9.",
+      "region": "middle",
+      "kind": "config"
+    },
+    "m_path_cjk": {
+      "question": "Return the exact rollback script path from Observation 180.",
+      "answer": "/workspace/客户数据/second draft/rollback.sh",
+      "source": "Observation 180: the rollback script path is /workspace/客户数据/second draft/rollback.sh.",
+      "region": "middle",
+      "kind": "cjk"
+    },
+    "m_audit": {
+      "question": "Return the audit token from Observation 240.",
+      "answer": "AUDIT-9F3C-7Q2",
+      "source": "Observation 240: the audit token is AUDIT-9F3C-7Q2.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_port": {
+      "question": "Return the backup port from Observation 300 as digits only.",
+      "answer": "5433",
+      "source": "Observation 300: the primary port is 5432 and the backup port is 5433.",
+      "region": "middle",
+      "kind": "numeric"
+    },
+    "m_indent": {
+      "question": "How many leading spaces does the line `return value.strip()` have in the Observation 360 helper? Return only the digit.",
+      "answer": "4",
+      "source": "    return value.strip()",
+      "region": "middle",
+      "kind": "code"
+    },
+    "m_failover": {
+      "question": "Return the failover mode from Observation 420.",
+      "answer": "PRIMARY-ONLY",
+      "source": "Observation 420: the failover mode is PRIMARY-ONLY until further notice.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_batch": {
+      "question": "Return the batch size from Observation 480 as digits only.",
+      "answer": "17",
+      "source": "Observation 480: the batch size is 17 and the retry limit is 7; do not confuse them.",
+      "region": "middle",
+      "kind": "numeric"
+    },
+    "m_rollback": {
+      "question": "Return the rollback command from Observation 540 exactly.",
+      "answer": "git revert --no-edit 4c1d9e2",
+      "source": "Observation 540: the rollback command is git revert --no-edit 4c1d9e2.",
+      "region": "middle",
+      "kind": "command"
+    },
+    "m_channel": {
+      "question": "Return the release channel alias from Observation 600.",
+      "answer": "amber-42",
+      "source": "Observation 600: the release channel alias is amber-42.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_hash": {
+      "question": "Return the cache digest from Observation 660 exactly.",
+      "answer": "sha256:7c1e9b2a",
+      "source": "Observation 660: the cache digest is sha256:7c1e9b2a.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_request": {
+      "question": "Return the request id from Observation 720.",
+      "answer": "req-8f31c2d4e5",
+      "source": "Observation 720: the request id is req-8f31c2d4e5.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_logcode": {
+      "question": "Return the quota warning code from Observation 780.",
+      "answer": "WARN_QUOTA_73",
+      "source": "Observation 780: the quota warning code is WARN_QUOTA_73.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_header": {
+      "question": "Return the trace value from Observation 840.",
+      "answer": "5b7e9c1d",
+      "source": "Observation 840: the trace header is X-Snap-Trace: 5b7e9c1d.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_epoch": {
+      "question": "Return the snapshot epoch from Observation 880 as digits only.",
+      "answer": "1735689600",
+      "source": "Observation 880: the snapshot epoch is 1735689600.",
+      "region": "middle",
+      "kind": "numeric"
+    },
+    "m_checksum": {
+      "question": "Return the archive checksum from Observation 910, including the CRC32 prefix.",
+      "answer": "CRC32=9e7f3a1c",
+      "accept": ["9e7f3a1c"],
+      "source": "Observation 910: the archive checksum is CRC32=9e7f3a1c.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_region": {
+      "question": "Return the standby region from Observation 930.",
+      "answer": "eu-west-1",
+      "source": "Observation 930: the standby region is eu-west-1.",
+      "region": "middle",
+      "kind": "config"
+    },
+    "m_quota": {
+      "question": "Return the per-minute quota from Observation 945 as digits only.",
+      "answer": "2400",
+      "source": "Observation 945: the per-minute quota is 2400 requests.",
+      "region": "middle",
+      "kind": "numeric"
+    },
+    "m_tenant": {
+      "question": "Return the tenant id from Observation 955.",
+      "answer": "tenant-atlas-77",
+      "source": "Observation 955: the tenant id is tenant-atlas-77.",
+      "region": "middle",
+      "kind": "identifier"
+    },
+    "m_build": {
+      "question": "Return the build stamp from Observation 965 exactly.",
+      "answer": "20270131.4",
+      "source": "Observation 965: the build stamp is 20270131.4.",
+      "region": "middle",
+      "kind": "numeric"
+    }
+  }
+}

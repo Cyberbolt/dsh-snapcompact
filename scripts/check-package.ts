@@ -69,7 +69,7 @@ const required = [
   'assets/fonts/unifont_all-18.0.01.hex.gz',
   'assets/fonts/OFL-1.1.txt',
   'assets/fonts/UPSTREAM-COPYRIGHT.txt',
-  'assets/benchmarks/engineering.json',
+  'assets/benchmarks/engineering-v3.json',
   'docs/architecture.md',
   'docs/configuration.md',
   'docs/evaluation.md',

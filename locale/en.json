@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "A DeepSeek Harness plugin that compacts long chats by rendering discarded history into bitmap frames a vision model reads directly — local, deterministic, no summarizer call — while keeping exact head/tail text and a searchable archive."
+    "description": "A DeepSeek Harness compaction plugin that turns the middle of long sessions into images a vision model reads — no summarizer call, exact text + searchable archive."
   }
 }

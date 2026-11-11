@@ -16,7 +16,7 @@ When a session gets long, Snapcompact turns the middle of the transcript into de
 
 Use it for long coding or debugging sessions where you still need the exact command from forty turns ago. It is not for short chats, text-only routes, or minimal mode.
 
-**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.0` → new session → **Snapcompact (Standard)**. No build step.
+**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.1` → new session → **Snapcompact (Standard)**. No build step.
 
 ## Why render?
 
@@ -41,20 +41,21 @@ A vision model is billed largely by image area, not by how many characters the i
 
 ## Benchmark
 
-| Arm (fixture v2, 40 questions) | Exact match | Middle probes | Per-turn read | One-time generation | 3-turn total |
-| ------------------------------ | ----------: | ------------: | ------------: | ------------------: | -----------: |
-| Raw history                    |       38/40 |             — |        15,107 |                   0 |       45,321 |
-| Native summary                 |       40/40 |             — |         1,515 |              20,361 |       24,906 |
-| Snapcompact                    |       36/40 |          8/10 |         6,717 |                   0 |       20,151 |
+| Arm (fixture v3, one run) | Accepted | Strict | Middle | Per-turn read | One-time generation |
+| ------------------------- | -------: | -----: | -----: | ------------: | ------------------: |
+| Raw history               |    40/40 |  40/40 |  20/20 |        15,963 |                   0 |
+| Native summary            |    38/40 |  37/40 |  20/20 |         1,623 |              20,440 |
+| Snapcompact               |    33/40 |  32/40 |  14/20 |         6,710 |                   0 |
+| Snapcompact + recall      |    34/40 |  34/40 |  15/20 |        23,650 |                   0 |
 
-The visual checkpoint was cheaper on the first compaction (6,717 vs 21,876) and over three turns (20,151 vs 24,906); the summary crosses over around the fourth turn. The visual arm answered 8/10 middle probes, so this is the first score that depends on reading frames; two of its four misses were head/tail facts, which the archive still holds. One fixed fixture can invert match ordering (the native summary scored 40/40 against 38/40 for the original), so run `/snapcompact benchmark` on your route.
+Real run on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`, one run. The native summary was more answerable (38/40 vs 33/40) and kept every middle fact; the visual checkpoint paid no generation call and carried 6,710 tokens per turn. At three turns the visual context is still cheaper (20,130 vs 25,309). The recall arm made 4 calls for one extra accepted answer, at 23,650 read tokens. One run can move a question or two; run `/snapcompact benchmark 3` on your route for a range. Protocol: [evaluation.md](docs/evaluation.md); details: [evaluation-results.md](docs/evaluation-results.md).
 
 ## Install
 
 Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
 
 1. Open **Plugins → Add plugin**.
-2. Install `dsh-snapcompact@0.6.0`.
+2. Install `dsh-snapcompact@0.6.1`.
 3. Restart if prompted, then create a new session and choose a variant.
 
 | Official mode | Choose                     | What you keep                                                         |
@@ -68,7 +69,7 @@ Installation adds opt-in presets. It does not change official presets or running
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.6.0
+dsh plugin --profile web add dsh-snapcompact@0.6.1
 ```
 
 Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
@@ -135,12 +136,12 @@ snapcompact.ts (RW)
 
 ## Use it
 
-| Entry point              | What it does                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `/compact`               | Manual compaction; inside a Snapcompact preset it runs the chain                      |
-| `/snapcompact status`    | Route, effective threshold, compactable space, per-method availability, archive count |
-| `/snapcompact benchmark` | Synthetic comparison; up to four auxiliary model calls, may incur fees                |
-| `snapcompact_recall`     | List, page or literally search an archive                                             |
+| Entry point                    | What it does                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| `/compact`                     | Manual compaction; inside a Snapcompact preset it runs the chain                      |
+| `/snapcompact status`          | Route, effective threshold, compactable space, per-method availability, archive count |
+| `/snapcompact benchmark [1-5]` | Synthetic v3 comparison; up to eight auxiliary calls per run, may incur fees          |
+| `snapcompact_recall`           | List, page or literally search an archive                                             |
 
 ```json
 { "action": "list" }
@@ -223,7 +224,6 @@ This release declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Install
 - [Configuration and route pricing](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md)
 - [Architecture and reading guide](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/architecture.md)
 - [Evaluation and interpretation](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation.md)
-- [Evaluation results and cost accounting](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
 - [Third-party notices](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.md)
 - [Issues and feedback](https://github.com/Cyberbolt/dsh-snapcompact/issues)
 - [中文文档](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs/zh)

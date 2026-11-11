@@ -6,6 +6,8 @@ import type {
   LlmImageRequestPricing,
   LlmResolvedModelInfo,
   StreamChunk,
+  ToolCallId,
+  TokenUsage,
 } from '@deepseek-ai/dsh-llm';
 import type {
   ImageAttachmentRef,
@@ -70,8 +72,17 @@ export class DiskAttachments implements FileStore {
   }
 }
 
+export interface TestResponse {
+  readonly text?: string;
+  readonly toolCalls?: readonly { readonly name: string; readonly arguments: string }[];
+  readonly usage?: TokenUsage;
+  readonly reject?: boolean;
+}
+
 export class TestAdapter extends LlmAdapter {
   calls: GenerateOptions[] = [];
+  /** Optional scripted responses; each stream call consumes one. */
+  responses: TestResponse[] = [];
   text =
     '## Goal\nGoal: continue the requested implementation.\n## Constraints\nPreserve exact commands.\n## Decisions\nUse the approved design.\n## Files and exact commands\npnpm test\n## Completed work\n(none)\n## Unfinished work\nIntegration tests.\n## Next action\nRun integration tests.\n## Critical facts\nNever infer exact code from uncertain OCR.';
   reject = false;
@@ -111,7 +122,8 @@ export class TestAdapter extends LlmAdapter {
     this.calls.push(options);
     await this.beforeStream?.();
     options.signal?.throwIfAborted();
-    if (this.reject) {
+    const response = this.responses.shift();
+    if (this.reject || response?.reject === true) {
       yield {
         type: 'finish',
         reason: {
@@ -121,10 +133,33 @@ export class TestAdapter extends LlmAdapter {
       };
       return;
     }
+    const usage = response?.usage ?? { inputTokens: 100, outputTokens: 20 };
+    if (response?.toolCalls !== undefined && response.toolCalls.length > 0) {
+      for (const [index, call] of response.toolCalls.entries()) {
+        const id = ('test-call-' + (index + 1)) as ToolCallId;
+        yield { type: 'block-start', index, blockType: 'tool-call' };
+        yield {
+          type: 'tool-call-delta',
+          index,
+          id,
+          name: call.name,
+          argumentsDelta: call.arguments,
+        };
+        yield {
+          type: 'block-end',
+          index,
+          block: { type: 'tool-call', id, name: call.name, arguments: call.arguments },
+        };
+      }
+      yield { type: 'usage', usage };
+      yield { type: 'finish', reason: { kind: 'tool-calls' } };
+      return;
+    }
+    const text = response?.text ?? this.text;
     yield { type: 'block-start', index: 0, blockType: 'text' };
-    yield { type: 'text-delta', index: 0, text: this.text };
-    yield { type: 'block-end', index: 0, block: { type: 'text', text: this.text } };
-    yield { type: 'usage', usage: { inputTokens: 100, outputTokens: 20 } };
+    yield { type: 'text-delta', index: 0, text };
+    yield { type: 'block-end', index: 0, block: { type: 'text', text } };
+    yield { type: 'usage', usage };
     yield { type: 'finish', reason: { kind: 'stop' } };
   }
 }
