@@ -16,7 +16,7 @@ When a session gets long, Snapcompact turns the middle of the transcript into de
 
 Use it for long coding or debugging sessions where you still need the exact command from forty turns ago. It is not for short chats, text-only routes, or minimal mode.
 
-**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.1` → new session → **Snapcompact (Standard)**. No build step.
+**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.2` → new session → **Snapcompact (Standard)**. No build step.
 
 ## Why render?
 
@@ -55,7 +55,7 @@ Real three-run measurement on **2026-11-11** with route `opencode-go/deepseek-v4
 Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
 
 1. Open **Plugins → Add plugin**.
-2. Install `dsh-snapcompact@0.6.1`.
+2. Install `dsh-snapcompact@0.6.2`.
 3. Restart if prompted, then create a new session and choose a variant.
 
 | Official mode | Choose                     | What you keep                                                         |
@@ -69,7 +69,7 @@ Installation adds opt-in presets. It does not change official presets or running
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.6.1
+dsh plugin --profile web add dsh-snapcompact@0.6.2
 ```
 
 Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
