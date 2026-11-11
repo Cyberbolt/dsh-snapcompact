@@ -7,117 +7,76 @@
 [![npm](https://img.shields.io/npm/v/dsh-snapcompact?logo=npm&label=npm)](https://www.npmjs.com/package/dsh-snapcompact)
 [![downloads](https://img.shields.io/npm/dt/dsh-snapcompact?logo=npm&label=downloads)](https://www.npmjs.com/package/dsh-snapcompact)
 [![license](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/LICENSE)
-[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#compatibility)
+[![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#install)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Snapcompact compacts a long conversation by rendering it, not summarizing it.** DSH selects a safe history region; Snapcompact serializes the discarded middle into dense PNG frames of pixel-font text that a vision model reads directly, and keeps exact head/tail text plus a sha256-addressed archive behind the checkpoint. Rendering is local and deterministic: the visual path makes no summarizer call and needs no API key or network, and `snapcompact_recall` can still recover exact commands, paths and identifiers from the archive. If the route cannot take images, it falls back through the configured text methods and finally to DSH's native summary. It ships as opt-in presets for DSH's **standard**, **PTC** and **Cordis** modes; the official presets and running sessions are unchanged.
+**Compact a long DSH session by rendering it, not summarizing it.**
 
-**Where it pays off.** Against raw history it spends fewer prompt tokens for the same recall. Against a native summary it keeps far more of the original and costs no generation call, but its checkpoint is larger on every later turn; on a short session a terse summary is cheaper. This is measurable, not a slogan: run `/snapcompact benchmark` on your route instead of assuming a fixed ratio.
+When a session gets long, Snapcompact turns the middle of the transcript into dense PNG frames a vision model reads directly. The visual path makes no summarizer call; exact head and tail text stay in place, and a searchable archive keeps commands, paths and identifiers recoverable.
 
-## Highlights
+Use it for long coding or debugging sessions where you still need the exact command from forty turns ago. It is not for short chats, text-only routes, or minimal mode.
 
-| What you need                                                 | What Snapcompact provides                                                                                                                                      |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A smaller context window without throwing the transcript away | Every checkpoint ships with an exact archive of the selected history.                                                                                          |
-| Recover exact strings after compaction                        | Exact head/tail text, an archive reference and the `snapcompact_recall` tool.                                                                                  |
-| Know which files are in play after compaction                 | A bounded `FILES` index from read/write/edit calls, with directory folding, `(Read)`/`(Write)`/`(RW)` markers and archive recall for exact content.            |
-| A safe failure mode                                           | Default chain `snapcompact → handoff → shake → soft`, configurable as a subset/order; a candidate that cannot prove a smaller, readable checkpoint is skipped. |
-| Native DSH behavior                                           | Compaction region selection, transaction locks, recovery and capacity checks stay in the host.                                                                 |
-| Change the common knobs without hand-editing YAML             | The **Plugins → Snapcompact** settings card edits the chain, threshold, frame budget and limits, and saves through the profile's config patch.                 |
-| Evidence instead of a slogan                                  | `/snapcompact benchmark` reports recall, one-time generation cost and per-turn checkpoint size for the text, summary and visual arms.                          |
+**Install:** Plugins → Add plugin → `dsh-snapcompact@0.5.3` → new session → **Snapcompact (Standard)**. No build step.
 
-## How it works
+## Why render?
 
-```text
-DSH selects a safe history region
-        │
-        ▼
-exact archive (sha256:…)  ──┐
-        │                   │  survives the checkpoint
-        ▼                   │
-snapcompact → handoff → shake → soft
-        │
-        ▼
-native compaction transaction commits one checkpoint
-```
+A vision model is billed largely by image area, not by how many characters the image contains. Up to the legibility limit, a dense frame can carry more text per token than the same text sent verbatim. That is the mechanism: the discarded middle becomes a few readable images instead of a lossy summary.
 
-| Order | Method        | Model call       | What it produces                                                                                                                     |
-| ----- | ------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `snapcompact` | None (local)     | Bounded 1568px bitmap frames of the compact middle, exact head/tail text, a bounded FILES index and an archive reference.            |
-| 2     | `handoff`     | One handoff call | A structured task handoff: goal, constraints, decisions, exact commands, completed and unfinished work, next action, critical facts. |
-| 3     | `shake`       | None             | Large tool outputs are archived, then replaced with bounded head/tail excerpts and recall references.                                |
-| 4     | `soft`        | Native summary   | DSH's native text summarization as the final fallback.                                                                               |
+|                  | Raw history | Native summary   | Snapcompact (visual path)                             |
+| ---------------- | ----------- | ---------------- | ----------------------------------------------------- |
+| What survives    | Everything  | A summary        | Exact head/tail + archived middle                     |
+| Compaction cost  | 0           | One model call   | 0 (local render)                                      |
+| Per-turn context | Largest     | Usually smallest | Smaller than raw; usually larger than a terse summary |
+| Exact strings    | Yes         | May be lost      | Recoverable from the archive                          |
 
-Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
+**When it wins:** long histories, routes with cheap image tokens, and work where you need the exact strings back after compaction. **When it doesn't:** short sessions, text-only routes, or when a terse summary is enough.
 
-The layout is a continuous flow, not one source line per row. A full row wraps at the frame edge, one `¶` marks each source newline (consecutive `¶` are blank lines), and leading spaces keep indentation. Frames are one-bit grayscale PNGs: the bundled font is already two-tone, so this keeps a full 1568px prose frame near 11 KB. On the bundled 70k-character fixture the current renderer produces 5 frames at about 13.4k characters per frame; the previous row-per-line renderer needed 14. These are local rendering measurements, not model-recall scores.
+## What you get
 
-The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint fits the room left under the trigger. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
+- **No summarizer call on the visual path.** Rendering is local: no generation cost, no network call, no extra API key.
+- **Exact recall after compaction.** Head/tail text plus a searchable archive; `snapcompact_recall` reads it line by line.
+- **A file map that survives compaction.** A bounded `FILES` index from read/write/edit calls, with `(Read)`/`(Write)`/`(RW)` markers.
+- **A safe fallback.** `snapcompact → handoff → shake → soft`; the native summary is last.
+- **Native DSH behavior.** Region selection, transaction locks, recovery and capacity checks stay in the host.
 
-### Does it save tokens?
+## Benchmark
 
-The visual path pays no generation cost: the compaction itself makes no model call. The v1 comparison — 9 questions, previous row-per-line layout — turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. On the current layout and fixture v2 (40 questions, 10 middle probes), the visual arm scored 36/40 with five 1568px frames and an estimated 7,607-token checkpoint, against 38/40 for the original text and 40/40 for a native summary that cost 20,361 tokens to generate. The visual checkpoint was still cheaper over three turns (20,151 vs 24,906); run `/snapcompact benchmark` on your route to measure it. Counting that generation, the v1 visual checkpoint was cheaper for the first compaction; the summary became cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
+| Arm (fixture v2, 40 questions) | Exact match | Middle probes | Per-turn read | One-time generation | 3-turn total |
+| ------------------------------ | ----------: | ------------: | ------------: | ------------------: | -----------: |
+| Raw history                    |       38/40 |             — |        15,107 |                   0 |       45,321 |
+| Native summary                 |       40/40 |             — |         1,515 |              20,361 |       24,906 |
+| Snapcompact                    |       36/40 |          8/10 |         6,717 |                   0 |       20,151 |
 
-A checkpoint looks roughly like this (abridged):
-
-```text
-Snapcompact v2; method=snapcompact
-Exact archived history: sha256:…
-Visual snapcompact checkpoint: N frames; M carried images; ¶ marks a source newline; use snapcompact_recall for exact strings.
-FILES (touched by read/write/edit tools; not a current disk-state guarantee)
-(Read) read-only; (Write) written without a read; (RW) read and written
-============================================================
-# src/compaction/
-visual-source.ts (Read)
-## methods/
-snapcompact.ts (RW)
-[exact text head]
-[image frame 1 of N] … [image frame N of N]
-[exact text tail]
-[file] snapcompact archive reference
-```
-
-Safety properties:
-
-- Images are never the only copy of task state; exact head/tail text and the archive remain. A text handoff is the fallback when visuals are unavailable.
-- The `FILES` index is derived from read/write/edit tool calls in the compacted range and earlier snapcompact checkpoints. It is a navigation aid, not a disk snapshot; `bash` and apply-patch changes are not tracked.
-- Cancellation stops the compaction and never silently selects the next method.
-- Recall is granted only by a successfully completed compaction in the owning session.
-- Existing images and earlier visual checkpoints are carried forward, not re-rendered as attachment descriptors.
-- Unknown vision support fails closed to text; unknown pricing is estimated only for DeepSeek model IDs and is labelled as an estimate.
-- The plugin adds no custom Session event type and does not replace the host's transaction engine.
+The visual checkpoint was cheaper on the first compaction (6,717 vs 21,876) and over three turns (20,151 vs 24,906); the summary crosses over around the fourth turn. The visual arm answered 8/10 middle probes, so this is the first score that depends on reading frames; two of its four misses were head/tail facts, which the archive still holds. One fixed fixture can invert match ordering (the native summary scored 40/40 against 38/40 for the original), so run `/snapcompact benchmark` on your route.
 
 ## Install
 
-Snapcompact declares **DeepSeek Harness `^0.2.2-rc.1`**, the 0.2.x line, and is verified on `0.2.2-rc.1`. A 0.2.x patch or prerelease installs without an exact-version exemption; the next minor line is declared only after the install and activation checks have passed against it.
+Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
 
-| Requirement                | Value                                           |
-| -------------------------- | ----------------------------------------------- |
-| DSH                        | `^0.2.2-rc.1` (0.2.x; verified on `0.2.2-rc.1`) |
-| Node.js                    | 24 or newer (the host's requirement)            |
-| Build step                 | None; the npm package ships compiled `dist/`    |
-| Install-time build scripts | None                                            |
+1. Open **Plugins → Add plugin**.
+2. Install `dsh-snapcompact@0.5.3`.
+3. Restart if prompted, then create a new session and choose a variant.
 
-### From the Plugins page (recommended)
+| Official mode | Choose                     | What you keep                                                         |
+| ------------- | -------------------------- | --------------------------------------------------------------------- |
+| `standard`    | **Snapcompact (Standard)** | Shell, files, search, subagents, workflows, web, plan mode            |
+| `ptc`         | **Snapcompact (PTC)**      | `run_code` as the only direct tool; everything else through `tools.*` |
+| `cordis`      | **Snapcompact (Cordis)**   | `tool-cordis` and the official Cordis authoring skills                |
 
-1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.5.3` and click **Install**.
-3. Follow the page's restart prompt if one appears.
-4. Start a **new session** and pick the Snapcompact variant that matches how you work: **Snapcompact (Standard)**, **Snapcompact (PTC)** or **Snapcompact (Cordis)**. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
+Installation adds opt-in presets. It does not change official presets or running sessions; choosing a variant is the enable action, and existing sessions keep the preset they started with. `minimal` is not supported: it deliberately omits read/write/edit, so frames and archive recall would defeat its purpose.
 
-Pin the version to install exactly this release. Without a version, the package manager resolves the newest published release.
-
-### From the command line
+From the CLI:
 
 ```sh
 dsh plugin --profile web add dsh-snapcompact@0.5.3
 ```
 
-Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
+Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
 
-### Other install sources
+<details>
+<summary>Other install sources</summary>
 
-`dsh plugin add` accepts more than an npm package name. You can install a locally packed tarball or a tarball URL:
+A locally packed tarball and a tarball URL work too:
 
 ```sh
 pnpm install --ignore-scripts
@@ -131,31 +90,58 @@ dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
 
-### Enable a preset
+</details>
 
-Installation adds **opt-in presets**; it does not change the official presets or any running session. Create a new session, choose one of the Snapcompact variants, and continue there.
+## How it works
 
-Each variant copies the official preset it mirrors and swaps only the compaction backend: `compaction-basic` out, the Snapcompact chain in. The destructive result pruner stays out because shake archives before externalizing. Choosing a variant is the enable action. DSH mounts each agent's compaction backend inside the preset's isolated group, so a profile-plane plugin cannot replace the native backend globally, and a shipped preset cannot be extended in place. This is a DSH isolation boundary, not an extra per-turn mode.
+```text
+DSH selects a safe region
+        │
+        ▼
+exact archive (sha256) ── survives the checkpoint
+        │
+        ▼
+snapcompact → handoff → shake → soft
+        │
+        ▼
+one checkpoint committed by DSH
+```
 
-| Official mode | Choose                     | What you keep                                                                                                                                                                               |
-| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `standard`    | **Snapcompact (Standard)** | The regular tool set: shell, file tools, search, subagents and workflows, web, plan mode.                                                                                                   |
-| `ptc`         | **Snapcompact (PTC)**      | `run_code` as the only direct tool; every other tool stays reachable through `tools.*`, including `snapcompact_recall`. Workflows and the plugin manager keep the official PTC disablement. |
-| `cordis`      | **Snapcompact (Cordis)**   | `tool-cordis` plus the official Cordis authoring skills mounted from the shipped `@deepseek-ai/dsh-agent-preset` skills directory.                                                          |
-| `minimal`     | not provided               | Minimal deliberately omits read/write/edit and the full tool surface; adding image frames and archive recall would defeat its purpose, so it is out of scope.                               |
+| Order | Method        | Model call     | Output                                                          |
+| ----- | ------------- | -------------- | --------------------------------------------------------------- |
+| 1     | `snapcompact` | none           | Dense frames, exact head/tail, `FILES` index, archive reference |
+| 2     | `handoff`     | one call       | Structured task handoff                                         |
+| 3     | `shake`       | none           | Large tool outputs archived, replaced by bounded excerpts       |
+| 4     | `soft`        | native summary | DSH's native text summary                                       |
 
-The settings card is shared: it edits the profile-plane `snapcompact-settings` row, and whichever variant a session selects reads it at mount time.
+The visual method runs only when the route declares image input and pricing (or a labelled estimate) and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction; it never silently selects the next method.
+
+A checkpoint looks like this (abridged):
+
+```text
+Snapcompact v2; method=snapcompact
+Exact archived history: sha256:…
+Visual checkpoint: N frames; ¶ marks a source newline; use snapcompact_recall for exact strings.
+FILES (from read/write/edit; not a disk snapshot)
+(Read) read-only; (Write) written without a read; (RW) read and written
+# src/compaction/
+visual-source.ts (Read)
+## methods/
+snapcompact.ts (RW)
+[exact text head]
+[frame 1 of N] … [frame N of N]
+[exact text tail]
+[file] snapcompact archive reference
+```
 
 ## Use it
 
-| Entry point              | What it does                                                                                                                                                         |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/compact`               | DSH's standard manual compaction command; inside any Snapcompact preset it runs the Snapcompact chain.                                                               |
-| `/snapcompact status`    | Show the method-chain preset, automatic-compaction setting, current route, effective threshold and compactable space, per-method availability and the archive count. |
-| `/snapcompact benchmark` | Run the synthetic comparison. This explicitly authorizes up to four auxiliary model requests and can incur fees.                                                     |
-| `snapcompact_recall`     | Let the model list, page through or literally search exact archived content.                                                                                         |
-
-Recall examples:
+| Entry point              | What it does                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| `/compact`               | Manual compaction; inside a Snapcompact preset it runs the chain                      |
+| `/snapcompact status`    | Route, effective threshold, compactable space, per-method availability, archive count |
+| `/snapcompact benchmark` | Synthetic comparison; up to four auxiliary model calls, may incur fees                |
+| `snapcompact_recall`     | List, page or literally search an archive                                             |
 
 ```json
 { "action": "list" }
@@ -163,185 +149,74 @@ Recall examples:
 { "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
 ```
 
-Recall returns physical line numbers and `(nextOffset, nextColumn)` cursors. Pass both back to continue a very long line. Text pages are capped at 200 line fragments and 20,000 UTF-16 code units. Search is a case-sensitive literal substring match, not a regular expression.
+Recall returns physical line numbers and `(nextOffset, nextColumn)` cursors. Text pages are capped at 200 line fragments and 20,000 UTF-16 code units. Search is a case-sensitive literal substring match, not a regular expression. Archive IDs must be referenced by a completed compaction in the owning session.
 
-Archive IDs must be referenced by a completed compaction in the owning session (including inherited history). Arbitrary paths and other sessions' archives are not accessible.
+## Configure
 
-## Configuration
+The **Plugins → Snapcompact** card covers the common keys and writes through DSH's settings service to the profile's config patch. One card configures all three variants; saved values apply to new sessions.
 
-Configuration lives on the `snapcompact` row inside the selected Snapcompact preset's isolated compaction group. The settings card on the **Plugins → Snapcompact** page covers the common keys; the preset/config editor covers everything else. Both write into the active profile's configuration patch, so neither requires editing profile files by hand.
+| Control           | Key                                                                        | Default                               |
+| ----------------- | -------------------------------------------------------------------------- | ------------------------------------- |
+| Method chain      | `methodOrder`                                                              | `[snapcompact, handoff, shake, soft]` |
+| Trigger threshold | `policy.thresholdRatio`                                                    | host default 0.8                      |
+| Retained tail     | derived `thresholdRatio ÷ 5`; YAML `retainRatio` / `retainTokens` override | 0.16 at 0.8                           |
+| Frame size        | `rendering.width` / `rendering.height`                                     | 1568                                  |
+| Maximum frames    | `rendering.maxFrames`                                                      | 20 (max 64)                           |
+| Archive limit     | `archiveMaxBytes`                                                          | 64 MiB                                |
+| Handoff budget    | `handoffMaxTokens`                                                         | 4096                                  |
+| Externalize above | `shakeThresholdChars`                                                      | 8192                                  |
 
-```yaml
-methodOrder: [snapcompact, handoff, shake, soft]
-policy:
-  auto: true
-  # Trigger at 80% of the window; /snapcompact status shows the effective token count.
-  thresholdRatio: 0.8
-  # Verbatim tail kept after compaction. Mutually exclusive with retainTokens.
-  retainRatio: 0.16
-guard:
-  # Refuse to mount when thresholdRatio - retainRatio falls below this; 0 disables.
-  minCompactableRatio: 0.1
-  # Skip a compaction whose source is below max(1024, window x this) tokens; 0 disables.
-  minSourceRatio: 0.01
-rendering:
-  width: 1568
-  height: 1568
-  maxFrames: 20
-  lineHeight: 20
-  minGlyphPx: 12
-serialization:
-  toolResultMaxChars: 2000
-  toolArgumentMaxChars: 500
-  messageTextMaxChars: 8000
-  headChars: 2000
-  tailChars: 2000
-  includeReasoning: false
-  maxCarriedImages: 4
-```
-
-Defaults use 1568×1568 frames and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count. Other limits are 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under the checkpoint budget implied by the trigger (see the [configuration reference](docs/configuration.md#trigger-threshold)).
-
-### In-app settings
-
-The Snapcompact detail page under **Plugins** carries a settings card backed by a `snapcompact-settings` row in the current profile. The card writes through DSH's settings service into that profile's configuration patch, so saved values survive restarts without hand-editing YAML. It manages:
-
-| Control                  | Config path                              | Default                               |
-| ------------------------ | ---------------------------------------- | ------------------------------------- |
-| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
-| Custom trigger threshold | `policy.thresholdRatio`                  | unset (host default 0.8)              |
-| Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: threshold ÷ 5 (0.16 at 0.8)  |
-| Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
-| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
-| Handoff budget           | `handoffMaxTokens`                       | 4096                                  |
-| Externalize above        | `shakeThresholdChars`                    | 8192                                  |
-
-Rules worth knowing:
-
-- The engine is built when a session mounts the preset, so **saved changes apply to new sessions**; a running session keeps its configuration.
-- For a key the card manages, the saved value overrides the same key in preset YAML. `thresholdRatio` is the exception: it stays unset until you enable the custom threshold, so a preset-level `policy.thresholdRatio` still applies.
-- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`, so it follows the trigger. The card does not show it at all; only a value saved by an older version surfaces, as one read-only “Custom” row with “Restore automatic”. `retainRatio` and `retainTokens` remain mutually exclusive, and hand-written YAML that sets both is rejected.
-- `guard` is YAML-only. Both guards default to on, and both accept `0` to disable them.
-- "Restore default" removes the override and falls back to the plugin default (or to YAML, for the threshold).
-- Everything else — the rest of `policy`, `serialization`, `routePolicies`, render timeouts — remains YAML-only.
-
-### Retained tail and usefulness guards
-
-The retained tail is derived from the trigger by default:
-
-```text
-retainRatio = thresholdRatio ÷ 5          # when not set explicitly
-retain      = retainTokens ?? floor((W − O) × retainRatio)
-```
-
-At the default 0.8 trigger this yields 0.16, exactly the host default; changing the trigger moves the tail with it (0.6 → 0.12, 0.5 → 0.10). The card path therefore always keeps `compactable = 4/5 × thresholdRatio` (at least 0.4 at the 0.5 card floor), so it never trips `guard.minCompactableRatio` (default 0.1). The guard now mainly protects explicit retention written in YAML:
-
-```text
-compactable = threshold - retained tail
-```
-
-An explicit `retainRatio` or `retainTokens` still wins and the two forms stay mutually exclusive. The rule lives in ratio space: when `headroomTokens` caps the threshold, the tail is still computed from the threshold ratio, so its token share can exceed 1/5 — `/snapcompact status` prints the exact numbers. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
-
-Only explicit retention can trip the guard. YAML that pairs `thresholdRatio: 0.2` with `retainRatio: 0.16` is still rejected (0.04 < 0.1); raise the trigger, lower or remove the explicit tail, or set `guard.minCompactableRatio: 0` to disable the mount check. Saved custom tails from older profiles are never rewritten; use “Restore automatic” on the card to return to the derived value.
-
-### Custom method chains and thresholds
-
-`methodOrder` is a priority list: the engine tries methods in order and **the first candidate that succeeds within its compression constraint wins**, so the order is the fallback order. The final method must be `soft`. Subsets are allowed:
-
-| Preset                 | `methodOrder`                         | Behavior                                                    |
-| ---------------------- | ------------------------------------- | ----------------------------------------------------------- |
-| Visual-first (default) | `[snapcompact, handoff, shake, soft]` | Local visuals first, then handoff, excerpts, native summary |
-| Visual + native        | `[snapcompact, soft]`                 | Skip handoff/shake; native summary when visuals fail        |
-| Local-first            | `[snapcompact, shake, soft]`          | Call the native summarizer only after both local paths fail |
-| Text-first             | `[handoff, shake, soft]`              | Spend one model call on a structured handoff first          |
-| Native-only            | `[soft]`                              | Back to the DSH native summary; archive and recall remain   |
-
-Two easy misreadings: `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so putting it first preempts the visual path; and the checkpoint budget (half of the room left under the trigger) only constrains `snapcompact`, while every other method merely has to shrink the source.
-
-The trigger is still the native `policy.thresholdRatio` (a window fraction, default 0.8). `/snapcompact status` converts it into tokens for the current route, prints the retained tail and the compactable space between them, and explains whether each method will run or be skipped.
-
-If a model genuinely has image input and a known price but DSH's adapter exposes no image pricing, DeepSeek model IDs use a labelled 1024-token/frame conservative estimate. Other models can declare a conservative ceiling explicitly:
-
-```yaml
-routePolicies:
-  - provider: your-provider
-    model: exact-model-id
-    visualTokensPerFrame: 4096 # Example only; calibrate for the model and frame size.
-```
-
-A ceiling is not actual usage and cannot grant missing image modality. See [configuration](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md) for every field, the native policy pass-through and route-matching rules.
-
-## Compatibility
-
-| Component    | Supported                                    |
-| ------------ | -------------------------------------------- |
-| DSH          | `^0.2.2-rc.1` (0.2.x)                        |
-| Node.js      | 24+                                          |
-| DSH packages | Host-provided peers; no local copy is needed |
-| npm install  | Prebuilt package, no install scripts         |
-
-The plugin declares a bounded range rather than a single version. The host's gate is a semver check; the floor is the newest host release this build was verified against, and the ceiling is the next minor line. A compatible patch installs without a new plugin release, while a newer minor stays rejected until it passes the same revalidation — types, native integration, package contents and live preset activation — and ships in a new plugin release. Do not bypass the host check by editing profile metadata.
+`guard`, `serialization`, `routePolicies` and render limits are YAML-only. See the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md) for every field.
 
 ## Limits and privacy
 
-- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle) and are a visual projection: invisible trailing spaces are trimmed and each source newline becomes a one-cell `¶`. The exact head/tail text and the archive preserve the selected message content, but they cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
-- **Savings depend on the route and the horizon.** The numbers above come from one synthetic fixture on one route. A terse native summary can be smaller per turn on a short session; the visual checkpoint can win on a long history or a route with cheap image tokens. Cache-read discounts, image pricing and turn count decide the bill: a smaller checkpoint is not proof of a lower bill.
-- **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
-- **FILES is a tool-observed index, not a snapshot.** It covers read/write/edit calls in the compacted range plus earlier snapcompact FILES blocks, is capped at 20 sorted paths, and does not see `bash` or apply-patch changes. Paths elided from an earlier checkpoint are not re-indexed; the archive and recall remain exact.
-- **Host metering caveat.** On a route whose adapter does not price images, DSH's own context meter may underprice the checkpoint until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
-- **Benchmarks cost money.** `/snapcompact benchmark` makes up to four auxiliary model calls using the bundled synthetic fixture. It does not read or upload private session history.
-- **Archive access is scoped.** Recall accepts only archive IDs referenced by a completed compaction in the owning session; there is no path or cross-session escape hatch.
-- **No telemetry.** Archives are stored through DSH's attachment storage in the profile. The plugin does not upload conversation data anywhere else.
+- **Not lossless.** Frames can drop characters; invisible trailing spaces are trimmed and each source newline becomes `¶`. The archive, not the frame, is the source of truth, and it cannot recover content another plugin already deleted. Up to four existing images are carried forward.
+- **Savings depend on the route and horizon.** A terse summary can be smaller per turn on short sessions; the visual path can win on long histories or cheap image tokens. A smaller checkpoint is not automatically a smaller bill.
+- **Visual eligibility is narrow.** The route must declare image input and pricing; unreadable frames or a tight budget fall back to text. On a route without image pricing, DSH's own context meter can lag until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
+- **`FILES` is an index, not a disk snapshot.** It sees read/write/edit calls, not `bash` or apply-patch.
+- **No telemetry.** Archives live in the profile's attachment storage; conversation data is not uploaded elsewhere.
 
 ## Troubleshooting
 
 <details>
-<summary>I installed it, but the Snapcompact presets are not in the picker</summary>
+<summary>The Snapcompact presets are not in the picker</summary>
 
-Confirm the plugin appears as installed, restart DSH if the Plugins page asks for it, and create a **new** session. Look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, make sure you installed through the app's Plugins page rather than a CLI profile the desktop app does not use.
+Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, install through the app's Plugins page, not a CLI profile the desktop app does not use.
 
 </details>
 
 <details>
-<summary>It always falls back to text and never renders images</summary>
+<summary>It always falls back to text</summary>
 
-Run `/snapcompact status`. The usual cause is that the current route has no declared image input or no usable image price estimate. This is the intended safe behavior; do not add a `routePolicies` ceiling unless you know the model accepts images and have calibrated the value. Existing images are carried forward, up to four; if there is no image slot left, the text handoff is used.
+Run `/snapcompact status`. The route probably has no declared image input or no usable image price; that is the intended safe behavior. Existing images are carried forward, up to four; if no image slot is left, the text handoff is used.
 
 </details>
 
 <details>
 <summary>Compaction fails with "No compaction method produced a safe smaller checkpoint"</summary>
 
-Every candidate was skipped or failed its budget check. Check `/snapcompact status` first, then retry when the history is larger or choose a route with a working text summarizer. The error lists each method's reason; cancellation is reported separately and does not fall through.
+Every candidate was skipped or missed its budget. Check `/snapcompact status`; retry with more history, or use a route with a working text summarizer. The error lists each method's reason, and cancellation is reported separately.
 
 </details>
 
 <details>
 <summary>It refuses to start with "leaves only … of the window compactable"</summary>
 
-The configured threshold and retained tail leave too little room for a checkpoint to pay for itself, so the plugin refuses to mount instead of burning model calls. Run `/snapcompact status` for the exact token numbers, then raise `policy.thresholdRatio`, lower `policy.retainRatio`/`retainTokens`, or set `guard.minCompactableRatio: 0` to disable the mount check.
+Usually this means YAML sets an explicit `retainRatio` or `retainTokens` that leaves too little room. Raise `policy.thresholdRatio`, lower or remove the explicit tail, or set `guard.minCompactableRatio: 0`.
 
 </details>
 
 <details>
 <summary>Compaction fails with "below the …-token floor"</summary>
 
-The selected source history is smaller than `max(1024, window × guard.minSourceRatio)`. Wait for more history, or lower `guard.minSourceRatio` (set it to `0` to disable the earnings check). The guard runs before the archive and before any method, so nothing was spent.
-
-</details>
-
-<details>
-<summary>Recall says the archive is not referenced by this session</summary>
-
-Use the archive ID from a checkpoint created by a completed compaction in the current session (inherited history counts). IDs copied from another session, another profile, or a failed attempt are intentionally rejected.
+The source history is smaller than `max(1024, window × guard.minSourceRatio)`. Wait for more history, or lower `guard.minSourceRatio` (`0` disables the check). The guard runs before the archive and before any method, so nothing was spent.
 
 </details>
 
 <details>
 <summary>The install is rejected as incompatible</summary>
 
-This build declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Upgrade or switch the host to a 0.2.x release, or install a Snapcompact release that declares your host's minor line. Do not hand-edit the compatibility check to force the install.
+This release declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Install a release that matches your host's minor line; do not hand-edit the check.
 
 </details>
 
@@ -352,6 +227,7 @@ This build declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Upgrade o
 - [Evaluation and interpretation](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation.md)
 - [Evaluation results and cost accounting](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
 - [Third-party notices](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.md)
+- [Issues and feedback](https://github.com/Cyberbolt/dsh-snapcompact/issues)
 - [中文文档](https://github.com/Cyberbolt/dsh-snapcompact/tree/main/docs/zh)
 
 ## Development
