@@ -5,6 +5,13 @@ import type { RenderOptions } from './types.js';
 
 export const GRID = Object.freeze({ margin: 16, header: 24, footer: 24 });
 
+/**
+ * Printed in place of one source newline: the marker costs a single cell and
+ * keeps line structure readable while the rest of the text flows continuously.
+ * Consecutive markers are consecutive blank lines.
+ */
+export const NEWLINE_MARKER = '\u00b6';
+
 export interface PositionedGlyph {
   readonly glyph: BitmapGlyph;
   readonly character: string;
@@ -12,8 +19,10 @@ export interface PositionedGlyph {
 }
 
 export interface GridRow {
-  readonly sourceLine: number;
-  readonly continuation: boolean;
+  readonly firstLine: number;
+  readonly lastLine: number;
+  /** Content glyphs on this row, excluding newline markers. */
+  readonly chars: number;
   readonly glyphs: readonly PositionedGlyph[];
 }
 
@@ -21,7 +30,7 @@ export interface GridPage {
   readonly rows: readonly GridRow[];
   readonly firstLine: number;
   readonly lastLine: number;
-  /** Number of source characters represented by this page. */
+  /** Number of source characters represented by this page (markers excluded). */
   readonly chars: number;
 }
 
@@ -41,6 +50,7 @@ const MARK = /\p{Mark}/u;
 const UNASSIGNED = /\p{Unassigned}/u;
 const FORMAT = /\p{Format}/u;
 const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'gu');
+const TRAILING_SPACES = / +$/u;
 
 function label(code: number): string {
   return `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -62,6 +72,8 @@ export function escapeCharacter(character: string): string {
   if (character === '\n') return '\n';
   if (character === '\t') return '\\t';
   if (character === '\r') return '\\r';
+  // A literal paragraph mark must not be mistaken for the newline marker.
+  if (character === NEWLINE_MARKER) return '\\u{00B6}';
   if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) {
     return `\\x${code.toString(16).toUpperCase().padStart(2, '0')}`;
   }
@@ -95,7 +107,12 @@ export function escapeCharacter(character: string): string {
   return character;
 }
 
-/** Preserves every space, source newline and wrapped code point; never clips a tail. */
+/**
+ * Continuous text flow: a full row wraps at the frame edge, one `¶` marks each
+ * source newline, and leading indentation is preserved verbatim. No source line
+ * reserves the remainder of its row, which is where most of the density gain
+ * comes from. The exact archive, not this projection, remains the source of truth.
+ */
 export function layoutText(
   text: string,
   suppliedOptions: RenderOptions,
@@ -111,56 +128,87 @@ export function layoutText(
   if (rowsPerPage < 1 || contentWidth < 32) {
     throw new RenderError('INVALID_OPTIONS', 'Frame cannot hold a bitmap text row.');
   }
+  const question = font.get(0x3f);
+  if (question === undefined) {
+    throw new RenderError('FONT_INVALID', 'Font lacks the fallback glyph.');
+  }
+  const marker = font.get(NEWLINE_MARKER.codePointAt(0) ?? 0);
+  if (marker === undefined) {
+    throw new RenderError('FONT_INVALID', 'Font lacks the newline marker glyph.');
+  }
+
   const rows: GridRow[] = [];
   let glyphs: PositionedGlyph[] = [];
   let x = 0;
-  let sourceLine = 1;
-  let continuation = false;
+  let rowChars = 0;
+  let rowFirstLine = 1;
+  let rowLastLine = 1;
   let unrenderableChars = 0;
+
   const flush = (): void => {
     if (rows.length >= rowsPerPage * options.maxFrames) {
       throw new RenderError('FRAME_LIMIT', 'Complete source cannot fit within the frame budget.');
     }
-    rows.push({ sourceLine, continuation, glyphs });
+    rows.push({
+      firstLine: rowFirstLine,
+      lastLine: rowLastLine,
+      chars: rowChars,
+      glyphs,
+    });
     glyphs = [];
     x = 0;
+    rowChars = 0;
   };
-  const question = font.get(0x3f);
-  if (question === undefined)
-    throw new RenderError('FONT_INVALID', 'Font lacks the fallback glyph.');
-  for (const original of normalized) {
-    if (original === '\n') {
-      flush();
-      sourceLine += 1;
-      continuation = false;
-      continue;
+
+  const place = (
+    glyph: BitmapGlyph,
+    character: string,
+    sourceLine: number,
+    isMarker: boolean,
+  ): void => {
+    if (glyph.width > contentWidth) {
+      throw new RenderError('INVALID_OPTIONS', 'Frame is narrower than a source glyph.');
     }
-    const escaped = escapeCharacter(original);
-    if (escaped === '?' && original !== '?') unrenderableChars += 1;
-    for (const character of escaped) {
-      const code = character.codePointAt(0);
-      let glyph = code === undefined ? undefined : font.get(code);
-      let rendered = character;
-      if (glyph === undefined) {
-        glyph = question;
-        rendered = '?';
-        unrenderableChars += 1;
+    if (x + glyph.width > contentWidth && glyphs.length > 0) {
+      flush();
+    }
+    if (glyphs.length === 0) {
+      rowFirstLine = sourceLine;
+    }
+    rowLastLine = sourceLine;
+    glyphs.push({ glyph, character, x });
+    x += glyph.width;
+    if (!isMarker) rowChars += 1;
+  };
+
+  const lines = normalized.split('\n');
+  for (const [index, original] of lines.entries()) {
+    const sourceLine = index + 1;
+    const line = original.replace(TRAILING_SPACES, '');
+    for (const character of line) {
+      const escaped = escapeCharacter(character);
+      if (escaped === '?' && character !== '?') unrenderableChars += 1;
+      for (const renderedCharacter of escaped) {
+        const code = renderedCharacter.codePointAt(0);
+        let glyph = code === undefined ? undefined : font.get(code);
+        let rendered = renderedCharacter;
+        if (glyph === undefined) {
+          glyph = question;
+          rendered = '?';
+          unrenderableChars += 1;
+        }
+        if (glyph === undefined) {
+          throw new RenderError('MISSING_GLYPH', `No bitmap glyph for ${label(code ?? 0)}.`);
+        }
+        place(glyph, rendered, sourceLine, false);
       }
-      if (glyph === undefined) {
-        throw new RenderError('MISSING_GLYPH', `No bitmap glyph for ${label(code ?? 0)}.`);
-      }
-      if (glyph.width > contentWidth) {
-        throw new RenderError('INVALID_OPTIONS', 'Frame is narrower than a source glyph.');
-      }
-      if (x + glyph.width > contentWidth) {
-        flush();
-        continuation = true;
-      }
-      glyphs.push({ glyph, character: rendered, x });
-      x += glyph.width;
+    }
+    if (index < lines.length - 1) {
+      place(marker, NEWLINE_MARKER, sourceLine, true);
     }
   }
   flush();
+
   const pages: GridPage[] = [];
   for (let start = 0; start < rows.length; start += rowsPerPage) {
     const pageRows = rows.slice(start, start + rowsPerPage);
@@ -169,14 +217,14 @@ export function layoutText(
     if (first === undefined || last === undefined) throw new Error('Empty internal grid page.');
     pages.push({
       rows: pageRows,
-      firstLine: first.sourceLine,
-      lastLine: last.sourceLine,
-      chars: pageRows.reduce((total, row) => total + row.glyphs.length, 0),
+      firstLine: first.firstLine,
+      lastLine: last.lastLine,
+      chars: pageRows.reduce((total, row) => total + row.chars, 0),
     });
   }
   return {
     pages,
-    lineCount: sourceLine,
+    lineCount: lines.length,
     columns: contentWidth / 8,
     rowsPerPage,
     unrenderableChars,

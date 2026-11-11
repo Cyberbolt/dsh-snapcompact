@@ -11,14 +11,58 @@ import { snapcompact } from '../compaction/methods/snapcompact.js';
 import { billedPromptTokens, estimateCheckpoint } from '../budgeting/pricing.js';
 import type { Renderer } from '../rendering/worker-client.js';
 
-const fixtureSchema = z.strictObject({
-  id: z.string(),
-  text: z.string(),
-  paddingLines: z.number().int().min(0).max(2000).default(400),
-  suffix: z.string().default(''),
-  questions: z.record(z.string(), z.string()),
-  answers: z.record(z.string(), z.string()),
+const probeSchema = z.strictObject({
+  line: z.number().int().min(0),
+  text: z.string().min(1),
+  key: z.string().min(1),
 });
+
+const fixtureSchema = z
+  .strictObject({
+    id: z.string(),
+    text: z.string(),
+    paddingLines: z.number().int().min(0).max(2000).default(400),
+    suffix: z.string().default(''),
+    probes: z.array(probeSchema).default([]),
+    questions: z.record(z.string(), z.string()),
+    answers: z.record(z.string(), z.string()),
+  })
+  .superRefine((fixture, context) => {
+    const questionKeys = Object.keys(fixture.questions).sort();
+    const answerKeys = Object.keys(fixture.answers).sort();
+    if (questionKeys.join('\0') !== answerKeys.join('\0')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['answers'],
+        message: 'Questions and answers must use the same keys.',
+      });
+    }
+    const lines = new Set<number>();
+    for (const [index, probe] of fixture.probes.entries()) {
+      if (!(probe.key in fixture.questions) || !(probe.key in fixture.answers)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['probes', index, 'key'],
+          message: 'Every probe key needs a question and an answer.',
+        });
+      }
+      if (probe.line >= fixture.paddingLines - 1) {
+        context.addIssue({
+          code: 'custom',
+          path: ['probes', index, 'line'],
+          message: 'Probes must leave the final padding line to SNAP_PADDING_42.',
+        });
+      }
+      if (lines.has(probe.line)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['probes', index, 'line'],
+          message: 'Probe lines must be unique.',
+        });
+      }
+      lines.add(probe.line);
+    }
+  });
 
 export interface EvaluationArm {
   name: 'original' | 'native-text' | 'snapcompact';
@@ -31,6 +75,8 @@ export interface EvaluationArm {
   estimatedCheckpointTokens?: number;
   frames?: number;
   pricedBy?: string;
+  /** Question keys whose answer was missing, malformed or wrong. */
+  missed?: string[];
   reason?: string;
 }
 export interface EvaluationReport {
@@ -54,6 +100,12 @@ type NativeSummarizer = (
   signal?: AbortSignal,
 ) => Promise<CompactionSummary>;
 
+/**
+ * The 40-question fixture can exceed 8k output tokens on reasoning routes; a
+ * truncated answer is a failed arm, not a recall measurement.
+ */
+const EVALUATION_MAX_TOKENS = 32_768;
+
 /** Four bounded auxiliary calls at most: one native summary plus three comprehension arms. */
 export async function evaluate(
   ctx: Context,
@@ -73,11 +125,14 @@ export async function evaluate(
   if (!target.provider || !target.model)
     throw new Error('Route a model before running the benchmark.');
   const route = { provider: target.provider, model: target.model };
-  const paddingLines = Array.from({ length: fixture.paddingLines }, (_, index) =>
-    index === fixture.paddingLines - 1
+  const probeByLine = new Map(fixture.probes.map((probe) => [probe.line, probe.text]));
+  const paddingLines = Array.from({ length: fixture.paddingLines }, (_, index) => {
+    const probe = probeByLine.get(index);
+    if (probe !== undefined) return probe;
+    return index === fixture.paddingLines - 1
       ? `Observation ${index}: SNAP_PADDING_42 is the last synthetic history marker.`
-      : `Observation ${index}: historical build log; no change to user constraints.`,
-  );
+      : `Observation ${index}: historical build log; no change to user constraints.`;
+  });
   // Keep each message under the compact-format per-message cap so the exact
   // facts at the newest edge actually reach the bitmap middle.
   const chunkSize = Math.max(1, Math.ceil(fixture.paddingLines / 10));
@@ -130,7 +185,7 @@ export async function evaluate(
       for await (const chunk of ctx.llm.stream({
         ...route,
         messages: [{ role: 'user', content: [...content, { type: 'text', text: questions }] }],
-        maxTokens: 8192,
+        maxTokens: EVALUATION_MAX_TOKENS,
         sessionId: agent.id,
         purpose: 'compaction',
         signal,
@@ -145,13 +200,19 @@ export async function evaluate(
         .join('\n');
       const usage = assembler.usage;
       let correct = 0;
+      let missed: string[] | undefined;
       let answerError: string | undefined;
       try {
         const answers = z.record(z.string(), z.string()).parse(JSON.parse(text));
-        correct = Object.entries(fixture.answers).filter(
-          ([key, answer]) => answers[key] === answer,
-        ).length;
+        const wrong: string[] = [];
+        for (const [key, expected] of Object.entries(fixture.answers)) {
+          const given = answers[key];
+          if (typeof given === 'string' && given.trim() === expected.trim()) correct += 1;
+          else wrong.push(key);
+        }
+        missed = wrong;
       } catch {
+        missed = Object.keys(fixture.answers);
         answerError =
           'Response was not a string-valued JSON answer object; exact-match score is zero.';
       }
@@ -160,6 +221,7 @@ export async function evaluate(
         status: usage ? 'measured' : 'failed',
         total: Object.keys(fixture.answers).length,
         correct,
+        ...(missed === undefined ? {} : { missed }),
         ...(answerError === undefined ? {} : { reason: answerError }),
         elapsedMs: performance.now() - start,
         ...(usage

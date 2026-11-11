@@ -50,18 +50,20 @@ snapcompact → handoff → shake → soft
 
 为什么用图片：视觉模型按面积计费，与帧里塞了多少字符基本无关。在模型可读的前提下，一帧密集位图能比同样的纯文本承载更多字符/token；具体比例取决于帧几何、读图模型计价和文本密度。
 
+排版是连续文本流，不是“一个源行占一整行”。一行写满后在帧边缘折到下一行，每个源换行由一个 `¶` 标记（连续 `¶` 表示空行），行首空格保留缩进。帧是 1-bit 灰度 PNG：内置字体本身就是两色，因此一帧 1568px 散文约 11 KB。在内置 7 万字符语料上，当前渲染器输出 5 帧、约 13.4k 字符/帧；旧的逐行排版需要 14 帧。这些是本地渲染数字，不是模型召回分数。
+
 只有当当前路由明确声明支持图片输入 **并且** 提供图片计价（或带标签的估算）时，才会尝试图片路径。视觉路径最多使用 `rendering.maxFrames`（默认 20 帧，可配到 64），且不会超过宿主对单条消息的图片上限；帧数根据触发阈值下的剩余空间动态选择。以下情况会跳过：没有剩余图片槽位、所有候选帧都会被缩放到可读字高以下，或预算不足以放下一帧。历史中已有的图片会被携带进新 checkpoint（最多 4 张），而不是直接退回文本。
 
 ### 它省 token 吗？
 
-视觉路径没有生成成本：压缩本身不发起模型调用。在内置合成语料上，它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。把生成算进去，视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须落在触发阈值下的剩余空间里——最多用掉 checkpoint 无法替代部分的一半，且不超过源历史的一半——历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
+视觉路径没有生成成本：压缩本身不发起模型调用。v1 对照是 9 道题、旧逐行排版：它把 14,357 个 prompt token 的原始历史变成 8,152 token 的 checkpoint，并和原文一样答对 8/9。原生摘要每轮只读 523 token，但生成摘要一次性花了 16,052 token，且只答对 7/9。当前连续流排版和扩充到 40 题的 fixture v2 上，视觉组答对 36/40，使用五帧 1568px 图片，估算 checkpoint 7,607 token；原文组 38/40，原生摘要 40/40，但生成摘要花了 20,361 token。视觉 checkpoint 的 3 轮总量仍然更低（20,151 vs 24,906）；请在你自己的路由上运行 `/snapcompact benchmark` 实测。把生成算进去，v1 视觉 checkpoint 在第一次压缩时更便宜；大约 2–3 轮之后，摘要的原始 token 总量才反超。该方法还必须落在触发阈值下的剩余空间里——最多用掉 checkpoint 无法替代部分的一半，且不超过源历史的一半——历史太短、预算放不下帧时会回退文本。缓存折扣和图片计价决定实际账单，所以这是一次测量，不是承诺。
 
 一个 checkpoint 大致如下（已删节）：
 
 ```text
 Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
-Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+Visual snapcompact checkpoint: N frames; M carried images; ¶ marks a source newline; use snapcompact_recall for exact strings.
 FILES (touched by read/write/edit tools; not a current disk-state guarantee)
 (Read) read-only; (Write) written without a read; (RW) read and written
 ============================================================
@@ -99,7 +101,7 @@ Snapcompact 声明兼容 **DeepSeek Harness `^0.2.2-rc.1`**（0.2.x 线），并
 ### 通过插件页安装（推荐）
 
 1. 在 DSH 中打开 **插件（Plugins）→ 添加插件（Add plugin）**。
-2. 填写 `dsh-snapcompact@0.5.2`，点击 **安装（Install）**。
+2. 填写 `dsh-snapcompact@0.5.3`，点击 **安装（Install）**。
 3. 若页面提示重启，按提示完成。
 4. 新建会话，选择与你工作方式匹配的 Snapcompact 变体：**Snapcompact (Standard)**、**Snapcompact (PTC)** 或 **Snapcompact (Cordis)**。此后 `/compact` 和自动压缩都由 Snapcompact 处理，不需要额外命令。
 
@@ -108,7 +110,7 @@ Snapcompact 声明兼容 **DeepSeek Harness `^0.2.2-rc.1`**（0.2.x 线），并
 ### 通过命令行安装
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.2
+dsh plugin --profile web add dsh-snapcompact@0.5.3
 ```
 
 把 `web` 换成你实际使用的 profile，然后按提示重启。使用 DSH Desktop 时请通过应用内的插件页安装：CLI 写入的是指定 profile，可能并不是桌面端正在使用的那个。
@@ -120,11 +122,11 @@ dsh plugin --profile web add dsh-snapcompact@0.5.2
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.3.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
 ```
 
 npm 包是预构建选项；使用本地源码时需要先执行 `pnpm pack`（或 `pnpm run build`）。
@@ -204,43 +206,44 @@ serialization:
 
 **插件 → Snapcompact** 详情页里有一张设置卡，背后是当前 profile 的 `snapcompact-settings` 行。卡片通过 DSH 的设置服务写入该 profile 的配置补丁，保存后重启仍在，不需要手写 YAML。可调项：
 
-| 界面项         | 配置路径                                | 默认                                  |
-| -------------- | --------------------------------------- | ------------------------------------- |
-| 方法链         | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
-| 自定义触发阈值 | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
-| 保留尾部       | `policy.retainRatio` 或 `retainTokens`  | 不设置（宿主默认 0.16）               |
-| 帧尺寸         | `rendering.width` 与 `rendering.height` | 1568                                  |
-| 最多帧数       | `rendering.maxFrames`                   | 20（上限 64）                         |
-| 归档上限       | `archiveMaxBytes`                       | 64 MiB                                |
-| 交接预算       | `handoffMaxTokens`                      | 4096                                  |
-| 外置阈值       | `shakeThresholdChars`                   | 8192                                  |
+| 界面项             | 配置路径                                | 默认                                  |
+| ------------------ | --------------------------------------- | ------------------------------------- |
+| 方法链             | `methodOrder`                           | `[snapcompact, handoff, shake, soft]` |
+| 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（宿主默认 0.8）                |
+| 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动：触发阈值 ÷ 5（0.8 时 0.16）     |
+| 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                  |
+| 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                         |
+| 归档上限           | `archiveMaxBytes`                       | 64 MiB                                |
+| 交接预算           | `handoffMaxTokens`                      | 4096                                  |
+| 外置阈值           | `shakeThresholdChars`                   | 8192                                  |
 
 需要知道的规则：
 
 - 引擎在会话挂载 preset 时构造，所以**保存后的改动对新会话生效**；运行中的会话保持原配置。
 - 卡片托管的键，其保存值会覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：只有打开“自定义触发阈值”后才会覆盖，否则 preset 里的 `policy.thresholdRatio` 仍然生效。
-- 保留尾部只有一个三态控件：继承原生 0.16、按比例、或按绝对 tokens。`retainRatio` 与 `retainTokens` 互斥；保存其中一种会自动移除另一种，手写 YAML 同时给出两者会被拒绝。
+- 保留尾部默认自动派生：`retainRatio = 触发阈值 ÷ 5`，改阈值时同步变化。卡片不显示尾部（减少理解负担）；只有旧版保存过显式值时，才出现一行只读的「自定义」和「恢复自动」。`retainRatio` 与 `retainTokens` 仍互斥，手写 YAML 同时给出两者会被拒绝。
 - `guard` 只能在 YAML 里配置；两个守卫默认开启，都接受 `0` 表示关闭。
 - “恢复默认”会移除覆盖，回到插件默认值（阈值则回到 YAML）。
 - 其它内容——`policy` 的其余字段、`serialization`、`routePolicies`、渲染超时——仍然只走 YAML。
 
 ### 保留尾部与收益守卫
 
-触发阈值只有和保留尾部放在一起看才有意义：
+保留尾部默认随触发阈值派生：
+
+```text
+retainRatio = thresholdRatio ÷ 5          # 未显式设置时
+retain      = retainTokens ?? floor((W − O) × retainRatio)
+```
+
+阈值保持默认 0.8 时派生 0.16，与宿主原生默认一致；改阈值时尾部一起变（0.6 → 0.12，0.5 → 0.10）。卡片路径因此恒有 `可压空间 = 4/5 × 阈值比例`（0.5 阈值时仍 ≥ 0.4），不会撞上 `guard.minCompactableRatio`（默认 0.1）。守卫现在主要保护 YAML 里显式写死的 retention：
 
 ```text
 可压空间 = 触发阈值 − 保留尾部
 ```
 
-在 1M 窗口下，原生的 0.16 尾部约 160K token，所以 `thresholdRatio: 0.2` 只剩约 4% 的窗口（约 41K token）来支付 checkpoint——这就是“20% 永远变不成 19%”的陷阱：估算收益比取整步长还小。
+显式 `retainRatio` / `retainTokens` 仍然优先且互斥。自动规则工作在比例空间：当阈值被 `headroomTokens` 压低时，尾部仍按阈值比例计算，实际 token 占比可能大于 1/5，精确数字以 `/snapcompact status` 为准。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
 
-现在插件会直接拒绝这种组合，而不是静默挂载：当 `thresholdRatio - retainRatio` 低于 `guard.minCompactableRatio`（默认 0.1）时，引擎拒绝启动，错误信息给出具体数值和修复方法。`/snapcompact status` 会打印同样的算式——保留尾部、可压空间、下限，以及低于下限时的警告。源历史低于 `max(1024, 窗口 × guard.minSourceRatio)`（默认窗口的 1%）时，会在创建归档和调用任何方法之前跳过这次压缩。
-
-升级后，当前 profile 里 `thresholdRatio: 0.2` 加默认保留尾部的配置会被拒绝挂载。三种修复方式任选：
-
-- 提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）；或
-- 降低保留尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K）；或
-- 设置 `guard.minCompactableRatio: 0` 关闭挂载校验（不推荐）。
+只有显式 retention 才可能撞上守卫。YAML 里 `thresholdRatio: 0.2` 配 `retainRatio: 0.16` 仍会被拒绝（0.04 < 0.1）；修复方式是提高阈值、降低或删除显式尾部，或设置 `guard.minCompactableRatio: 0`。旧版 profile 保存的自定义尾部不会被改写，卡片上点「恢复自动」即可回到派生值。
 
 ### 自定义方法链与阈值
 
@@ -282,7 +285,7 @@ routePolicies:
 
 ## 限制与隐私
 
-- **不是无损压缩。** 位图帧可能漏掉字符（缺失字形、中段被截断），文本回退本质上也是摘要。归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
+- **不是无损压缩。** 位图帧可能漏掉字符（缺失字形、中段被截断），而且它只是视觉投影：不可见的行尾空格会被裁掉，每个源换行变成一个单格 `¶`。精确头尾文本和归档保存本次选中的消息内容，但无法恢复其他插件已经删除的数据。最多 4 张已有图片会被携带进新 checkpoint；更旧的图片像素不会进入视觉摘要（仅保留归档描述）。
 - **省不省取决于路由和使用时长。** 上面的数字只来自一条路由上的一份合成语料。短会话里精简摘要的每轮上下文可能更小；长历史或图片单价低的路由上视觉 checkpoint 可能更划算。缓存折扣、图片计价和轮次决定账单——checkpoint 更小不等于账单更低。
 - **图片路径的适用条件很窄。** 路由必须声明图片输入和计价或带标签的估算。无法渲染的字符会变成可见的 `?` 占位，缩放后不可读的帧会被拒绝；预算不足或存储失败会回退文本。视觉中段可能被截断，精确内容仍以归档为准。
 - **FILES 是工具触达索引，不是快照。** 它覆盖本次压缩区间内的 read/write/edit 调用和更早的 snapcompact FILES 块，按路径排序后最多 20 条，不包含 `bash` 或 apply-patch 的修改。更早 checkpoint 中被省略的路径不会重新索引；归档和回查仍然精确。

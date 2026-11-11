@@ -50,18 +50,20 @@ native compaction transaction commits one checkpoint
 
 Why frames: vision models bill an image by area, largely independent of how many characters are packed into it. Up to the reader's legibility limit, a dense frame can carry more text per token than the same text sent verbatim; the ratio depends on frame geometry, the reader's image pricing and how dense the transcript is.
 
+The layout is a continuous flow, not one source line per row. A full row wraps at the frame edge, one `¶` marks each source newline (consecutive `¶` are blank lines), and leading spaces keep indentation. Frames are one-bit grayscale PNGs: the bundled font is already two-tone, so this keeps a full 1568px prose frame near 11 KB. On the bundled 70k-character fixture the current renderer produces 5 frames at about 13.4k characters per frame; the previous row-per-line renderer needed 14. These are local rendering measurements, not model-recall scores.
+
 The visual method is attempted only when the current route declares image input **and** supplies image pricing (or a labelled estimate). It renders up to `rendering.maxFrames` (20 by default, configurable to 64) and never past the host's per-message image cap, selecting the frame count dynamically so the checkpoint fits the room left under the trigger. It is skipped when no image slot remains, when every candidate frame would be downscaled below the readable glyph floor, or when the budget leaves no room for a frame. Existing images are carried into the checkpoint (up to four) instead of forcing a text fallback.
 
 ### Does it save tokens?
 
-The visual path pays no generation cost: the compaction itself makes no model call. On the bundled synthetic fixture it turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. Counting that generation, the visual checkpoint is cheaper for the first compaction; the summary becomes cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
+The visual path pays no generation cost: the compaction itself makes no model call. The v1 comparison — 9 questions, previous row-per-line layout — turned 14,357 prompt tokens of raw history into an 8,152-token checkpoint and matched the original's 8/9 exact answers. A native summary read only 523 tokens per turn, but generating it cost a one-time 16,052 tokens and it scored 7/9. On the current layout and fixture v2 (40 questions, 10 middle probes), the visual arm scored 36/40 with five 1568px frames and an estimated 7,607-token checkpoint, against 38/40 for the original text and 40/40 for a native summary that cost 20,361 tokens to generate. The visual checkpoint was still cheaper over three turns (20,151 vs 24,906); run `/snapcompact benchmark` on your route to measure it. Counting that generation, the v1 visual checkpoint was cheaper for the first compaction; the summary became cheaper in raw token count after roughly 2–3 turns. The method must also fit the room left under the trigger — at most half of what a checkpoint cannot replace, capped by half of the source — so a history too small for that budget falls back to text. Cache-read discounts and image pricing decide the actual bill, so treat this as a measurement, not a promise.
 
 A checkpoint looks roughly like this (abridged):
 
 ```text
 Snapcompact v2; method=snapcompact
 Exact archived history: sha256:…
-Visual snapcompact checkpoint: N frames; M carried images; use snapcompact_recall for exact strings.
+Visual snapcompact checkpoint: N frames; M carried images; ¶ marks a source newline; use snapcompact_recall for exact strings.
 FILES (touched by read/write/edit tools; not a current disk-state guarantee)
 (Read) read-only; (Write) written without a read; (RW) read and written
 ============================================================
@@ -99,7 +101,7 @@ Snapcompact declares **DeepSeek Harness `^0.2.2-rc.1`**, the 0.2.x line, and is 
 ### From the Plugins page (recommended)
 
 1. Open **Plugins → Add plugin** in DSH.
-2. Paste `dsh-snapcompact@0.5.2` and click **Install**.
+2. Paste `dsh-snapcompact@0.5.3` and click **Install**.
 3. Follow the page's restart prompt if one appears.
 4. Start a **new session** and pick the Snapcompact variant that matches how you work: **Snapcompact (Standard)**, **Snapcompact (PTC)** or **Snapcompact (Cordis)**. From then on, `/compact` and automatic compaction use Snapcompact; no extra command is required.
 
@@ -108,7 +110,7 @@ Pin the version to install exactly this release. Without a version, the package 
 ### From the command line
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.2
+dsh plugin --profile web add dsh-snapcompact@0.5.3
 ```
 
 Replace `web` with the profile you actually use, then follow the restart instruction. On DSH Desktop, install through the in-app Plugins page: the CLI writes to the named profile, which may not be the profile the desktop app uses.
@@ -120,11 +122,11 @@ Replace `web` with the profile you actually use, then follow the restart instruc
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.2.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.3.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.2.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
@@ -208,7 +210,7 @@ The Snapcompact detail page under **Plugins** carries a settings card backed by 
 | ------------------------ | ---------------------------------------- | ------------------------------------- |
 | Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (host default 0.8)              |
-| Retained tail            | `policy.retainRatio` or `retainTokens`   | unset (host default 0.16)             |
+| Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: threshold ÷ 5 (0.16 at 0.8)  |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
 | Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
 | Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
@@ -219,28 +221,29 @@ Rules worth knowing:
 
 - The engine is built when a session mounts the preset, so **saved changes apply to new sessions**; a running session keeps its configuration.
 - For a key the card manages, the saved value overrides the same key in preset YAML. `thresholdRatio` is the exception: it stays unset until you enable the custom threshold, so a preset-level `policy.thresholdRatio` still applies.
-- The retained tail has one three-state control: inherit the native 0.16, set a ratio, or set an absolute token budget. `retainRatio` and `retainTokens` are mutually exclusive; saving one removes the other, and hand-written YAML that sets both is rejected.
+- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`, so it follows the trigger. The card does not show it at all; only a value saved by an older version surfaces, as one read-only “Custom” row with “Restore automatic”. `retainRatio` and `retainTokens` remain mutually exclusive, and hand-written YAML that sets both is rejected.
 - `guard` is YAML-only. Both guards default to on, and both accept `0` to disable them.
 - "Restore default" removes the override and falls back to the plugin default (or to YAML, for the threshold).
 - Everything else — the rest of `policy`, `serialization`, `routePolicies`, render timeouts — remains YAML-only.
 
 ### Retained tail and usefulness guards
 
-The trigger only matters relative to the retained tail:
+The retained tail is derived from the trigger by default:
+
+```text
+retainRatio = thresholdRatio ÷ 5          # when not set explicitly
+retain      = retainTokens ?? floor((W − O) × retainRatio)
+```
+
+At the default 0.8 trigger this yields 0.16, exactly the host default; changing the trigger moves the tail with it (0.6 → 0.12, 0.5 → 0.10). The card path therefore always keeps `compactable = 4/5 × thresholdRatio` (at least 0.4 at the 0.5 card floor), so it never trips `guard.minCompactableRatio` (default 0.1). The guard now mainly protects explicit retention written in YAML:
 
 ```text
 compactable = threshold - retained tail
 ```
 
-At a 1M-token window the native 0.16 tail is about 160K tokens, so `thresholdRatio: 0.2` leaves only about 4% of the window — roughly 41K tokens — to pay for a checkpoint. That is the classic "20% never becomes 19%" trap: the estimated savings are smaller than the rounding step.
+An explicit `retainRatio` or `retainTokens` still wins and the two forms stay mutually exclusive. The rule lives in ratio space: when `headroomTokens` caps the threshold, the tail is still computed from the threshold ratio, so its token share can exceed 1/5 — `/snapcompact status` prints the exact numbers. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
 
-The plugin now fails fast instead of mounting that pair: when `thresholdRatio - retainRatio` is below `guard.minCompactableRatio` (default 0.1), the engine refuses to start and the error names the values and the fix. `/snapcompact status` prints the same arithmetic — retained tail, compactable space, the floor, and a warning when the space is below it. A source history below `max(1024, window × guard.minSourceRatio)` (default 1% of the window) is skipped before any archive or model call.
-
-Existing profiles that combine `thresholdRatio: 0.2` with the default retained tail will be rejected after upgrading. Fix it in one of three ways:
-
-- raise the trigger (the card floor is `0.5`; the host default is `0.8`), or
-- lower the retained tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or
-- set `guard.minCompactableRatio: 0` to disable the mount check (not recommended).
+Only explicit retention can trip the guard. YAML that pairs `thresholdRatio: 0.2` with `retainRatio: 0.16` is still rejected (0.04 < 0.1); raise the trigger, lower or remove the explicit tail, or set `guard.minCompactableRatio: 0` to disable the mount check. Saved custom tails from older profiles are never rewritten; use “Restore automatic” on the card to return to the derived value.
 
 ### Custom method chains and thresholds
 
@@ -282,7 +285,7 @@ The plugin declares a bounded range rather than a single version. The host's gat
 
 ## Limits and privacy
 
-- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle), and the text fallbacks are summaries. The archive preserves the selected message content, but it cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
+- **Not lossless.** Frames can omit characters (missing glyphs, a truncated middle) and are a visual projection: invisible trailing spaces are trimmed and each source newline becomes a one-cell `¶`. The exact head/tail text and the archive preserve the selected message content, but they cannot recover content another plugin already deleted. Only up to four existing images are carried into the next checkpoint; older image pixels remain outside the visual summary (their archive descriptors are retained).
 - **Savings depend on the route and the horizon.** The numbers above come from one synthetic fixture on one route. A terse native summary can be smaller per turn on a short session; the visual checkpoint can win on a long history or a route with cheap image tokens. Cache-read discounts, image pricing and turn count decide the bill: a smaller checkpoint is not proof of a lower bill.
 - **Visual eligibility is narrow.** The route must declare image input and pricing or a labelled estimate. Unrenderable characters become visible `?` placeholders, downscaled frames are rejected as unreadable, and insufficient budget or storage failures fall back to text. The visual middle may be truncated; the exact archive remains the source of truth.
 - **FILES is a tool-observed index, not a snapshot.** It covers read/write/edit calls in the compacted range plus earlier snapcompact FILES blocks, is capped at 20 sorted paths, and does not see `bash` or apply-patch changes. Paths elided from an earlier checkpoint are not re-indexed; the archive and recall remain exact.

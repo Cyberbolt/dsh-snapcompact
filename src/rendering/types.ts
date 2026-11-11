@@ -17,7 +17,7 @@ export interface RenderedFrame {
   firstLine: number;
   /** Inclusive, one-based source line number. */
   lastLine: number;
-  /** Number of source-code characters represented by this frame. */
+  /** Number of source characters represented by this frame (newline markers excluded). */
   chars: number;
 }
 

@@ -36,21 +36,24 @@ describe('dist worker integration', () => {
     expect(result.frames).toHaveLength(1);
     const frame = result.frames[0];
     if (frame === undefined) throw new Error('Missing worker frame');
-    expect([frame.firstLine, frame.lastLine]).toEqual([1, 3]);
+    expect([frame.firstLine, frame.lastLine]).toEqual([1, 2]);
     const png = PNG.sync.read(Buffer.from(frame.data));
-    expect([png.width, png.height]).toEqual([1536, 140]);
-    expect(png.data.some((byte, index) => index % 4 !== 3 && byte < 100)).toBe(true);
+    expect([png.width, png.height, png.depth, png.colorType]).toEqual([1536, 100, 1, 0]);
+    expect(png.data.some((byte, index) => index % 4 !== 3 && byte === 0)).toBe(true);
   });
 
-  it('does not clip a paginated source tail', async () => {
-    const result = await renderer.render('a\nb\nc\nd\ne', { ...options, width: 128, height: 128 });
+  it('paginates a continuous flow without clipping its source tail', async () => {
+    const result = await renderer.render(`${'x\n'.repeat(20).trimEnd()}`, {
+      ...options,
+      width: 128,
+      height: 128,
+    });
     expect(result.frames.map((frame) => [frame.firstLine, frame.lastLine])).toEqual([
-      [1, 2],
-      [3, 4],
-      [5, 5],
+      [1, 12],
+      [13, 20],
     ]);
     await expect(
-      renderer.render('a\nb\nc', { ...options, width: 128, height: 128, maxFrames: 1 }),
+      renderer.render('a'.repeat(25), { ...options, width: 128, height: 128, maxFrames: 1 }),
     ).rejects.toMatchObject({ code: 'FRAME_LIMIT' });
     await expect(renderer.render('a', { ...options, maxTotalBytes: 1 })).rejects.toMatchObject({
       code: 'BYTE_LIMIT',

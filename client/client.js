@@ -149,15 +149,10 @@ window.__ModuleLoader__.load({
       thresholdCustom: '自定义触发阈值',
       thresholdAuto: '自动 · 0.80',
       retainTitle: '保留尾部',
-      retainInherit: '继承原生 0.16',
-      retainByRatio: '按比例',
-      retainByTokens: '按 tokens',
-      retainRatioAria: '保留尾部比例',
-      retainTokensAria: '保留尾部 tokens',
-      retainHint: '压缩后原样保留的最近历史。可压空间 = 触发阈值 − 保留尾部。',
-      compactablePrefix: '可压空间',
+      retainLegacy: '自定义',
+      retainLegacyNote: '来自旧版设置。点击「恢复自动」后，尾部随触发阈值自动调整。',
+      retainResetAuto: '恢复自动',
       compactableWarn: '小于 0.10 时插件会拒绝启动；请提高阈值或降低保留尾部。',
-      retainTokensNote: '精确可压空间请用 /snapcompact status 查看。',
       renderTitle: '渲染',
       frameSize: '帧尺寸',
       frameSizeHint: '方形帧的边长；越大越清晰，也越占 token。',
@@ -229,17 +224,12 @@ window.__ModuleLoader__.load({
       thresholdCustom: 'Custom trigger threshold',
       thresholdAuto: 'Automatic · 0.80',
       retainTitle: 'Retained tail',
-      retainInherit: 'Inherit native 0.16',
-      retainByRatio: 'By ratio',
-      retainByTokens: 'By absolute tokens',
-      retainRatioAria: 'Retained-tail ratio',
-      retainTokensAria: 'Retained-tail tokens',
-      retainHint:
-        'Recent history kept verbatim after compaction. Compactable space = threshold − retained tail.',
-      compactablePrefix: 'Compactable space',
+      retainLegacy: 'Custom',
+      retainLegacyNote:
+        'Saved by an older version. “Restore automatic” makes the tail follow the trigger again.',
+      retainResetAuto: 'Restore automatic',
       compactableWarn:
         'Less than 0.10 leaves too little room: the plugin will refuse to start. Raise the threshold or lower the retained tail.',
-      retainTokensNote: 'Use /snapcompact status for the exact compactable space.',
       renderTitle: 'Rendering',
       frameSize: 'Frame size',
       frameSizeHint: 'Edge length of a square frame; larger is sharper and costs more tokens.',
@@ -473,20 +463,15 @@ window.__ModuleLoader__.load({
         (field) => snapshot.user && snapshot.user[field.key] !== undefined,
       ).length;
 
-      // One three-state control keeps the two native retention forms exclusive.
-      const retainMode =
-        draft.retainTokens !== undefined
-          ? 'tokens'
-          : draft.retainRatio !== undefined
-            ? 'ratio'
-            : 'inherit';
-      const effectiveThreshold = draft.thresholdRatio ?? 0.8;
-      // Mirrors the host default the card inherits; only shown for the ratio form.
-      const effectiveRetain = retainMode === 'ratio' ? draft.retainRatio : 0.16;
-      const compactable = effectiveThreshold - effectiveRetain;
+      // The tail is derived by the engine and deliberately not shown. Only a
+      // value saved by an older card stays visible, so it can be cleared.
+      const legacyTokens = draft.retainTokens;
+      const legacyRatio = draft.retainRatio;
+      const legacyRetention = legacyTokens !== undefined || legacyRatio !== undefined;
       // Mirrors GUARD_DEFAULTS.minCompactableRatio (config.ts) for a local hint;
       // the Host remains the authority and refuses to mount below the real value.
-      const compactableWarning = retainMode !== 'tokens' && compactable < 0.1;
+      const compactableWarning =
+        legacyRatio !== undefined && (draft.thresholdRatio ?? 0.8) - legacyRatio < 0.1;
 
       function edit(key, value) {
         setDraft((previous) => ({ ...previous, [key]: value }));
@@ -501,25 +486,6 @@ window.__ModuleLoader__.load({
 
       function setChain(next) {
         edit('methodOrder', sanitizeChain(next));
-      }
-
-      /** Write both retention keys so saving also removes the inactive form. */
-      function setRetention(ratio, tokens) {
-        setDraft((previous) => ({ ...previous, retainRatio: ratio, retainTokens: tokens }));
-        setDirty((previous) => {
-          const next = new Set(previous);
-          next.add('retainRatio');
-          next.add('retainTokens');
-          return next;
-        });
-        setNotice(null);
-        setError(null);
-      }
-
-      function setRetentionMode(mode) {
-        if (mode === 'ratio') setRetention(draft.retainRatio ?? 0.16, undefined);
-        else if (mode === 'tokens') setRetention(undefined, draft.retainTokens ?? 32768);
-        else setRetention(undefined, undefined);
       }
 
       function moveMethod(index, delta) {
@@ -609,6 +575,47 @@ window.__ModuleLoader__.load({
         setDirty((previous) => {
           const next = new Set(previous);
           next.delete(key);
+          return next;
+        });
+        setNotice(t('restored'));
+      }
+
+      /** Clear both legacy retained-tail keys so the derived tail takes over. */
+      async function resetRetention() {
+        if (busy) return;
+        const keys = ['retainRatio', 'retainTokens'].filter(
+          (key) => snapshot.user && snapshot.user[key] !== undefined,
+        );
+        if (keys.length === 0) return;
+        setBusy(true);
+        setError(null);
+        let failed = false;
+        for (const key of keys) {
+          let accepted = false;
+          try {
+            accepted = await form.unset(key);
+          } catch {
+            accepted = false;
+          }
+          if (!accepted) {
+            failed = true;
+            break;
+          }
+        }
+        setBusy(false);
+        if (failed) {
+          setError(t('restoreError'));
+          return;
+        }
+        setDraft((previous) => ({
+          ...previous,
+          retainRatio: undefined,
+          retainTokens: undefined,
+        }));
+        setDirty((previous) => {
+          const next = new Set(previous);
+          next.delete('retainRatio');
+          next.delete('retainTokens');
           return next;
         });
         setNotice(t('restored'));
@@ -833,65 +840,41 @@ window.__ModuleLoader__.load({
                 : h('span', { className: 'sc-muted' }, t('thresholdAuto')),
               resetButton('thresholdRatio'),
             ),
-            h(
-              'div',
-              { className: 'sc-field', key: 'retain' },
-              h('span', { className: 'sc-field-label' }, t('retainTitle')),
-              h(
-                'select',
-                {
-                  value: retainMode,
-                  disabled: readOnly || busy,
-                  'aria-label': t('retainTitle'),
-                  onChange: (event) => setRetentionMode(event.target.value),
-                },
-                h('option', { value: 'inherit' }, t('retainInherit')),
-                h('option', { value: 'ratio' }, t('retainByRatio')),
-                h('option', { value: 'tokens' }, t('retainByTokens')),
-              ),
-              retainMode === 'ratio'
-                ? h(
+            legacyRetention
+              ? h(
+                  'div',
+                  { className: 'sc-field', key: 'retain' },
+                  h(
                     'div',
-                    { className: 'sc-slider' },
-                    h('input', {
-                      type: 'range',
-                      // Bounds come from the generated field table.
-                      min: fieldOf('retainRatio')?.min ?? 0.01,
-                      max: fieldOf('retainRatio')?.max ?? 0.5,
-                      step: fieldOf('retainRatio')?.step ?? 0.01,
-                      value: draft.retainRatio,
-                      disabled: readOnly || busy,
-                      'aria-label': t('retainRatioAria'),
-                      onChange: (event) => edit('retainRatio', Number(event.target.value)),
-                    }),
-                    h('span', { className: 'sc-value' }, Number(draft.retainRatio).toFixed(2)),
-                  )
-                : null,
-              retainMode === 'tokens'
-                ? h(NumberField, {
-                    field: fieldOf('retainTokens'),
-                    value: draft.retainTokens,
-                    label: t('retainTokensAria'),
-                    unit: t('unitTokens'),
-                    disabled: readOnly || busy,
-                    onChange: (value) => edit('retainTokens', value),
-                  })
-                : null,
-              retainMode === 'ratio' ? resetButton('retainRatio') : null,
-              retainMode === 'tokens' ? resetButton('retainTokens') : null,
-              h('p', { className: 'sc-field-hint' }, t('retainHint')),
-              retainMode === 'tokens'
-                ? h('p', { className: 'sc-field-hint' }, t('retainTokensNote'))
-                : h(
-                    'p',
-                    { className: 'sc-field-hint' },
-                    `${t('compactablePrefix')} ${effectiveThreshold.toFixed(2)} − ` +
-                      `${effectiveRetain.toFixed(2)} = ${compactable.toFixed(2)}`,
+                    { className: 'sc-row' },
+                    h('span', { className: 'sc-field-label' }, t('retainTitle')),
+                    h(
+                      'span',
+                      { className: 'sc-value' },
+                      legacyTokens !== undefined
+                        ? `${t('retainLegacy')} · ${legacyTokens} ${t('unitTokens')}`
+                        : `${t('retainLegacy')} · ${legacyRatio}`,
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'sc-icon-btn',
+                        title: t('retainResetAuto'),
+                        disabled: readOnly || busy,
+                        onClick: () => {
+                          void resetRetention();
+                        },
+                      },
+                      t('retainResetAuto'),
+                    ),
                   ),
-              retainMode !== 'tokens' && compactableWarning
-                ? h('p', { className: 'sc-field-hint sc-warn' }, t('compactableWarn'))
-                : null,
-            ),
+                  h('p', { className: 'sc-field-hint' }, t('retainLegacyNote')),
+                  compactableWarning
+                    ? h('p', { className: 'sc-field-hint sc-warn' }, t('compactableWarn'))
+                    : null,
+                )
+              : null,
           ],
         }),
         h(Group, {

@@ -47,24 +47,24 @@ routePolicies: []
 
 The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts, so one card configures every Snapcompact variant.
 
-The card manages nine keys:
+The card stores nine keys, seven of which are editable:
 
-| Control                  | Config path                              | Default                               |
-| ------------------------ | ---------------------------------------- | ------------------------------------- |
-| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]` |
-| Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)            |
-| Retained tail            | `policy.retainRatio` or `retainTokens`   | unset (native default 0.16)           |
-| Frame size               | `rendering.width` and `rendering.height` | 1568                                  |
-| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                           |
-| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                |
-| Handoff budget           | `handoffMaxTokens`                       | 4096                                  |
-| Externalize above        | `shakeThresholdChars`                    | 8192                                  |
+| Control                  | Config path                              | Default                                     |
+| ------------------------ | ---------------------------------------- | ------------------------------------------- |
+| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]`       |
+| Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)                  |
+| Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: `thresholdRatio ÷ 5` (0.16 at 0.8) |
+| Frame size               | `rendering.width` and `rendering.height` | 1568                                        |
+| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                                 |
+| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                      |
+| Handoff budget           | `handoffMaxTokens`                       | 4096                                        |
+| Externalize above        | `shakeThresholdChars`                    | 8192                                        |
 
 Persistence and precedence:
 
 - Writes go through DSH's settings service to the profile's configuration patch; they survive restarts and are removed by "Restore default" (per field or for the whole card).
 - A saved card value overrides the same key in preset YAML. `thresholdRatio` is the exception: until the custom threshold is enabled the key is absent, so a preset-level `policy.thresholdRatio` still applies.
-- The retained tail is one three-state control (inherit 0.16 / ratio / absolute tokens). `retainRatio` and `retainTokens` are mutually exclusive: saving one removes the other from the merged row, and the strict parser rejects YAML that sets both.
+- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`. The card hides it and never writes it. Only a value saved by an older version remains visible, as one read-only “Custom” row with “Restore automatic” to unset it. `retainRatio` and `retainTokens` are still mutually exclusive: the strict parser rejects YAML that sets both, and YAML overrides remain available.
 - The engine is constructed when a session mounts the preset, so changes take effect for **new sessions**; `/snapcompact status` in an existing session keeps reporting its starting configuration.
 - The settings schema cannot express chain ordering, so a stored chain that is empty, repeated, or does not end in `soft` is ignored by the plugin; the strict parser remains the final gate.
 
@@ -102,11 +102,14 @@ Semantics that are easy to miss:
 Automatic compaction starts when measured request pressure reaches the routed model's threshold:
 
 ```text
-threshold = floor(min(W × thresholdRatio, W − O − headroomTokens))
-retain    = retainTokens ?? floor((W − O) × retainRatio)
+threshold   = floor(min(W × thresholdRatio, W − O − headroomTokens))
+retainRatio = thresholdRatio ÷ 5                 # when not set explicitly
+retain      = retainTokens ?? floor((W − O) × retainRatio)
 ```
 
 `W` is the adapter-declared context window, `O` the effective output reservation, and `headroomTokens` a capacity safety margin. `thresholdRatio` is a window fraction, not an absolute token count; small-window models usually need both a lower ratio and smaller headroom. `retainRatio`/`retainTokens` must stay below the threshold, or the native backend rejects that route.
+
+The derived tail follows the trigger ratio, not the effective token count: when headroom caps the threshold, `retain` still scales with `thresholdRatio`, so its token share can exceed 1/5. `/snapcompact status` prints the resolved tail for the current route.
 
 `/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens, the compactable space between them, the guard floors and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery. There is no absolute token-count trigger; use `thresholdRatio` and inspect the effective token number with `/snapcompact status`.
 
@@ -118,7 +121,7 @@ The trigger only means something relative to the retained tail:
 compactable = threshold - retain
 ```
 
-At a 1M-token window the native `retainRatio: 0.16` reserves about 158,720 tokens, so `thresholdRatio: 0.2` leaves only about 4% of the window (roughly 41K tokens). A checkpoint plus the retained text can easily cost more than that, which is why "20% occupied" can round to "19% occupied" after a full compaction. The native backend only rejects `retainRatio >= thresholdRatio`; it cannot know the gap is too small to pay for itself.
+Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path always leaves `4/5 × thresholdRatio` compactable (at least 0.4 at the 0.5 card floor), so it cannot trip the 0.1 guard. Explicit retention is where the old trap can still appear: at a 1M-token window `thresholdRatio: 0.2` with `retainRatio: 0.16` leaves only about 4% of the window (roughly 41K tokens). A checkpoint plus the retained text can easily cost more than that, which is why "20% occupied" can round to "19% occupied" after a full compaction. The native backend only rejects `retainRatio >= thresholdRatio`; it cannot know the gap is too small to pay for itself.
 
 `guard` adds the missing checks:
 
@@ -131,7 +134,7 @@ The mount check runs in the engine constructor after native defaults are resolve
 
 The source floor runs after the source history is measured and before the archive or any method: a too-small source fails immediately, without a model call. Manual `/compact` is subject to the same guard; lower `guard.minSourceRatio` to allow a small manual run.
 
-Upgrading a profile that combines `thresholdRatio: 0.2` with the default tail therefore fails at mount. Fix it by raising the threshold (the card floor is `0.5`; the host default is `0.8`), lowering the tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or explicitly setting `guard.minCompactableRatio: 0`.
+An explicit pair such as `thresholdRatio: 0.2` with `retainRatio: 0.16` therefore still fails at mount. Fix it by raising the threshold (the card floor is `0.5`; the host default is `0.8`), lowering or removing the explicit tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or setting `guard.minCompactableRatio: 0`. Profiles that only saved a custom trigger keep mounting: the derived tail replaces the old default.
 
 ### Checkpoint budget
 

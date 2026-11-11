@@ -24,6 +24,14 @@ describe('visual checkpoint summary composition', () => {
       type: 'text',
       text: expect.stringContaining('Visual snapcompact checkpoint'),
     });
+    const guide = blocks[0];
+    const text = guide?.type === 'text' ? guide.text : '';
+    expect(text).toContain('\u00b6');
+    expect(text).toContain('source newline');
+    expect(text).toContain('leading spaces are indentation');
+    expect(text).toContain('#n/m');
+    expect(text).toContain('source-line range');
+    expect(text).toContain('snapcompact_recall');
     expect(blocks[1]).toEqual({ type: 'text', text: files });
     expect(blocks[2]).toEqual({ type: 'text', text: 'exact head' });
     expect(blocks.at(-1)).toEqual({ type: 'text', text: 'exact tail' });

@@ -188,13 +188,9 @@ describe('client bundle', () => {
     );
     expect(framesControl?.props).toMatchObject({ min: 1, max: 64 });
 
-    const retainControl = findElement(
-      tree,
-      (element) => element.type === 'select' && element.props['aria-label'] === 't:retainTitle',
-    );
-    expect(retainControl?.props.value).toBe('inherit');
-    expect(text).toContain('t:retainInherit');
-    expect(text).toContain('t:compactablePrefix 0.80 \u2212 0.16 = 0.64');
+    // The derived tail is not shown at all: no control and no explanatory row.
+    expect(text).not.toContain('t:retainTitle');
+    expect(text).not.toContain('t:retainLegacy');
   });
 
   it('floors the custom trigger slider at the card minimum', async () => {
@@ -216,7 +212,23 @@ describe('client bundle', () => {
     expect(slider?.props).toMatchObject({ min: 0.5, max: 0.95, value: 0.6 });
   });
 
-  it('renders the retained-tail ratio and token modes from saved values', async () => {
+  it('keeps the derived tail hidden for a custom trigger threshold', async () => {
+    const plugin = await loadClient();
+    const form = readyForm({ value: { thresholdRatio: 0.6 }, user: { thresholdRatio: 0.6 } });
+    const { ctx, register } = fakeContext(form);
+    plugin.apply(ctx);
+    const [options, component] = register.mock.calls[0] as [
+      { inject: () => Record<string, unknown> },
+      (props: Record<string, unknown>) => Node,
+    ];
+
+    const text = collectText(render(component(options.inject())));
+
+    expect(text).toContain('t:thresholdCustom');
+    expect(text).not.toContain('t:retainTitle');
+  });
+
+  it('shows a legacy custom tail read-only with a restore action', async () => {
     const plugin = await loadClient();
     const ratioForm = readyForm({
       value: { retainRatio: 0.03 },
@@ -229,13 +241,24 @@ describe('client bundle', () => {
       (props: Record<string, unknown>) => Node,
     ];
     const ratioTree = render(ratioComponent(ratioOptions.inject()));
-    const ratioControl = findElement(
-      ratioTree,
-      (element) =>
-        element.props.type === 'range' && element.props['aria-label'] === 't:retainRatioAria',
-    );
-    expect(ratioControl?.props).toMatchObject({ min: 0.01, max: 0.5, value: 0.03 });
-    expect(collectText(ratioTree)).toContain('t:compactablePrefix 0.80 \u2212 0.03 = 0.77');
+    const ratioText = collectText(ratioTree);
+
+    expect(
+      findElement(
+        ratioTree,
+        (element) =>
+          element.props.type === 'range' && element.props['aria-label'] === 't:retainRatioAria',
+      ),
+    ).toBeUndefined();
+    expect(ratioText).toContain('t:retainLegacy \u00b7 0.03');
+    expect(ratioText).toContain('t:retainLegacyNote');
+    expect(ratioText).not.toContain('t:retainAuto');
+    expect(
+      findElement(
+        ratioTree,
+        (element) => element.type === 'button' && element.props.children === 't:retainResetAuto',
+      ),
+    ).toBeDefined();
 
     const tokenForm = readyForm({
       value: { retainTokens: 32768 },
@@ -248,13 +271,18 @@ describe('client bundle', () => {
       (props: Record<string, unknown>) => Node,
     ];
     const tokenTree = render(tokenComponent(tokenOptions.inject()));
-    const tokenControl = findElement(
-      tokenTree,
-      (element) =>
-        element.props.type === 'number' && element.props['aria-label'] === 't:retainTokensAria',
-    );
-    expect(tokenControl?.props.value).toBe(32768);
-    expect(collectText(tokenTree)).toContain('t:retainTokensNote');
+    const tokenText = collectText(tokenTree);
+
+    expect(
+      findElement(
+        tokenTree,
+        (element) =>
+          element.props.type === 'number' && element.props['aria-label'] === 't:retainTokensAria',
+      ),
+    ).toBeUndefined();
+    expect(tokenText).toContain('t:retainLegacy \u00b7 32768 t:unitTokens');
+    expect(tokenText).toContain('t:retainLegacyNote');
+    expect(tokenText).not.toContain('t:retainTokensNote');
   });
 
   it('renders the fallback guidance while the settings row is unavailable', async () => {

@@ -12,6 +12,7 @@ import {
 } from '../../compaction/budget.js';
 import { describeChain } from '../../compaction/chain.js';
 import { countExternalizableOutputs } from '../../compaction/methods/shake.js';
+import { retentionOrigin } from '../../compaction/retention.js';
 import type { MethodName, SnapcompactConfig } from '../../config.js';
 import type { ArchiveIndex } from './archive-projection.js';
 
@@ -131,9 +132,11 @@ export async function formatStatus(
           : `配置 ${configuredPercent}%`;
       lines.push(`触发阈值：${formatTokens(budget.thresholdTokens)} tokens（${capNote}）`);
       const retentionSource =
-        policy.retainTokens !== undefined
-          ? 'retainTokens 指定'
-          : `retainRatio ${policy.retainRatio ?? 0}`;
+        retentionOrigin(settings.policy, provider, model) === 'auto'
+          ? `自动 = 阈值 ÷ 5；retainRatio ${policy.retainRatio ?? 0}`
+          : policy.retainTokens !== undefined
+            ? 'retainTokens 指定'
+            : `retainRatio ${policy.retainRatio ?? 0}`;
       lines.push(
         `保留尾部：${formatTokens(budget.retainTokens)} tokens` +
           `（${retentionSource}；占窗口 ${share(budget.retainTokens, contextWindow)}）`,
