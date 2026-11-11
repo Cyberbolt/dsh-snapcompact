@@ -12,11 +12,10 @@ window.__ModuleLoader__.load({
 
     const NS = 'dsh-snapcompact';
     const ENTRY = 'snapcompact-settings';
-    const METHODS = ['snapcompact', 'handoff', 'shake', 'soft'];
+    const METHODS = ['snapcompact', 'shake', 'soft'];
     const CHAIN_PRESETS = [
-      { label: 'presetVisualFirst', chain: ['snapcompact', 'handoff', 'shake', 'soft'] },
+      { label: 'presetVisualFirst', chain: ['snapcompact', 'shake', 'soft'] },
       { label: 'presetVisualNative', chain: ['snapcompact', 'soft'] },
-      { label: 'presetTextFirst', chain: ['handoff', 'shake', 'soft'] },
       { label: 'presetNativeOnly', chain: ['soft'] },
     ];
     const YAML_SNIPPET = [
@@ -63,7 +62,6 @@ window.__ModuleLoader__.load({
       fixedFallback: '固定兜底',
       presetVisualFirst: '视觉优先',
       presetVisualNative: '视觉 + 原生',
-      presetTextFirst: '文本优先',
       presetNativeOnly: '仅原生',
       triggerTitle: '触发',
       triggerHint: '上下文占用超过阈值时触发压缩。关闭自定义即沿用宿主原生策略（默认 0.8）。',
@@ -84,8 +82,6 @@ window.__ModuleLoader__.load({
       advancedHint: '改动较少，保持默认通常最好。',
       archiveMax: '归档上限',
       archiveMaxHint: '精确原文归档占用磁盘的上限。',
-      handoffTokens: '交接预算',
-      handoffTokensHint: 'Handoff 方法允许的摘要 token 上限。',
       shakeChars: '外置阈值',
       shakeCharsHint: '单个工具输出超过多少字符时由 Shake 外置归档。',
       unitMiB: 'MiB',
@@ -94,8 +90,6 @@ window.__ModuleLoader__.load({
       unitPx: 'px',
       'method.snapcompact': 'Snapcompact',
       'method.snapcompactHint': '把中间历史渲染成像素字帧，视觉模型直接读。',
-      'method.handoff': 'Handoff',
-      'method.handoffHint': '一次模型调用生成结构化交接，再继续对话。',
       'method.shake': 'Shake',
       'method.shakeHint': '把超大工具输出归档，只保留引用。',
       'method.soft': 'Soft',
@@ -137,7 +131,6 @@ window.__ModuleLoader__.load({
       fixedFallback: 'Fixed fallback',
       presetVisualFirst: 'Visual first',
       presetVisualNative: 'Visual + native',
-      presetTextFirst: 'Text first',
       presetNativeOnly: 'Native only',
       triggerTitle: 'Trigger',
       triggerHint:
@@ -161,8 +154,6 @@ window.__ModuleLoader__.load({
       advancedHint: 'Rarely changed; the defaults are usually best.',
       archiveMax: 'Archive limit',
       archiveMaxHint: 'Disk budget for the exact-text archive.',
-      handoffTokens: 'Handoff budget',
-      handoffTokensHint: 'Token ceiling for the handoff summary.',
       shakeChars: 'Externalize above',
       shakeCharsHint: 'Tool output larger than this is archived by Shake.',
       unitMiB: 'MiB',
@@ -172,8 +163,6 @@ window.__ModuleLoader__.load({
       'method.snapcompact': 'Snapcompact',
       'method.snapcompactHint':
         'Render the middle of the history as pixel-font frames a vision model reads directly.',
-      'method.handoff': 'Handoff',
-      'method.handoffHint': 'Spend one model call on a structured handoff, then continue.',
       'method.shake': 'Shake',
       'method.shakeHint': 'Archive oversized tool output and keep a reference.',
       'method.soft': 'Soft',
@@ -868,20 +857,6 @@ window.__ModuleLoader__.load({
               onChange: (value) => edit('archiveMaxBytes', value),
             }),
             resetButton('archiveMaxBytes'),
-          ),
-          h(
-            'div',
-            { className: 'sc-field-row' },
-            h(NumberField, {
-              field: fieldOf('handoffMaxTokens'),
-              value: draft.handoffMaxTokens,
-              label: t('handoffTokens'),
-              hint: t('handoffTokensHint'),
-              unit: t('unitTokens'),
-              disabled: readOnly || busy,
-              onChange: (value) => edit('handoffMaxTokens', value),
-            }),
-            resetButton('handoffMaxTokens'),
           ),
           h(
             'div',

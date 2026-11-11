@@ -7,7 +7,7 @@ Configure the **dsh-snapcompact row inside the selected Snapcompact preset's iso
 Manual compaction is `/compact`; it resolves to whichever backend the preset mounts. `/snapcompact status` is read-only diagnostics, not a compaction entry point.
 
 ```yaml
-methodOrder: [snapcompact, handoff, shake, soft]
+methodOrder: [snapcompact, shake, soft]
 policy:
   auto: true
   thresholdRatio: 0.8
@@ -38,7 +38,6 @@ serialization:
   includeReasoning: false
   maxCarriedImages: 4
 archiveMaxBytes: 67108864
-handoffMaxTokens: 4096
 shakeThresholdChars: 8192
 routePolicies: []
 ```
@@ -47,17 +46,16 @@ routePolicies: []
 
 The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts, so one card configures every Snapcompact variant.
 
-The card stores nine keys, seven of which are editable:
+The card stores eight keys, six of which are editable:
 
 | Control                  | Config path                              | Default                                     |
 | ------------------------ | ---------------------------------------- | ------------------------------------------- |
-| Method chain             | `methodOrder`                            | `[snapcompact, handoff, shake, soft]`       |
+| Method chain             | `methodOrder`                            | `[snapcompact, shake, soft]`                |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)                  |
 | Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: `thresholdRatio ÷ 5` (0.16 at 0.8) |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                        |
 | Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                                 |
 | Archive limit            | `archiveMaxBytes`                        | 64 MiB                                      |
-| Handoff budget           | `handoffMaxTokens`                       | 4096                                        |
 | Externalize above        | `shakeThresholdChars`                    | 8192                                        |
 
 Persistence and precedence:
@@ -82,13 +80,13 @@ Do not copy 65,536-token headroom to a small-window model without adjustment. Th
 
 `methodOrder` is the ordered priority list of candidate methods. The engine tries each in turn and stops at the **first successful candidate**; the order is the fallback order, not a pipeline of stages. The chain must be nonempty, unique, and end in `soft`. Any subset with that shape is valid:
 
-| Preset                 | `methodOrder`                         | Behavior                                                      |
-| ---------------------- | ------------------------------------- | ------------------------------------------------------------- |
-| Visual-first (default) | `[snapcompact, handoff, shake, soft]` | Local visuals, then handoff, excerpts, native summary         |
-| Visual + native        | `[snapcompact, soft]`                 | Skip handoff/shake; native summary when visuals fail          |
-| Local-first            | `[snapcompact, shake, soft]`          | Both local paths first; native summary only if they both fail |
-| Text-first             | `[handoff, shake, soft]`              | One model call for a structured handoff first                 |
-| Native-only            | `[soft]`                              | Back to the DSH native summary; archive and recall remain     |
+| Preset                 | `methodOrder`                | Behavior                                                  |
+| ---------------------- | ---------------------------- | --------------------------------------------------------- |
+| Visual-first (default) | `[snapcompact, shake, soft]` | Local visuals, then excerpts, then the native summary     |
+| Visual + native        | `[snapcompact, soft]`        | Skip shake; native summary when visuals fail              |
+| Native-only            | `[soft]`                     | Back to the DSH native summary; archive and recall remain |
+
+Chains saved before the `handoff` method was removed are normalized on read: the name is dropped and the surviving order is kept. A hand-written YAML chain that still names `handoff` is rejected by the strict parser, so delete the name.
 
 Semantics that are easy to miss:
 

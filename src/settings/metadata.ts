@@ -6,14 +6,17 @@ import type { MethodName } from '../config.js';
  * import would drag the parser, zod and the native compaction engine along.
  * `metadata.test.ts` asserts the two stay identical.
  */
-export const METHOD_NAMES = ['snapcompact', 'handoff', 'shake', 'soft'] as const;
+export const METHOD_NAMES = ['snapcompact', 'shake', 'soft'] as const;
 
-export const DEFAULT_USER_CHAIN: readonly MethodName[] = [
-  'snapcompact',
-  'handoff',
-  'shake',
-  'soft',
-];
+export const DEFAULT_USER_CHAIN: readonly MethodName[] = ['snapcompact', 'shake', 'soft'];
+
+/**
+ * Names a settings document may still carry from releases that shipped the
+ * removed `handoff` method. They are accepted for validation only and dropped
+ * by `readUserSettings`, so a saved chain keeps its surviving order instead of
+ * being discarded wholesale.
+ */
+const LEGACY_METHOD_NAMES: readonly string[] = ['handoff'];
 
 /**
  * The profile row that owns the editable settings.
@@ -142,17 +145,6 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     description: 'Maximum size of the exact-text archive kept behind a checkpoint.',
   },
   {
-    key: 'handoffMaxTokens',
-    paths: [['handoffMaxTokens']],
-    kind: 'number',
-    group: 'advanced',
-    defaultValue: 4096,
-    min: 256,
-    max: 16_384,
-    step: 256,
-    description: 'Token budget for the handoff method when it runs.',
-  },
-  {
     key: 'shakeThresholdChars',
     paths: [['shakeThresholdChars']],
     kind: 'number',
@@ -192,12 +184,15 @@ function fieldValue(
 ): number | readonly MethodName[] | undefined {
   if (field.kind === 'chain') {
     if (!Array.isArray(value) || value.length === 0) return undefined;
-    if (!value.every(isMethod)) return undefined;
-    if (new Set(value).size !== value.length) return undefined;
+    // Drop removed method names before validating, so an upgraded profile keeps
+    // the surviving order instead of losing the whole override.
+    const chain = value.filter((name) => !LEGACY_METHOD_NAMES.includes(name as string));
+    if (chain.length === 0 || !chain.every(isMethod)) return undefined;
+    if (new Set(chain).size !== chain.length) return undefined;
     // The settings schema cannot express ordering; the strict parser requires
     // soft to close the chain, so an invalid saved chain is dropped here.
-    if (value.at(-1) !== 'soft') return undefined;
-    return value as readonly MethodName[];
+    if (chain.at(-1) !== 'soft') return undefined;
+    return chain as readonly MethodName[];
   }
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   if (field.min !== undefined && value < field.min) return undefined;

@@ -7,13 +7,22 @@ import type {
 import { z } from 'zod';
 import { withDerivedRetention } from './compaction/retention.js';
 
-export const methodNameSchema = z.enum(['snapcompact', 'handoff', 'shake', 'soft']);
+export const methodNameSchema = z.enum(['snapcompact', 'shake', 'soft']);
 export type MethodName = z.infer<typeof methodNameSchema>;
+
+/**
+ * Method names that may appear in durable records written by older releases.
+ *
+ * The runtime never produces `handoff` again, but checkpoints already committed
+ * to a session log still carry `method=handoff` in their header. Parsing those
+ * records with the strict schema would drop their archives from recall, so the
+ * projection uses this superset instead. It must never be used for configuration.
+ */
+export const recordedMethodNameSchema = z.enum(['snapcompact', 'handoff', 'shake', 'soft']);
 
 /** Single source of truth shared by the strict parser, the loader schema and chain presets. */
 export const DEFAULT_METHOD_ORDER = Object.freeze([
   'snapcompact',
-  'handoff',
   'shake',
   'soft',
 ] as const satisfies readonly MethodName[]);
@@ -164,7 +173,6 @@ const configSchema = z
       .positive()
       .max(64 * 1024 * 1024)
       .default(64 * 1024 * 1024),
-    handoffMaxTokens: z.number().int().min(256).max(16_384).default(4096),
     shakeThresholdChars: z.number().int().min(1024).default(8192),
   })
   .superRefine((config, context) => {
@@ -263,7 +271,6 @@ export function toNativePolicy(input: SnapcompactConfig['policy']): BasicCompact
 
 const loaderMethodName = schema.union([
   schema.const('snapcompact'),
-  schema.const('handoff'),
   schema.const('shake'),
   schema.const('soft'),
 ]);
@@ -280,7 +287,7 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
   methodOrder: schema
     .array(loaderMethodName)
     .min(1)
-    .max(4)
+    .max(3)
     .default([...DEFAULT_METHOD_ORDER])
     .description(
       '按优先级排列的压缩方法：第一个成功的候选会被采用，因此顺序就是回退顺序；最后必须是 soft 兜底。可只列子集，例如 [snapcompact, soft] 或 [soft]。',
@@ -375,6 +382,5 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
     .min(1)
     .max(64 * 1024 * 1024)
     .default(64 * 1024 * 1024),
-  handoffMaxTokens: schema.number().step(1).min(256).max(16_384).default(4096),
   shakeThresholdChars: schema.number().step(1).min(1024).default(8192),
 });

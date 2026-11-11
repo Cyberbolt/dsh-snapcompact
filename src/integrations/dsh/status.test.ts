@@ -121,7 +121,7 @@ describe('status command text', () => {
       fixture.agent,
       new AbortController().signal,
     );
-    expect(text).toContain('方法链：snapcompact → handoff → shake → soft');
+    expect(text).toContain('方法链：snapcompact → shake → soft');
     expect(text).toContain('链预设：视觉优先（默认）');
     expect(text).toContain('200,000');
     expect(text).toContain('134,464');
@@ -131,7 +131,6 @@ describe('status command text', () => {
       '收益门槛：源历史少于 2,000 tokens 时跳过压缩（guard.minSourceRatio 0.01）',
     );
     expect(text).toContain('snapcompact：会尝试');
-    expect(text).toContain('handoff：会尝试');
     expect(text).toContain('shake：会跳过');
     expect(text).toContain('soft：兜底');
     expect(text).not.toContain('警告：');

@@ -111,6 +111,17 @@ describe('settings metadata', () => {
     });
   });
 
+  it('drops the removed handoff name without discarding the saved order', () => {
+    expect(readUserSettings({ methodOrder: ['snapcompact', 'handoff', 'shake', 'soft'] })).toEqual({
+      methodOrder: ['snapcompact', 'shake', 'soft'],
+    });
+    expect(readUserSettings({ methodOrder: ['handoff', 'soft'] })).toEqual({
+      methodOrder: ['soft'],
+    });
+    // An unknown name still invalidates the chain instead of being filtered out.
+    expect(readUserSettings({ methodOrder: ['snapcompact', 'remote', 'soft'] })).toEqual({});
+  });
+
   it('drops unknown, non-numeric and out-of-range values', () => {
     expect(
       readUserSettings({
@@ -200,7 +211,6 @@ describe('settings metadata', () => {
     expect(resolved.methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
     expect(resolved.rendering).toMatchObject({ width: 1568, height: 1568, maxFrames: 20 });
     expect(resolved.archiveMaxBytes).toBe(64 * 1024 * 1024);
-    expect(resolved.handoffMaxTokens).toBe(4096);
     expect(resolved.shakeThresholdChars).toBe(8192);
     // Deprecated and no longer projected from the settings card.
     expect(resolved.minCompressionRatio).toBeUndefined();

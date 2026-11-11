@@ -26,7 +26,7 @@ const SNAPCOMPACT_COMPACTION: readonly Row[] = [
   {
     id: 'snapcompact',
     name: 'dsh-snapcompact',
-    config: { methodOrder: ['snapcompact', 'handoff', 'shake', 'soft'] },
+    config: { methodOrder: ['snapcompact', 'shake', 'soft'] },
   },
   { id: 'command-compact', name: '@deepseek-ai/dsh-command-compact' },
 ];

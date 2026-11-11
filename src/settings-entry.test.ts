@@ -31,7 +31,7 @@ describe('settings entry', () => {
 
   it('applies the schema defaults and leaves the threshold unset', () => {
     const current = resolve({});
-    expect(current['methodOrder']).toEqual(['snapcompact', 'handoff', 'shake', 'soft']);
+    expect(current['methodOrder']).toEqual(['snapcompact', 'shake', 'soft']);
     expect(current['maxFrames']).toBe(20);
     expect(current['frameSize']).toBe(1568);
     expect(current['archiveMaxBytes']).toBe(64 * 1024 * 1024);
@@ -43,20 +43,18 @@ describe('settings entry', () => {
   it('accepts every legal value shape', () => {
     expect(
       resolve({
-        methodOrder: ['handoff', 'soft'],
+        methodOrder: ['snapcompact', 'soft'],
         thresholdRatio: 0.72,
         frameSize: 1024,
         maxFrames: 3,
         archiveMaxBytes: 1024 * 1024,
-        handoffMaxTokens: 1024,
         shakeThresholdChars: 2048,
       }),
     ).toMatchObject({
-      methodOrder: ['handoff', 'soft'],
+      methodOrder: ['snapcompact', 'soft'],
       thresholdRatio: 0.72,
       frameSize: 1024,
       maxFrames: 3,
-      handoffMaxTokens: 1024,
       shakeThresholdChars: 2048,
     });
     expect(resolve({ thresholdRatio: 0.5 }).thresholdRatio).toBe(0.5);
@@ -72,6 +70,14 @@ describe('settings entry', () => {
     expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
   });
 
+  it('still parses a chain that names the removed handoff method', () => {
+    // A settings document saved before the method was removed must not fail
+    // validation; the reader drops the name and keeps the surviving order.
+    const legacy = { methodOrder: ['snapcompact', 'handoff', 'shake', 'soft'] };
+    expect(resolve(legacy)['methodOrder']).toEqual(legacy.methodOrder);
+    expect(readUserSettings(legacy)).toEqual({ methodOrder: ['snapcompact', 'shake', 'soft'] });
+  });
+
   it.each([
     { methodOrder: [] },
     { methodOrder: ['remote', 'soft'] },
@@ -80,7 +86,7 @@ describe('settings entry', () => {
     { frameSize: 4096 },
     { maxFrames: 65 },
     { archiveMaxBytes: 0 },
-    { handoffMaxTokens: 128 },
+    { shakeThresholdChars: 128 },
     { retainRatio: 0.005 },
     { retainRatio: 0.51 },
     { retainTokens: 512 },

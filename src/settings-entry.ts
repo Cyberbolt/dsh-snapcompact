@@ -27,6 +27,8 @@ function descriptionOf(key: string): string {
   return value;
 }
 
+// `handoff` is accepted only so a settings document saved before the method was
+// removed still validates; `readUserSettings` drops it from the effective chain.
 const methodName = schema.union([
   schema.const('snapcompact'),
   schema.const('handoff'),
@@ -38,6 +40,8 @@ export const Config = schema.object({
   methodOrder: schema
     .array(methodName)
     .min(1)
+    // Four entries only to keep a legacy document (which may still name handoff)
+    // valid; the runtime parser and the card both cap the chain at three.
     .max(4)
     .default([...DEFAULT_USER_CHAIN])
     .description(descriptionOf('methodOrder'))
@@ -88,14 +92,6 @@ export const Config = schema.object({
     .max(64 * 1024 * 1024)
     .default(64 * 1024 * 1024)
     .description(descriptionOf('archiveMaxBytes'))
-    .volatile(),
-  handoffMaxTokens: schema
-    .number()
-    .step(256)
-    .min(256)
-    .max(16_384)
-    .default(4096)
-    .description(descriptionOf('handoffMaxTokens'))
     .volatile(),
   shakeThresholdChars: schema
     .number()

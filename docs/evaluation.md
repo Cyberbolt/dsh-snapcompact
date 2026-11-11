@@ -24,7 +24,7 @@ Token economy has a one-time axis and a steady-state axis. The local visual path
 
 A fixed exact-match fixture is reproducible, not representative of every language or long-running project. A single run does not automatically reconfigure the plugin or prove savings on every route or turn horizon. Standalone fixture requests also differ from a full routed conversation's system/tool envelope.
 
-The visual arm is the production local-rendering path: bounded head/tail text plus bitmap frames, with no handoff summary. Fixture v1 placed every scored fact in the exact tail, so its 8/9 could be read from text alone; v2 moves ten probes into the middle so the score actually depends on bitmap readability. Cache reuse, output length and model-specific billing still affect comparisons; a smaller estimated checkpoint is not proof of monetary savings or preserved task information.
+The visual arm is the production local-rendering path: bounded head/tail text plus bitmap frames, with no summary call. Fixture v1 placed every scored fact in the exact tail, so its 8/9 could be read from text alone; v2 moves ten probes into the middle so the score actually depends on bitmap readability. Cache reuse, output length and model-specific billing still affect comparisons; a smaller estimated checkpoint is not proof of monetary savings or preserved task information.
 
 Visual arms can be skipped for missing vision metadata, undeclared pricing, unreadable request resizing or an insufficient frame budget. That is a safety fallback, not evidence of successful image comprehension. A response without provider usage is marked unmeasured rather than used for a fabricated token-saving claim.
 
