@@ -16,7 +16,7 @@ When a session gets long, Snapcompact turns the middle of the transcript into de
 
 Use it for long coding or debugging sessions where you still need the exact command from forty turns ago. It is not for short chats, text-only routes, or minimal mode.
 
-**Install:** Plugins → Add plugin → `dsh-snapcompact@0.5.3` → new session → **Snapcompact (Standard)**. No build step.
+**Install:** Plugins → Add plugin → `dsh-snapcompact@0.6.0` → new session → **Snapcompact (Standard)**. No build step.
 
 ## Why render?
 
@@ -54,7 +54,7 @@ The visual checkpoint was cheaper on the first compaction (6,717 vs 21,876) and 
 Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`; there is no build step and no install script. A 0.2.x patch installs without a new plugin release; the next minor is declared only after revalidation.
 
 1. Open **Plugins → Add plugin**.
-2. Install `dsh-snapcompact@0.5.3`.
+2. Install `dsh-snapcompact@0.6.0`.
 3. Restart if prompted, then create a new session and choose a variant.
 
 | Official mode | Choose                     | What you keep                                                         |
@@ -68,7 +68,7 @@ Installation adds opt-in presets. It does not change official presets or running
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact@0.5.3
+dsh plugin --profile web add dsh-snapcompact@0.6.0
 ```
 
 Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
@@ -81,11 +81,11 @@ A locally packed tarball and a tarball URL work too:
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.5.3.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.6.0.tgz"
 ```
 
 ```sh
-dsh plugin --profile web add https://example.com/dsh-snapcompact-0.5.3.tgz
+dsh plugin --profile web add https://example.com/dsh-snapcompact-0.6.0.tgz
 ```
 
 The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
