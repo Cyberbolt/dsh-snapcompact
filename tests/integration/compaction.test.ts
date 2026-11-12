@@ -2,9 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
-import { ArchiveRepository } from '../../src/archives/repository.js';
-import { ArchiveService } from '../../src/archives/service.js';
-import type { ArchiveRecord } from '../../src/archives/service.js';
 import { SnapcompactEngine } from '../../src/compaction/engine.js';
 import { FILE_LIST_HEADER } from '../../src/compaction/file-ops.js';
 import type { MethodContext } from '../../src/compaction/method.js';
@@ -12,7 +9,6 @@ import { snapcompact } from '../../src/compaction/methods/snapcompact.js';
 import { resolveConfig } from '../../src/config.js';
 import type * as RendererModule from '../../src/rendering/worker-client.js';
 import { createHarness } from '../fixtures/harness.js';
-import { archiveProjection } from '../../src/integrations/dsh/archive-projection.js';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -36,39 +32,34 @@ async function setup(
   );
   const renderer = rendererModule.createRenderer();
   cleanups.push(harness.dispose, () => renderer.dispose());
-  const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
   const engine = new SnapcompactEngine(
     harness.ctx,
     resolveConfig({
       methodOrder,
       policy: { auto: false, maxTokens: 4096, ...policy },
       rendering,
+      serialization: { messageTextMaxChars: 20_000, toolResultMaxChars: 20_000 },
     }),
-    archives,
     renderer,
     new AbortController().signal,
   );
-  return { ...harness, archives, engine, renderer };
+  return { ...harness, engine, renderer };
 }
 
 const longSource =
   'Original exact command: pnpm deploy -- --dry-run\n' +
   Array.from(
     { length: 350 },
-    (_, line) => `Historical build line ${line}: stable fact, no instruction changes.`,
+    (_, line) =>
+      `Historical build line ${line}: ${['alpha', 'beta', 'gamma', 'delta', 'epsilon'][line % 5]} stable fact, no instruction changes.`,
   ).join('\n');
 
 describe('native region transaction with plugin candidates', () => {
-  it('lands an archived text checkpoint and can replay its serialized log', async () => {
+  it('lands a native text checkpoint and can replay its serialized log', async () => {
     const test = await setup(['soft']);
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
     const result = await test.engine.compactRegion(source.seq, source.seq, test.agent);
-    const ref = result.summary.find((block) => block.type === 'file')?.attachment;
-    expect(ref).toBeDefined();
-    if (!ref) throw new Error('Missing archive file');
-    const page = await test.archives.read(ref, { offset: 0, limit: 100, query: 'exact command' });
-    expect(page.lines.some((line) => line.text.includes('pnpm deploy -- --dry-run'))).toBe(true);
     expect(test.adapter.calls).toHaveLength(1);
     expect(
       test.session
@@ -86,17 +77,7 @@ describe('native region transaction with plugin candidates', () => {
     const events = test.session.snapshotEvents();
     expect(events.filter((event) => event.type === 'compaction/start')).toHaveLength(1);
     expect(events.filter((event) => event.type === 'compaction/end')).toHaveLength(1);
-    let state = archiveProjection.init();
-    for (const event of events.slice(0, -1)) state = archiveProjection.apply(state, event);
-    expect(state.entries).toHaveLength(0);
-    const close = events.at(-1);
-    if (!close) throw new Error('Missing native closing event');
-    state = archiveProjection.apply(state, close);
-    expect(state.entries[0]?.reference).toEqual(ref);
-    let replayed = archiveProjection.init();
-    for (const event of restored.snapshotEvents())
-      replayed = archiveProjection.apply(replayed, event);
-    expect(replayed.entries).toEqual(state.entries);
+    expect(result.summary.some((block) => block.type === 'file')).toBe(false);
   });
 
   it('commits a local visual checkpoint without an auxiliary model call', async () => {
@@ -108,7 +89,7 @@ describe('native region transaction with plugin candidates', () => {
     expect(images.length).toBeGreaterThan(0);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=snapcompact'),
+      text: expect.stringContaining('Visual snapcompact checkpoint'),
     });
     for (const image of images) {
       const stored = await test.attachments.readImage(image.attachment);
@@ -119,7 +100,7 @@ describe('native region transaction with plugin candidates', () => {
         (block) => block.type === 'text' && block.text.includes('Visual snapcompact checkpoint'),
       ),
     ).toBe(true);
-    expect(result.summary.some((block) => block.type === 'file')).toBe(true);
+    expect(result.summary.some((block) => block.type === 'file')).toBe(false);
     expect(
       result.summary.some(
         (block) => block.type === 'text' && block.text.startsWith(FILE_LIST_HEADER),
@@ -172,7 +153,7 @@ describe('native region transaction with plugin candidates', () => {
     expect(result.summary.filter((block) => block.type === 'image')).toHaveLength(0);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=soft'),
+      text: expect.stringContaining('## Goal'),
     });
     expect(test.adapter.calls).toHaveLength(1);
   });
@@ -208,10 +189,10 @@ describe('native region transaction with plugin candidates', () => {
       sourceTokens: 100_000,
       checkpointTargetTokens: 50_000,
       meter: test.ctx.tokenMeter,
-      archive: {} as ArchiveRecord,
       route: { provider: 'test', model: 'vision' },
       config: resolveConfig({
         rendering: { width: 512, height: 512, maxFrames: 3, minGlyphPx: 8 },
+        serialization: { messageTextMaxChars: 20_000, toolResultMaxChars: 20_000 },
       }),
       llm: test.ctx.llm,
       attachments: test.ctx.attachments,
@@ -264,7 +245,7 @@ describe('native region transaction with plugin candidates', () => {
     expect(images.length).toBeLessThanOrEqual(9);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=snapcompact'),
+      text: expect.stringContaining('Visual snapcompact checkpoint'),
     });
     expect(test.adapter.calls).toHaveLength(0);
   });
@@ -328,7 +309,7 @@ describe('native region transaction with plugin candidates', () => {
     const result = await test.engine.compactRegion(first.seq, last.seq, test.agent);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=snapcompact'),
+      text: expect.stringContaining('Visual snapcompact checkpoint'),
     });
     expect(result.summary.some((block) => block.type === 'image')).toBe(true);
     expect(test.adapter.calls).toHaveLength(0);
@@ -351,7 +332,7 @@ describe('native region transaction with plugin candidates', () => {
       expect(result.summary.some((block) => block.type === 'image')).toBe(false);
       expect(result.summary[0]).toMatchObject({
         type: 'text',
-        text: expect.stringContaining('method=soft'),
+        text: expect.stringContaining('## Goal'),
       });
       expect(test.adapter.calls).toHaveLength(1);
     },
@@ -365,7 +346,7 @@ describe('native region transaction with plugin candidates', () => {
     expect(result.summary.some((block) => block.type === 'image')).toBe(false);
     expect(result.summary[0]).toMatchObject({
       type: 'text',
-      text: expect.stringContaining('method=soft'),
+      text: expect.stringContaining('## Goal'),
     });
   });
 
@@ -419,7 +400,6 @@ describe('native region transaction with plugin candidates', () => {
     );
     const renderer = rendererModule.createRenderer();
     try {
-      const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
       expect(
         () =>
           new SnapcompactEngine(
@@ -427,7 +407,6 @@ describe('native region transaction with plugin candidates', () => {
             resolveConfig({
               policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2, retainRatio: 0.16 },
             }),
-            archives,
             renderer,
             new AbortController().signal,
           ),
@@ -445,11 +424,9 @@ describe('native region transaction with plugin candidates', () => {
     );
     const renderer = rendererModule.createRenderer();
     try {
-      const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
       const engine = new SnapcompactEngine(
         harness.ctx,
         resolveConfig({ policy: { auto: false, maxTokens: 4096, thresholdRatio: 0.2 } }),
-        archives,
         renderer,
         new AbortController().signal,
       );

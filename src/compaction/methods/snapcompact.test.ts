@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderFileList } from '../file-ops.js';
 import type { VisualSource } from '../visual-source.js';
-import { summaryBlocks } from './snapcompact.js';
+import { summaryBlocks } from '../visual-checkpoint.js';
 
 const source: VisualSource = {
   head: 'exact head',
@@ -31,10 +31,14 @@ describe('visual checkpoint summary composition', () => {
     expect(text).toContain('leading spaces are indentation');
     expect(text).toContain('#n/m');
     expect(text).toContain('source-line range');
-    expect(text).toContain('snapcompact_recall');
+    expect(text).not.toContain('snapcompact_recall');
     expect(blocks[1]).toEqual({ type: 'text', text: files });
     expect(blocks[2]).toEqual({ type: 'text', text: 'exact head' });
-    expect(blocks.at(-1)).toEqual({ type: 'text', text: 'exact tail' });
+    expect(blocks.some((block) => block.type === 'text' && block.text === 'exact tail')).toBe(true);
+    expect(blocks.at(-1)).toMatchObject({
+      type: 'text',
+      text: expect.stringContaining('Checkpoint rule'),
+    });
   });
 
   it('does not emit an empty FILES block', () => {

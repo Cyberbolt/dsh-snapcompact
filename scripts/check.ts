@@ -10,17 +10,19 @@ interface Check {
 const testOnly = process.argv.includes('--test-only');
 const testArgs = process.argv.slice(2).filter((arg) => arg !== '--test-only');
 const root = fileURLToPath(new URL('../', import.meta.url));
+// Build before type checking: scripts/benchmark-v5.ts imports the emitted
+// declarations in dist/, which a clean checkout does not have yet.
 const checks: readonly Check[] = [
+  {
+    label: 'ESM and portable declarations',
+    args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.build.json'],
+  },
   { label: 'Strict types', args: ['node_modules/typescript/bin/tsc', '--noEmit'], fullOnly: true },
   { label: 'Lint', args: ['node_modules/eslint/bin/eslint.js', '.'], fullOnly: true },
   {
     label: 'Formatting',
     args: ['node_modules/prettier/bin/prettier.cjs', '--check', '.'],
     fullOnly: true,
-  },
-  {
-    label: 'ESM and portable declarations',
-    args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.build.json'],
   },
   {
     label: 'Preset declaration up to date',

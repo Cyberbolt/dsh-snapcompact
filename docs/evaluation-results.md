@@ -2,46 +2,115 @@
 
 [简体中文](zh/evaluation-results.md)
 
-## Benchmark v3
+> **Status: valid.** v5.1 test, 3 runs per arm: 12/12 product gates and 7/7 instrument checks pass.
+> Route `opencode-go/deepseek-v4.1-flash` · fixture `project-recall-v5-20261113` (seed 20261113, SHA-256 `087da65c…`) · report SHA-256 `2e62ad36…` · frozen design commit `71ae82d`.
 
-A real synthetic-fixture run on **2026-11-11** with route `opencode-go/deepseek-v4.1-flash`, fixture `engineering-recall-v3`, three runs. It used the production renderer, the native summary engine and the `evaluate()` path; no private session history was read or uploaded.
+## Verdict
 
-| Arm                  | Status   | Accepted |  Strict |  head | middle |  tail |
-| -------------------- | -------- | -------: | ------: | ----: | -----: | ----: |
-| `original`           | measured |    40/40 | 38.7/40 | 21/21 |  60/60 | 39/39 |
-| `native-text`        | measured |  38.3/40 | 37.3/40 | 17/21 |  59/60 | 39/39 |
-| `snapcompact`        | measured |  34.0/40 | 33.7/40 | 21/21 |  43/60 | 38/39 |
-| `snapcompact-recall` | measured |    40/40 | 36.7/40 | 21/21 |  60/60 | 39/39 |
+Snapcompact scored **39.67/40 per run**, level with the uncompressed history at 39.33 (0.33 questions apart, inside run-to-run noise) and ahead of the native summary at 32.33. It used **5.6%** of the uncompressed peak prompt and **18.9%** of its weighted cost. In one sentence: a compaction that drops information costs about seven questions per run, and this checkpoint loses none.
 
-Accepted counts are per-run means with a 38–39 range for `native-text`, 33–35 for `snapcompact` and 36–37 for the strict column of `snapcompact-recall`; every other cell was identical across the three runs.
+## Terms
 
-| Arm                  | One-time generation | Per-turn read | One-run total | 3-turn context |
-| -------------------- | ------------------: | ------------: | ------------: | -------------: |
-| `original`           |                   0 |        15,955 |        20,548 |         47,865 |
-| `native-text`        |              24,409 |         1,701 |        32,631 |         29,512 |
-| `snapcompact`        |                   0 |         6,803 |        15,631 |         20,408 |
-| `snapcompact-recall` |                   0 |        30,841 |        34,463 |         92,524 |
+| Term          | Meaning                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------ |
+| arm           | one experimental condition: the same history, presented differently                                          |
+| run           | one pass of an arm over all 40 questions (10 turns × 4). Every score is per run unless it says "3-run total" |
+| exact string  | 1 of 16 questions that must be copied character for character (checksums, paths, commands, identifiers)      |
+| frame         | one rendered image of the checkpoint history                                                                 |
+| peak prompt   | the largest single-request prompt inside a run (the report prints the first measured run)                    |
+| weighted cost | `input + 0.1·cacheRead + 1.25·cacheWrite + 4·output`; a relative unit, not a bill                            |
 
-The native summary used 24,409 generation tokens (54.6s). The visual checkpoint used 5 frames, 8,367 estimated tokens against an 8,426-token half-of-source budget, and prepared in 1.0s. The archive contained all 40 sources verbatim. The recall arm made 24 tool calls on average.
+## Product arms
 
-### What the run shows
+| Arm                              | Score per run (3 runs) | Exact per run (/16) | Frames | Peak prompt | Weighted cost |
+| -------------------------------- | ---------------------- | ------------------- | ------ | ----------- | ------------- |
+| `original` — nothing compressed  | 39.33 (40, 38, 40)     | 16.00               | —      | 128,092     | 140,860       |
+| `native-text` — one host summary | 32.33 (34, 31, 32)     | 13.67               | —      | 3,332       | 19,612        |
+| `pure-visual` — snapcompact      | **39.67** (39, 40, 40) | 15.67               | 3      | 7,178       | 26,604        |
 
-- **The shipped configuration is at parity, and above the native summary.** `snapcompact-recall` — the checkpoint a session actually receives, frames plus the `snapcompact_recall` tool — scored 40/40 in all three runs. The native summary scored 38.3/40 and lost head facts: the Chinese constraint was truncated to its first clause, and one negation lost its exact punctuation. The frames alone scored 34.0/40, so the archive is doing real work, not decoration.
-- **The renderer is exact where text is structured, not where it is random.** All four arms kept the head text (21/21) when it stayed verbatim; the frames-only arm kept 43/60 middle facts. Every frames-only miss is a random token — audit id, checksum, request id, rollback suffix — and several wrong values (`AUDIT-9F3C-7B2`, `CRC32:9e2f31ac`) appear nowhere in the corpus. That is confident transcription drift, the failure mode upstream omp also documents (its 0/O identifier corruption fix), not a layout defect: head text is perfect and every token sat inside a row.
-- **Recall converts drift into exactness.** With one search per exact-string question, the middle went 60/60 and the tail 39/39. Search targets the label the model can read (`Observation 240:`), so a misread value cannot poison the lookup.
-- **Cost moved to the tool loop.** The checkpoint is 6,803 tokens for 63,423 characters of history; the recall arm's 30,841 per-turn read is 24 verification calls inside a single 40-question benchmark turn, not a steady-state cost. One search returns a few lines, so a session that asks for one exact string pays one small lookup.
-- **Strict matching is looser than native.** 36.7 vs 37.3: quoting `X-Snap-Trace: 5b7e9c1d` or `PRIMARY-ONLY until further notice.` is accepted but not the bare canonical string. Accepted is the primary score because the answer is factually right.
+`original` is what the model can do with the full history. `native-text` is what a normal lossy summary costs: 32.33, about seven questions worse. `pure-visual` is the shipped checkpoint — 3 frames plus a bounded exact-token text index, priced at 6,317 checkpoint tokens — and it gives the seven questions back.
 
-One run can move one or two questions; these figures pool three runs. Run `/snapcompact benchmark 3` on your route for a range.
+## Instrument controls (not product results)
 
-## Rendering measurements
+Think of one open-book exam in three groups: one gets photographs of the textbook (`pure-visual`), one gets the textbook itself (`gold-text`), one gets deliberately damaged photographs (`degraded-visual`).
 
-These numbers come from the current continuous-flow layout and one-bit PNG encoder. They are rendering measurements, not model-recall scores, and they make no model call.
+| Arm                                 | What it measures                                                      | Result | Criterion                    |
+| ----------------------------------- | --------------------------------------------------------------------- | ------ | ---------------------------- |
+| `gold-text` — exact-text ceiling    | how many points survive when the history is handed over as exact text | 39.67  | ≥ 38 and ≥ visual − 1        |
+| `degraded-visual` — damaged control | whether the score really comes from reading the frames                | 11.67  | ≤ 32 and ≥ 4 questions worse |
 
-| Corpus @ 1568×1568                             | Frames | Content chars/frame | PNG total | PNG/frame |
-| ---------------------------------------------- | -----: | ------------------: | --------: | --------: |
-| Indented code corpus (28,729 chars, 960 lines) |      3 |               9,257 |   35.5 KB |   11.8 KB |
+`gold-text` uses the same head/middle/tail selection and the same exact-token index as snapcompact, but the middle arrives as text instead of pixels. It is the **ceiling**, not a product: if the ceiling could not reach 38, the task or the rubric would be broken and a high snapcompact score would mean nothing. This run the ceiling and snapcompact are identical at 39.67, so rendering the middle as pixels cost nothing.
 
-The same rendering path is regression-tested by [`src/rendering/density.test.ts`](../src/rendering/density.test.ts), which fixes frame count, characters per frame and PNG bytes on synthetic prose and code corpora; exact bytes vary slightly with the zlib build.
+`degraded-visual` keeps every other frame, downscales each by 50% and drops the index. Its score must collapse; if damaging the frames changed nothing, the suite would not be testing the frame path at all. It fell from 39.67 to 11.67.
 
-The reading legend is part of the checkpoint: `¶` marks one source newline, consecutive `¶` mark blank lines, leading spaces keep indentation, and rows wrap at the frame edge.
+Neither row belongs in the product verdict. They are what makes the table above trustworthy.
+
+## Gates
+
+| Group      | Check                       | Threshold                          | Actual                | Result |
+| ---------- | --------------------------- | ---------------------------------- | --------------------- | ------ |
+| Instrument | Exact-text ceiling          | ≥ 38/40                            | 39.67                 | pass   |
+| Instrument | Ceiling ≥ snapcompact − 1   | gold ≥ visual − 1                  | 39.67 vs 39.67        | pass   |
+| Instrument | Damaged control             | ≤ 32/40                            | 11.67                 | pass   |
+| Instrument | Damaged ≥ 4 questions worse | ≥ 4.00                             | 28.00                 | pass   |
+| Instrument | Ordering (strict)           | gold ≥ visual > degraded           | 39.67 / 39.67 / 11.67 | pass   |
+| Instrument | No leakage                  | 40 questions + ≥ 20 decoys         | 40 / 20               | pass   |
+| Instrument | Reproducible                | fixture and report hashes recorded | recorded              | pass   |
+| Product    | Overall                     | ≥ 38/40                            | 39.67                 | pass   |
+| Product    | Exact-string subset         | ≥ 15/16                            | 15.67                 | pass   |
+| Product    | Cross-region                | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Temporal / causal           | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Negation / constraint       | ≥ 4/5                              | 5.00/5                | pass   |
+| Product    | CJK                         | ≥ 3/4                              | 4.00/4                | pass   |
+| Product    | Numeric                     | ≥ 2/3                              | 3.00/3                | pass   |
+| Product    | Head region                 | ≥ 6/7                              | 7.00/7                | pass   |
+| Product    | Middle region               | ≥ 25/27                            | 26.67/27              | pass   |
+| Product    | Tail region                 | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Peak prompt                 | ≤ 0.40× original                   | 0.056×                | pass   |
+| Product    | Weighted cost               | ≤ 0.78× original                   | 0.189×                | pass   |
+
+## Hits by class and region
+
+Snapcompact, pooled over the three runs. The 3-run denominator is always the per-run question count × 3; every threshold is judged per run.
+
+| Class                 | Questions per run | 3-run total | Per run |
+| --------------------- | ----------------- | ----------- | ------- |
+| Exact command         | 4                 | 12/12       | 4.00    |
+| Exact path            | 4                 | 12/12       | 4.00    |
+| Exact checksum        | 4                 | 12/12       | 4.00    |
+| Exact identifier      | 4                 | 11/12       | 3.67    |
+| Cross-region          | 6                 | 18/18       | 6.00    |
+| Temporal / causal     | 6                 | 18/18       | 6.00    |
+| Negation / constraint | 5                 | 15/15       | 5.00    |
+| CJK                   | 4                 | 12/12       | 4.00    |
+| Numeric               | 3                 | 9/9         | 3.00    |
+| Head region           | 7                 | 21/21       | 7.00    |
+| Middle region         | 27                | 80/81       | 26.67   |
+| Tail region           | 6                 | 18/18       | 6.00    |
+
+Across all 120 scored answers there is exactly one miss: a single question in the middle region, classed as an exact identifier, on turn 7 of run 1. The other two runs are perfect.
+
+## Cost
+
+Peak prompt and weighted cost come from the first measured run of each arm; ratios are against `original`. The usage audit reconciles all 150 requests: 4,758,294 reported and 4,758,294 computed total tokens, 0 unreported prompt tokens. Weighted cost is a relative unit, not a bill.
+
+Both instrument arms cost more than the arm they check: the ceiling used a 15,782-token peak prompt and 52,718 weighted, and the damaged control a 5,096 peak prompt and 66,653 weighted against snapcompact's 26,604. Unreadable frames make the model search longer, which is the practical reason frames have to stay legible in production.
+
+## Conventions of this run
+
+- `gold-text` receives the same exact-token index and the same closing re-read rule as snapcompact, so it is a strict information superset rather than a different presentation.
+- The CJK rubric accepts a leading-clause paraphrase (for example `扩容连接池` for `先扩容连接池，再重放队列`), per commit `71ae82d`.
+- `gold-text` uses the provider default reasoning effort while the other arms use `low`. The asymmetry can only raise the ceiling, not lower it.
+- The ceiling check allows `gold ≥ visual − 1` (the authorized v5.1 tolerance) while the ordering check still requires `gold ≥ visual` strictly. Both passed; **no product threshold changed**.
+
+## Provenance
+
+- Design, frozen thresholds and the full history: [evaluation-v5-prereg.md](evaluation-v5-prereg.md) — its changelog carries the aborted v5 run and every v5.1 deviation.
+- Reproduction commands, arms and the schedule: [evaluation.md](evaluation.md).
+- v4 historical numbers and the audit that retired it: [evaluation-audit.md](evaluation-audit.md).
+- The frozen v5 test (SHA-256 `a7a169…`) was aborted during `gold-text` run 1 on a presentation/ceiling issue; its `original` arm had completed at 38/38/38. That partial run is **invalid** and is not counted as a pass.
+- The test split is generated from the committed seed under `.artifacts/` and is not committed.
+
+## Boundaries
+
+Route-specific (`opencode-go/deepseek-v4.1-flash`); a different decoding setting can move a question or two. The exact-token index is a product feature, not a benchmark trick: it is generated from the same serialized history, capped at 80 labeled lines, and the damaged control removes it. A generated scenario is reproducible, not representative of every language or project. Read these numbers with the pre-registration, not as a universal savings claim.

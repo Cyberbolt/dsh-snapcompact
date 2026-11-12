@@ -15,6 +15,7 @@ const options: RenderOptions = {
   maxSourceBytes: 64 * 1024 * 1024,
   timeoutMs: 15_000,
   lineHeight: 20,
+  letterSpacing: 0,
 };
 const ascii: BitmapGlyph = { width: 8, bitmap: new Uint8Array(16).fill(0x7e) };
 const wide: BitmapGlyph = { width: 16, bitmap: new Uint8Array(32).fill(0x7e) };
@@ -69,7 +70,7 @@ describe('continuous source flow', () => {
     expect(escapeCharacter('\u2028')).toBe('\\u{2028}');
     expect(escapeCharacter(NEWLINE_MARKER)).toBe('\\u{00B6}');
     expect(characters('\t')).toEqual(['']);
-    expect(characters('a\tb').join('')).toBe('a    b');
+    expect(characters('a\tb').join('')).toBe('a b');
     expect(characters('\x1b[31m')).toEqual(['']);
     expect(characters(`a${NEWLINE_MARKER}b`)).toEqual(['a\\u{00B6}b']);
   });

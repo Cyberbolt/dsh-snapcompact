@@ -2,64 +2,119 @@
 
 [English](../evaluation.md)
 
-执行 `/snapcompact benchmark` 是**显式发起模型调用**。单次运行包含一次原生摘要生成和四个 QA 臂：三个单次臂（原始历史、原生摘要、视觉 OCR），以及一个 recall 臂——最多五轮工具、四十次实际调用，超过后 runner 会在无工具的情况下强制一次最终作答。OCR 臂会明确告知本回合没有工具，因此不会因为“模型请求了不存在的 recall”而扣分。无法安全生成图片时跳过视觉臂，不用文本调用冒充视觉成绩。
+Snapcompact 当前评测是 **v5**：生成的、task-level、多轮 benchmark，带冻结的 dev/test 划分、预注册 rubric 和显式对照。它替代 v4 的单请求 40 题压力测试和六轮 session 成本套件作为验收入口。v4 数字作为历史数据保留在 [evaluation-audit.md](evaluation-audit.md)，当前结果见[评测结果](evaluation-results.md)。
 
-## 评测 v3
+v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](evaluation-v5-prereg.md)。退役 v4 的审计是 [evaluation-audit.md](evaluation-audit.md)。
 
-默认语料是 `engineering-recall-v3`：40 题分布在三个区域，20 个中段 probe、40 个 decoy。7 个头段事实留在精确 head 文本里，13 个尾段事实留在精确 tail 文本里，20 个中段事实落在位图中。decoy 是合理但不计分的事实，让摘要必须做取舍，而不是照抄一条 fact message。
+## 测什么
 
-报告拆成四个臂：
+一个生成的项目场景，固定 10 轮，每轮 4 题，共 40 题。历史是一条长工程会话（约 81,000 估计源 tokens），含 user 消息、assistant 消息、工具调用、工具结果、构建/测试日志、文件列表、stack trace、事故笔记和 20 个合理 decoy。问题覆盖：
 
-| 臂                   | 测什么                                                               |
-| -------------------- | -------------------------------------------------------------------- |
-| `original`           | 对照组：完整 fixture 原文，不压缩。                                  |
-| `native-text`        | 宿主原生摘要生成 + 一次 QA 读取。                                    |
-| `snapcompact`        | 生产视觉 checkpoint（有界头尾文本 + 位图帧），不带工具。             |
-| `snapcompact-recall` | 同一 checkpoint，带真实 `snapcompact_recall` schema 和有界工具循环。 |
+| 类别       | 数量 |
+| ---------- | ---: |
+| 精确命令   |    4 |
+| 精确路径   |    4 |
+| 精确校验和 |    4 |
+| 精确标识符 |    4 |
+| 数值       |    3 |
+| 跨区域语义 |    6 |
+| 时序/因果  |    6 |
+| 否定/约束  |    5 |
+| CJK        |    4 |
 
-### 评分
+精确串题 16/40 = 40%，不降权。rubric 是确定性、源文本派生的：
 
-- **接受匹配**是主分。只裁掉答案外层空白，然后与 canonical answer 及 fixture 声明的等价写法比较，消除“引文带标签前缀”这类评分噪声；同时忽略一个结尾的 `.`/`。`，因为引用整句原文会把这个标点带出来。
-- **严格匹配**是副分。只与 canonical answer 比较，仍然只裁外层空白；内部空白和代码缩进保持有效。
-- 每题按 exact source 在序列化投影中的实际位置归入 `head`、`middle` 或 `tail`，不只依赖 fixture 的声明。找不到 source 的题标为 `unknown` 并报告。
-- 每次运行都记录 raw answer、解析模式（`raw`、`extracted`、`failed`）、分区/题型计数和 token usage。
-- `benchmark` 运行一次；`benchmark 3` 把四个 QA 臂重复三次，报告均值/最小/最大。原生摘要和视觉 checkpoint 只生成一次并复用，所以范围测的是读取稳定性，不是摘要生成稳定性；报告 warning 会写明这一点。
+- `exact`：去外层空白，剥掉一对外层反引号/引号，允许一个结尾 `.`/`。`；除此之外逐字符。
+- `all`：所有 required 字面出现，且没有 forbidden decoy 字面。
+- `any`：至少一个 accepted 字面出现，且没有 forbidden 字面。
 
-### Recall 臂
+没有模型自评。prompt 只含问题文本和 JSON key；答案、rubric 和源行留在 fixture。
 
-recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；最多五轮工具、四十次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。这个上限对齐生产 agent：真实 agent 本身没有每回合 recall 次数限制。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
+## 臂
 
-### 归档完整性
+| 臂                | 输入                                                                 | 工具 | 目的                         |
+| ----------------- | -------------------------------------------------------------------- | ---- | ---------------------------- |
+| `original`        | 完整 fixture 历史                                                    | 无   | 对照：完全不压缩             |
+| `native-text`     | 生成一次的 native summary                                            | 无   | Host 基线：一次有损摘要      |
+| `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标：发布的 checkpoint      |
+| `gold-text`       | 与 pure visual 相同的选取和索引，中段为精确文本                      | 无   | 上限：能拿到的分数（非产品） |
+| `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 降级负控（非产品）           |
 
-任何 QA 调用之前，报告检查每题的 exact source 是否出现在归档 transcript 中。这是 recall 路径的确定性覆盖检查，不是模型召回分。
+五个臂里只有三个构成产品对比。`gold-text` 和 `degraded-visual` 是测量工具的一部分，永远不进产品结论：
 
-## 报告指标
+- `gold-text` 与 `pure-visual` 使用相同的选取和相同的 exact-token 索引，只是中段以精确文本而不是像素送达。它回答"这道题最多能拿多少分"。如果上限都到不了 38，说明题目或 rubric 坏了，视觉方案的高分就没有意义。
+- `degraded-visual` 隔帧保留、每帧降采样 50%、去掉索引。它回答"分数是否真的来自读帧"。如果弄坏帧不掉分，说明这套题根本没在考帧路径。
 
-- 接受匹配和严格匹配的计数、跨运行均值/最小/最大，以及合并后的 head/middle/tail 计数。
-- 分区、题型计数，以及每个未命中 key 的 expected 和 given。
-- 原生摘要生成 usage 与耗时；视觉帧数、checkpoint token、半源预算、是否超预算、准备耗时。
-- Provider 报告的 input/output/cacheRead/cacheWrite usage；缺失字段不编造。
-- prompt 总量遵循 DSH 合同：input + cacheRead + cacheWrite，不是可能包含 output 的 totalTokens。
-- recall 工具调用次数、额外 token，以及 OCR 臂与 recall 臂的 accepted 差值。
-- 本地密度检查（`src/rendering/density.test.ts`）固定帧数、每帧字符数和 PNG 字节数，不发起模型调用，也不测 recall。
+冻结 test 还跑了离线 `recall-ref` 臂（生产 checkpoint + 归档 recall）检查非劣效。该臂从未注册到生产，冻结 test 后删除；发布的 harness 没有归档或 recall 代码。
 
-## 成本口径
+exact-token 索引是 checkpoint 的一部分，不是 recall 工具：由与帧相同的序列化历史生成，最多 80 行带标签文本，不含模型生成的答案。它存在是因为 64 字符摘要无法从像素可靠读出。帧仍承载周围历史。
 
-Token 经济性有两个轴：一次性生成和稳态读取。视觉路径没有生成调用，但 checkpoint 更大；原生摘要付一次生成调用，之后读取更小。报告展示生成 token、每轮读取 token、单次运行总 token 和 3 轮上下文投影。图片计价是估算，不是账单。只比较摘要的每轮读取和视觉 checkpoint 的每轮读取，会漏掉摘要生成调用。
+## Schedule 与成本
+
+10 轮 schedule 固定。每轮在一条 user message 里问 4 题，期望一个 JSON object。持久历史追加问题和 assistant 回答（仅离线 recall 参照追加工具流量）。成本按轮记录：
+
+```text
+prompt    = input + cacheRead + cacheWrite
+weighted  = input + 0.1·cacheRead + 1.25·cacheWrite + 4·output
+```
+
+加权成本是相对单位，不是账单。报告包含单请求峰值 prompt、总加权成本、相对 `original` 的比值、模型请求数和 usage audit 对账。
+
+benchmark 每个请求设置 `reasoning_effort: low`，限制隐藏推理，让 schedule 可行。模型仍收到完整 checkpoint 和同一组问题。run log 记录该设置。
+
+## Dev 与 test
+
+| 划分 |     种子 | 提交？                         | 用途                                |
+| ---- | -------: | ------------------------------ | ----------------------------------- |
+| dev  | 20261112 | 只提交种子和生成器             | 迭代、渲染/序列化调优、测量工具验收 |
+| test | 20261113 | 种子、生成器和 fixture SHA-256 | 冻结后的最终验收，只跑一次          |
+
+test fixture 生成到 `.artifacts/bench-v5/test/`，不入库。生成器只打印 SHA-256 和计数。仓库只含生成器、种子和 hash；最终运行前不查看 test 内容。
+
+## 命令
+
+tracked harness 对 OpenAI-compatible endpoint 运行同一套件：
+
+```sh
+# 生成 dev fixture 并打印 hash/计数；不调用模型。
+node --experimental-strip-types scripts/benchmark-v5.ts --split=dev --generate-only
+
+# 一次 dev 全生产臂运行。
+SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
+  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
+
+# 最终 test：冻结后三次运行。
+SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
+  --split=test --runs=3 --out=.artifacts/bench-v5/test
+```
+
+会话内 `/snapcompact benchmark [1-5]` 只跑 **dev** 划分。test 划分刻意放在仓库外，由 tracked harness 运行。
+
+脚本从环境或 DSH credential store 读取 `OPENCODE_GO_API_KEY`（或 `SNAPCOMPACT_BENCH_API_KEY`）。接受 `--provider`、`--model`、`--api-url`、`--share`、`--runs` 和 `--out`。
+
+## 读报告
+
+报告包含 fixture id/seed/hash、固定 schedule、逐臂/逐次/逐轮/逐类别/逐区域/逐字符类结果、mean/min/max/95% 区间、usage audit、加权成本、测量工具表和产品门槛表。
+
+所有分数按"每次 40 题"计。逐类别与逐区域是多次运行合并的统计，因此分母是"每次题数 × 3"；门槛仍按每次运行判定。当前数字、以及产品臂与校验臂的分离，见[评测结果](evaluation-results.md)；v4 历史数字见[评测审计](evaluation-audit.md)，结果页不再重复。
+
+预注册门槛：
+
+| 门槛                      | 阈值                        |
+| ------------------------- | --------------------------- |
+| Pure visual overall       | 3 次 test 运行 mean ≥ 38/40 |
+| 精确串子集                | ≥ 15/16                     |
+| 跨区域                    | ≥ 5/6                       |
+| 时序/因果                 | ≥ 5/6                       |
+| 否定/约束                 | ≥ 4/5                       |
+| CJK                       | ≥ 3/4                       |
+| 数值                      | ≥ 2/3                       |
+| Head / tail / middle 区域 | ≥ 6/7 / 5/6 / 25/27         |
+| 单请求峰值 prompt         | ≤ 0.40× original            |
+| 总加权成本                | ≤ 0.78× original            |
+
+测量工具验收（gold 上限 ≥38 且 ≥ pure visual − 1、degraded ≤32 且至少差 4 题、排序、无泄漏、可复现、test 未参与调参）必须先通过，产品门槛才作数。
 
 ## 解释边界
 
-固定语料可复现，但不代表所有语言、provider 或长期项目。单次运行可能让一两道题顺序反转；发布范围请用 `benchmark 3`。独立 fixture 请求与完整会话的 system/tool envelope 不同。接受匹配刻意比严格匹配宽松；比较时两个都引用。
-
-视觉臂走生产本地渲染路径：有界头尾文本 + 位图帧，不调用摘要。v3 把事实分散到 head、middle、tail 并分区报告，中段帧的分数才单独可见。checkpoint 即使满足 benchmark 的“源历史一半”预算，真实会话也可能因触发阈值剩余空间更小而拒绝它；报告会标出超预算。
-
-视觉臂可以因缺少视觉元数据、未声明计价、请求缩放不可读或帧预算不足而跳过。这是安全兜底，不是图片理解成功的证据。没有 provider usage 的响应标记为未测量，不用于编造省 token 的结论。
-
-## 复现
-
-```text
-/snapcompact benchmark      # 单次
-/snapcompact benchmark 3    # 三次 QA，用于发布范围
-```
-
-真实项目评测需要同时获得历史和目标 provider 的许可，并准备脱敏 fixture。不要把私密会话日志提交为公开 benchmark 资产。
+生成场景可复现，但不代表所有语言、provider 或项目。路由是一条模型线；不同视觉编码器会改变帧可读性。test split 对调参 held out，但仍是合成语料。exact-token 索引是产品特性，不是 benchmark 技巧；负控去掉它，所以帧路径仍被测试。加权成本是相对值，不是账单。报告必须与预注册一起读，不能当作普遍节省承诺。

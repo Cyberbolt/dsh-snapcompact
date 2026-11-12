@@ -82,16 +82,8 @@ export const Config = schema.object({
     .step(1)
     .min(1)
     .max(64)
-    .default(20)
+    .default(40)
     .description(descriptionOf('maxFrames'))
-    .volatile(),
-  archiveMaxBytes: schema
-    .number()
-    .step(1024 * 1024)
-    .min(1024 * 1024)
-    .max(64 * 1024 * 1024)
-    .default(64 * 1024 * 1024)
-    .description(descriptionOf('archiveMaxBytes'))
     .volatile(),
   shakeThresholdChars: schema
     .number()

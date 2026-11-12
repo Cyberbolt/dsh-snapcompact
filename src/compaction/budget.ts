@@ -166,6 +166,12 @@ export interface CheckpointBudgetInput {
   readonly sourceTokens: number;
   /** Trigger threshold for the routed model; absent when the route declares no window. */
   readonly thresholdTokens?: number;
+  /**
+   * Fraction of the available room one checkpoint may spend, in (0, 1].
+   * Defaults to 0.5, the historical rule, so callers that predate the
+   * configurable share keep their exact behaviour.
+   */
+  readonly share?: number;
 }
 
 export type CheckpointBudget =
@@ -185,26 +191,35 @@ export type CheckpointBudget =
  *
  * Everything a checkpoint cannot replace — system prompt, tool schemas, output
  * reservation, retained tail — keeps its tokens after compaction. Spending at
- * most half of the remaining room guarantees the post-compaction total stays
- * below the threshold with an equal share of headroom, which is the condition
- * the native engine re-checks before it accepts a checkpoint.
+ * most `share` of the remaining room leaves `1 - share` of that room as the
+ * post-compaction margin, which the native engine re-checks before accepting a
+ * checkpoint.
  *
- * At the moment automatic pressure fires, `room ≈ source`, so this equals the
- * previous `source / 2` rule; it only tightens by the amount the session
+ * At the moment automatic pressure fires, `room ≈ source`, so the threshold
+ * basis equals `source × share`; it only tightens by the amount the session
  * overshot the threshold, and it stays correct for a manual compaction that
- * happens below the threshold.
+ * happens below it.
  *
  * Without a declared context window there is no trigger to measure against, so
- * the same half-of-the-source rule applies unchanged.
+ * the same source-based rule applies.
  */
 export function resolveCheckpointBudget({
   totalTokens,
   sourceTokens,
   thresholdTokens,
+  share = 0.5,
 }: CheckpointBudgetInput): CheckpointBudget {
+  if (!Number.isFinite(share) || share <= 0 || share > 1) {
+    throw new RangeError('Checkpoint budget share must be a finite number in (0, 1].');
+  }
   const source = Math.max(0, Math.floor(sourceTokens));
   if (thresholdTokens === undefined || !Number.isInteger(thresholdTokens) || thresholdTokens <= 0) {
-    return { kind: 'ok', basis: 'source', tokens: Math.floor(source / 2), roomTokens: source };
+    return {
+      kind: 'ok',
+      basis: 'source',
+      tokens: Math.floor(source * share),
+      roomTokens: source,
+    };
   }
   const fixed = Math.max(0, Math.floor(totalTokens) - source);
   const room = thresholdTokens - fixed;
@@ -212,7 +227,7 @@ export function resolveCheckpointBudget({
   return {
     kind: 'ok',
     basis: 'threshold',
-    tokens: Math.floor(Math.min(room, source) / 2),
+    tokens: Math.floor(Math.min(room, source) * share),
     roomTokens: room,
   };
 }

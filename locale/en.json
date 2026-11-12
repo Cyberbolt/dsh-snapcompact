@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "A DeepSeek Harness compaction plugin that turns the middle of long sessions into images a vision model reads — no summarizer call, exact text + searchable archive."
+    "description": "A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary."
   }
 }

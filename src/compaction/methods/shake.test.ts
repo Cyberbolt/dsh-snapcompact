@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import { countExternalizableOutputs, shake } from './shake.js';
 import { resolveConfig } from '../../config.js';
-import { ArchiveRepository } from '../../archives/repository.js';
-import { ArchiveService } from '../../archives/service.js';
 import { createHarness } from '../../../tests/fixtures/harness.js';
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -33,7 +31,7 @@ describe('recoverable local tool-output externalization', () => {
     expect(countExternalizableOutputs([large, small, user], 8_192)).toBe(1);
   });
 
-  it('retains exact user constraints, archives full outputs and never calls the model or splits emoji', async () => {
+  it('retains exact user constraints, truncates large outputs and never calls the model or splits emoji', async () => {
     const fixture = await createHarness();
     cleanups.push(fixture.dispose);
     const callId = ToolCallId('test-call');
@@ -51,8 +49,6 @@ describe('recoverable local tool-output externalization', () => {
         content: [{ type: 'text', text: fullOutput }],
       }),
     ];
-    const archives = new ArchiveService(new ArchiveRepository(fixture.attachments));
-    const archive = await archives.create({ sessionId: fixture.session.id, messages });
     const never = async (): Promise<never> => {
       throw new Error('Local shake must not invoke remote/render callbacks');
     };
@@ -62,7 +58,6 @@ describe('recoverable local tool-output externalization', () => {
       sourceTokens: 1_000,
       checkpointTargetTokens: 500,
       meter: fixture.ctx.tokenMeter,
-      archive,
       config: resolveConfig({}),
       route: { provider: 'test', model: 'vision' },
       llm: fixture.ctx.llm,
@@ -77,10 +72,9 @@ describe('recoverable local tool-output externalization', () => {
     if (text?.type !== 'text') throw new Error('Expected a text checkpoint');
     expect(text.text).toContain('Do not deploy without approval.');
     expect(text.text).toContain('E_SOURCE_42');
-    expect(text.text).toContain(archive.reference.attachmentId);
+    expect(text.text).not.toContain('snapcompact_recall');
     expect(text.text.isWellFormed()).toBe(true);
     expect(text.text.length).toBeLessThan(fullOutput.length);
-    expect(archive.document.messages[1]?.content[0]).toEqual({ type: 'text', text: fullOutput });
     expect(fixture.adapter.calls).toHaveLength(0);
     const skipped = await shake({
       input: { messages: messages.slice(0, 1) },
@@ -88,7 +82,6 @@ describe('recoverable local tool-output externalization', () => {
       sourceTokens: 1_000,
       checkpointTargetTokens: 500,
       meter: fixture.ctx.tokenMeter,
-      archive,
       config: resolveConfig({}),
       route: { provider: 'test', model: 'vision' },
       llm: fixture.ctx.llm,

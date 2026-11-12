@@ -40,12 +40,25 @@ export const GUARD_DEFAULTS = Object.freeze({
   minSourceRatio: 0.01,
 });
 
+/**
+ * Checkpoint budget defaults.
+ *
+ * `checkpointShare` is the fraction of the room left under the trigger (or of
+ * the source when no window is declared) that one checkpoint may spend. The
+ * historical rule was one half; a smaller share leaves more headroom, which
+ * matters because a checkpoint, its recall pages and the next answer all share
+ * the same window.
+ */
+export const BUDGET_DEFAULTS = Object.freeze({
+  checkpointShare: 0.4,
+});
+
 /** Defaults shared by the strict runtime parser and the loader-facing schema. */
 export const SERIALIZATION_DEFAULTS = Object.freeze({
-  toolResultMaxChars: 2_000,
+  toolResultMaxChars: 1_200,
   toolArgumentMaxChars: 500,
   toolCallMaxChars: 2_000,
-  messageTextMaxChars: 8_000,
+  messageTextMaxChars: 1_500,
   headChars: 2_000,
   tailChars: 2_000,
   includeReasoning: false,
@@ -95,8 +108,9 @@ const configSchema = z
       .strictObject({
         width: z.number().int().min(256).max(2048).default(1568),
         height: z.number().int().min(256).max(2048).default(1568),
-        maxFrames: z.number().int().min(1).max(64).default(20),
+        maxFrames: z.number().int().min(1).max(64).default(40),
         lineHeight: z.number().int().min(16).max(32).default(20),
+        letterSpacing: z.number().int().min(0).max(8).default(2),
         minGlyphPx: z.number().int().min(8).max(16).default(12),
         maxTotalBytes: z
           .number()
@@ -111,6 +125,12 @@ const configSchema = z
           .max(64 * 1024 * 1024)
           .default(64 * 1024 * 1024),
         timeoutMs: z.number().int().positive().max(15_000).default(15_000),
+      })
+      .prefault({}),
+    budget: z
+      .strictObject({
+        /** Fraction of the trigger room one checkpoint may spend (0.25–0.5). */
+        checkpointShare: z.number().gte(0.25).lte(0.5).default(BUDGET_DEFAULTS.checkpointShare),
       })
       .prefault({}),
     guard: z
@@ -167,12 +187,13 @@ const configSchema = z
       .default([]),
     /** Deprecated: accepted so older rows keep loading, but the checkpoint budget is trigger-relative now. */
     minCompressionRatio: z.number().min(1.1).optional(),
+    /** Deprecated 0.6 archive limit; accepted and ignored so saved profiles keep mounting. */
     archiveMaxBytes: z
       .number()
       .int()
       .positive()
       .max(64 * 1024 * 1024)
-      .default(64 * 1024 * 1024),
+      .optional(),
     shakeThresholdChars: z.number().int().min(1024).default(8192),
   })
   .superRefine((config, context) => {
@@ -295,8 +316,9 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
   rendering: schema.object({
     width: schema.number().step(1).min(256).max(2048).default(1568),
     height: schema.number().step(1).min(256).max(2048).default(1568),
-    maxFrames: schema.number().step(1).min(1).max(64).default(20),
+    maxFrames: schema.number().step(1).min(1).max(64).default(40),
     lineHeight: schema.number().step(1).min(16).max(32).default(20),
+    letterSpacing: schema.number().step(1).min(0).max(8).default(2),
     minGlyphPx: schema.number().step(1).min(8).max(16).default(12),
     maxTotalBytes: schema
       .number()
@@ -311,6 +333,17 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       .max(64 * 1024 * 1024)
       .default(64 * 1024 * 1024),
     timeoutMs: schema.number().step(1).min(1).max(15_000).default(15_000),
+  }),
+  budget: schema.object({
+    checkpointShare: schema
+      .number()
+      .step(0.05)
+      .min(0.25)
+      .max(0.5)
+      .default(BUDGET_DEFAULTS.checkpointShare)
+      .description(
+        '单个 checkpoint 可花掉触发余量的比例（0.25–0.5，默认 0.4）。调低会给压缩后的会话留更多余量，但可能减少帧数/可读性；历史行为是 0.5。',
+      ),
   }),
   guard: schema.object({
     minCompactableRatio: schema
@@ -376,11 +409,5 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       }),
     )
     .default([]),
-  archiveMaxBytes: schema
-    .number()
-    .step(1)
-    .min(1)
-    .max(64 * 1024 * 1024)
-    .default(64 * 1024 * 1024),
   shakeThresholdChars: schema.number().step(1).min(1024).default(8192),
 });

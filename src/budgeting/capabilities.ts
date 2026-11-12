@@ -8,7 +8,11 @@ export interface ModelRoute {
   readonly model: string;
 }
 
-export type ImagePricingSource = 'adapter' | 'configured-ceiling' | 'deepseek-estimate';
+export type ImagePricingSource =
+  | 'adapter'
+  | 'configured-ceiling'
+  | 'deepseek-estimate'
+  | 'model-estimate';
 
 export interface ImageRoute {
   readonly target: ModelRoute;
@@ -25,6 +29,21 @@ export interface FrameShape {
 
 /** Conservative DSH-native DeepSeek cap; it is an estimate, not a billing measurement. */
 export const DEEPSEEK_VISUAL_TOKENS_PER_FRAME = 1024;
+
+/**
+ * Model-line fallback when the gateway exposes no image pricing. These are
+ * conservative per-frame caps, not provider bills. Unknown lines stay
+ * unpriced so the text fallback wins instead of gambling with history.
+ */
+export function fallbackVisualTokens(model: string): number | undefined {
+  if (/claude|anthropic/iu.test(model)) return 1_568;
+  if (/gemini/iu.test(model)) return 1_120;
+  if (/gpt|openai|codex/iu.test(model)) return 1_568;
+  if (/kimi/iu.test(model)) return 1_568;
+  if (/glm/iu.test(model)) return 1_568;
+  if (/deepseek/iu.test(model)) return DEEPSEEK_VISUAL_TOKENS_PER_FRAME;
+  return undefined;
+}
 export const BITMAP_GLYPH_HEIGHT = 16;
 
 /** A detached, storage-free image reference used only for projection/price probes. */
@@ -37,18 +56,6 @@ export function syntheticImageBlock(width: number, height: number, bytes = 256 *
     height,
   };
   return { type: 'image', attachment };
-}
-
-function deepSeekEstimate(): LlmImageRequestPricing {
-  return {
-    priceImages: (images) =>
-      images.map(() => ({
-        visualTokens: DEEPSEEK_VISUAL_TOKENS_PER_FRAME,
-        // Reserve the request's attachment-descriptor text without inventing a
-        // provider-specific number for it.
-        text: 'Attachment reference and request-image dimensions. '.repeat(16),
-      })),
-  };
 }
 
 /** Unknown modality or unknown pricing is not permission to gamble with conversation history. */
@@ -82,14 +89,20 @@ export async function resolveImageRoute(
       },
     };
   }
-  // DSH's pi-ai gateway routes do not expose image pricing. DeepSeek's native
-  // adapter caps a request image at 1024 visual tokens; using that cap is a
-  // conservative, clearly-labelled estimate for a DeepSeek model behind a gateway.
-  if (/deepseek/iu.test(target.model)) {
+  // DSH's pi-ai gateway routes do not expose image pricing. Use a
+  // model-line cap when the id is recognized; otherwise fail closed.
+  const fallback = fallbackVisualTokens(target.model);
+  if (fallback !== undefined) {
     return {
       target,
-      pricing: deepSeekEstimate(),
-      pricingSource: 'deepseek-estimate',
+      pricingSource: /deepseek/iu.test(target.model) ? 'deepseek-estimate' : 'model-estimate',
+      pricing: {
+        priceImages: (images) =>
+          images.map(() => ({
+            visualTokens: fallback,
+            text: 'Attachment reference and request-image dimensions. '.repeat(16),
+          })),
+      },
     };
   }
   return null;

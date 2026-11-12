@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ResolvedConfig } from '@deepseek-ai/dsh-compaction-basic';
 import { resolveConfig } from '../../config.js';
 import { createHarness } from '../../../tests/fixtures/harness.js';
-import type { ArchiveIndex } from './archive-projection.js';
 import {
   formatStatus,
   formatTokens,
@@ -21,11 +20,6 @@ const BASE_CONFIG: ResolvedConfig = {
   maxOverflowRetries: 1,
   modelPolicies: [],
   auto: true,
-};
-
-const NO_ARCHIVES: ArchiveIndex = {
-  entries: () => [],
-  find: () => undefined,
 };
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -117,7 +111,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({}),
       BASE_CONFIG,
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );
@@ -143,7 +136,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({ policy: { thresholdRatio: 0.6 } }),
       { ...BASE_CONFIG, thresholdRatio: 0.6, retainRatio: 0.12 },
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );
@@ -161,7 +153,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({}),
       { ...BASE_CONFIG, thresholdRatio: 0.2, headroomTokens: 0 },
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );
@@ -189,7 +180,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({ guard: { minSourceRatio: 0, minCompactableRatio: 0 } }),
       absoluteRetention,
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );
@@ -205,7 +195,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({}),
       BASE_CONFIG,
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );
@@ -221,7 +210,6 @@ describe('status command text', () => {
       fixture.ctx,
       resolveConfig({}),
       { ...BASE_CONFIG, auto: false },
-      NO_ARCHIVES,
       fixture.agent,
       new AbortController().signal,
     );

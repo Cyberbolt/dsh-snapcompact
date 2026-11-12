@@ -58,8 +58,6 @@ export interface SettingsField {
   readonly description: string;
 }
 
-const MIB = 1024 * 1024;
-
 /** Granularity of the absolute retained-tail field. */
 export const MIN_RETAIN_TOKENS = 1_024;
 
@@ -125,24 +123,12 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     paths: [['rendering', 'maxFrames']],
     kind: 'number',
     group: 'rendering',
-    defaultValue: 20,
+    defaultValue: 40,
     min: 1,
     max: 64,
     step: 1,
     description:
       'Upper bound on rendered frames per checkpoint (at most 64). The host per-message image cap, 20 by default, still clamps the effective count.',
-  },
-  {
-    key: 'archiveMaxBytes',
-    paths: [['archiveMaxBytes']],
-    kind: 'number',
-    group: 'advanced',
-    defaultValue: 64 * MIB,
-    min: MIB,
-    max: 64 * MIB,
-    step: MIB,
-    scale: MIB,
-    description: 'Maximum size of the exact-text archive kept behind a checkpoint.',
   },
   {
     key: 'shakeThresholdChars',

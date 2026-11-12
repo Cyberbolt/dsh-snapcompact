@@ -14,7 +14,6 @@ import { describeChain } from '../../compaction/chain.js';
 import { countExternalizableOutputs } from '../../compaction/methods/shake.js';
 import { retentionOrigin } from '../../compaction/retention.js';
 import type { MethodName, SnapcompactConfig } from '../../config.js';
-import type { ArchiveIndex } from './archive-projection.js';
 
 export { formatTokens, resolvePressureBudget, resolveTargetPolicy };
 export type { PressureBudget, TargetPolicy } from '../../compaction/budget.js';
@@ -38,6 +37,8 @@ function pricingLabel(imageRoute: ImageRoute): string {
       return '配置上限，非账单';
     case 'deepseek-estimate':
       return 'DeepSeek 保守估算 1024 token/帧，非账单';
+    case 'model-estimate':
+      return '模型族保守估算，非账单';
   }
 }
 
@@ -69,7 +70,6 @@ export async function formatStatus(
   ctx: Context,
   settings: SnapcompactConfig,
   config: ResolvedConfig,
-  index: ArchiveIndex,
   agent: Agent,
   signal: AbortSignal,
 ): Promise<string> {
@@ -88,8 +88,7 @@ export async function formatStatus(
   if (!provider || !model) {
     lines.push('上下文：无法计算（未选择路由）');
     lines.push('方法可用性：无法解析（未选择路由）');
-    lines.push(`已完成归档：${index.entries(session).length}`);
-    lines.push('提示：精确字符串请用 snapcompact_recall 回查原文。');
+    lines.push('提示：精确字符串直接读 checkpoint 的 head/tail 文本与帧；没有回查工具。');
     return lines.join('\n');
   }
 
@@ -206,11 +205,14 @@ export async function formatStatus(
       ? '图片路径：使用文本回退（图片能力或计价未明确）'
       : `图片路径：可尝试（${pricingLabel(imageRoute)}；仍需收益/预算校验）`,
   );
+  const checkpointShare = Math.round(settings.budget.checkpointShare * 100);
+  lines.push(
+    `checkpoint 预算：触发余量 × ${checkpointShare}%（上限为源历史 × ${checkpointShare}%；实际值在压缩时按源历史计算）`,
+  );
   lines.push(
     `渲染：${settings.rendering.width}×${settings.rendering.height}，最多 ${settings.rendering.maxFrames} 帧；` +
-      `checkpoint 预算 = 触发阈值下剩余空间的一半；最小字高 ${settings.rendering.minGlyphPx}px`,
+      `最小字高 ${settings.rendering.minGlyphPx}px`,
   );
-  lines.push(`已完成归档：${index.entries(session).length}`);
-  lines.push('提示：阈值和节省量都是估算，不是计费测量；精确字符串请用 snapcompact_recall 回查。');
+  lines.push('提示：阈值和节省量都是估算，不是计费测量；精确字符串直接读 checkpoint 的文本与帧。');
   return lines.join('\n');
 }

@@ -2,7 +2,6 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-attachment';
 import type {} from '@deepseek-ai/dsh-token-meter';
 import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
-import type { ArchiveRecord } from '../archives/service.js';
 import type { SnapcompactConfig, MethodName } from '../config.js';
 import type { ImageRoute, ModelRoute } from '../budgeting/capabilities.js';
 import type { Renderer } from '../rendering/worker-client.js';
@@ -32,13 +31,12 @@ export interface MethodContext {
    * Largest estimated checkpoint this transaction may produce, in tokens.
    *
    * The engine derives it from the room left under the routed model's trigger
-   * threshold (half of what a checkpoint cannot replace, capped by the source),
-   * falling back to half of the source when the route declares no window. Zero
-   * means no frame can help.
+   * threshold (a configured share of what a checkpoint cannot replace, capped
+   * by the source), falling back to the same share of the source when the
+   * route declares no window. Zero means no frame can help.
    */
   readonly checkpointTargetTokens: number;
   readonly meter: Context['tokenMeter'];
-  readonly archive: ArchiveRecord;
   readonly config: SnapcompactConfig;
   readonly route: ModelRoute;
   readonly llm: Context['llm'];

@@ -2,64 +2,119 @@
 
 [简体中文](zh/evaluation.md)
 
-`/snapcompact benchmark` **explicitly starts model requests**. A single run makes one native-summary generation plus four QA arms: three single-call arms (raw history, native summary, visual OCR) and a recall arm that may use up to five tool rounds and forty executed recall calls before the runner forces one final answer without tools. The OCR arm is explicitly told that its run has no tools, so a model cannot be scored on asking for a recall it does not have. If visuals cannot be generated safely, the visual arms are skipped, not replaced by a text call labeled as vision.
+Snapcompact's current evaluation is **v5**: a generated, task-level, multi-turn benchmark with a frozen dev/test split, a pre-registered rubric, and explicit controls. It replaces the v4 single-request 40-question pressure test and the six-turn session cost suite as the acceptance instrument. The v4 numbers remain in [evaluation-audit.md](evaluation-audit.md) as historical data, and the current results are in [evaluation-results.md](evaluation-results.md).
 
-## Benchmark v3
+The v5 design and thresholds were frozen before tuning in [evaluation-v5-prereg.md](evaluation-v5-prereg.md). The audit that retired v4 is [evaluation-audit.md](evaluation-audit.md).
 
-The default fixture is `engineering-recall-v3`: 40 questions across three regions, 20 middle probes and 40 decoys. Seven head facts stay in the exact head text, thirteen tail facts stay in the exact tail text, and twenty middle facts sit in the bitmap. Decoys are plausible but unscored, so a summarizer has to choose rather than copy one fact message.
+## What the suite measures
 
-The report separates four arms:
+One generated project scenario, 10 fixed turns, 4 questions per turn, 40 questions total. The history is a long engineering session (about 81,000 estimated source tokens) with user messages, assistant messages, tool calls, tool results, build/test logs, file listings, stack traces, incident notes and 20 plausible decoys. Questions cover:
 
-| Arm                  | What it measures                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `original`           | The control: the full fixture text, no compaction.                                          |
-| `native-text`        | The host's native summary generation plus a QA read.                                        |
-| `snapcompact`        | The production visual checkpoint (bounded head/tail text + bitmap frames), no tools.        |
-| `snapcompact-recall` | The same checkpoint with the real `snapcompact_recall` tool schema and a bounded tool loop. |
+| Class                 | Count |
+| --------------------- | ----: |
+| Exact command         |     4 |
+| Exact path            |     4 |
+| Exact checksum        |     4 |
+| Exact identifier      |     4 |
+| Numeric               |     3 |
+| Cross-region semantic |     6 |
+| Temporal / causal     |     6 |
+| Negation / constraint |     5 |
+| CJK                   |     4 |
 
-### Scoring
+Exact-string questions are 16/40 = 40% and are not down-weighted. The rubric is deterministic and source-derived:
 
-- **Accepted match** is the primary score. It compares the answer after trimming outer whitespace against the canonical answer plus fixture-declared equivalent spellings. It fixes rubric noise such as a quoted label prefix, and ignores one terminal `.`/`。` because quoting a whole source sentence appends it.
-- **Strict match** is the secondary score: the canonical answer only, still after outer trim. Internal whitespace and code indentation remain significant.
-- Each question is classified as `head`, `middle` or `tail` from where its exact source line sits in the serialized projection, not from its fixture label alone. Questions that cannot be located are `unknown` and reported.
-- Every run records raw answers, the parse mode (`raw`, `extracted`, `failed`), per-region and per-kind tallies, and token usage.
-- `benchmark` runs once. `benchmark 3` repeats the four QA arms three times and reports mean/min/max. The native summary and the visual checkpoint are generated once and reused, so the range measures reading stability, not summary-generation stability. That limitation is stated in the report warning.
+- `exact`: trim outer whitespace, strip one surrounding backtick/quote pair, accept one terminal `.`/`。`; otherwise character-for-character.
+- `all`: every required literal is present and no forbidden decoy literal is present.
+- `any`: at least one accepted literal is present and no forbidden literal is present.
 
-### Recall arm
+No model judges an answer. The prompt contains only the question text and JSON keys; the answer, rubric and source line stay in the fixture.
 
-The recall arm receives the same checkpoint plus the production `snapcompact_recall` schema. A tool call runs against the benchmark's own archive, with the same page reader the registered tool uses. It is capped at five tool rounds and forty executed tool calls; if the model asks for more, the runner forces one final answer without tools. The cap tracks the production agent, which has no per-turn recall limit of its own. The benchmark archive is created directly rather than by a committed compaction, so the arm bypasses the session index; the page/query semantics are identical. If a route rejects tools, only this arm fails and the OCR arm still runs.
+## Arms
 
-### Archive integrity
+| Arm               | Input                                                                                   | Tools | Purpose                                |
+| ----------------- | --------------------------------------------------------------------------------------- | ----- | -------------------------------------- |
+| `original`        | Full fixture history                                                                    | None  | Control: nothing compressed            |
+| `native-text`     | Native summary generated once                                                           | None  | Host baseline: one lossy summary       |
+| `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None  | Target: the shipped checkpoint         |
+| `gold-text`       | Same head/middle/tail selection and index, middle as exact text                         | None  | Ceiling: available points (no product) |
+| `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None  | Damaged control (no product)           |
 
-Before any QA call, the report checks whether every question's exact source line is present in the archive transcript. This is a deterministic coverage check for the recall path, not a model-recall score.
+Three of the five arms form the product comparison. `gold-text` and `degraded-visual` are instrument controls and never enter a product verdict:
 
-## Reported metrics
+- `gold-text` hands over the same selection and the same exact-token index as `pure-visual`, but the middle arrives as exact text instead of pixels. It answers "how many points are available at all?". If the ceiling cannot reach 38, the task or the rubric is broken and a high visual score means nothing.
+- `degraded-visual` keeps every other frame, downscales each by 50% and drops the index. It answers "does the score really come from reading frames?". If damaging the frames costs no points, the suite is not testing them.
 
-- Accepted and strict match counts, mean/min/max across runs, and pooled head/middle/tail totals.
-- Per-region and per-kind tallies, plus every missed key with its expected and given answer.
-- Native-summary generation usage and latency; visual frame count, checkpoint tokens, the half-of-source budget, whether the checkpoint is over budget, and preparation latency.
-- Provider-reported input/output/cacheRead/cacheWrite usage. Missing fields are not invented.
-- Prompt totals follow DSH's contract: input + cacheRead + cacheWrite, not totalTokens, which can also include output.
-- Recall tool calls, extra tokens, and the accepted-score delta between the OCR and recall arms.
-- A local-only density check (`src/rendering/density.test.ts`) fixes frame count, characters per frame and PNG bytes without a model call; it does not measure recall.
+The frozen test also ran an offline `recall-ref` arm (production checkpoint + archive recall) to check non-inferiority. That arm was never registered in production and was removed after the frozen test; the shipped harness has no archive or recall code.
 
-## Cost axes
+The exact-token index is part of the checkpoint, not a recall tool: it is generated from the same serialized history as the frames, capped at 80 labeled lines, and contains no model-generated answer. It exists because 64-character digests are not reliably readable from pixels. The frames still carry the surrounding history.
 
-Token economy has a one-time axis and a steady-state axis. The local visual path has no generation call but a larger checkpoint; a native summary pays a summarizer call once and then carries a smaller context. The report shows generation tokens, per-turn read tokens, one-run total tokens and a three-turn context projection. Image pricing is an estimate, not a bill. Never compare a summary's per-turn read against a visual checkpoint's per-turn read without the summarizer call.
+## Schedule and cost
+
+The 10-turn schedule is fixed. Each turn asks 4 questions in one user message and expects one JSON object. The persistent history appends the question and the assistant answer (and, for the offline recall reference only, tool traffic). Cost is recorded per turn:
+
+```text
+prompt    = input + cacheRead + cacheWrite
+weighted  = input + 0.1·cacheRead + 1.25·cacheWrite + 4·output
+```
+
+Weighted cost is a relative unit, not a bill. The report includes peak single-request prompt, total weighted cost, ratios to `original`, model requests and usage-audit reconciliation.
+
+The benchmark sets `reasoning_effort: low` on each request to bound hidden reasoning and keep the schedule feasible. The model still receives the full checkpoint and the same questions. The run log records the setting.
+
+## Dev and test
+
+| Split |     Seed | Committed?                               | Use                                                              |
+| ----- | -------: | ---------------------------------------- | ---------------------------------------------------------------- |
+| dev   | 20261112 | Seed and generator only                  | Iteration, renderer/serialization tuning, measurement validation |
+| test  | 20261113 | Seed, generator and fixture SHA-256 only | Final acceptance, once, after the freeze                         |
+
+The test fixture is generated under `.artifacts/bench-v5/test/` and is not committed. The generator prints only its SHA-256 and counts. The repository contains the generator, the seeds and the hashes; the test content is not inspected before the final run.
+
+## Commands
+
+The tracked harness runs the same suites against an OpenAI-compatible endpoint:
+
+```sh
+# Generate the dev fixture and print its hash/counts; no model call.
+node --experimental-strip-types scripts/benchmark-v5.ts --split=dev --generate-only
+
+# One dev run of all production arms.
+SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
+  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
+
+# Final test: three runs, after the freeze.
+SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
+  --split=test --runs=3 --out=.artifacts/bench-v5/test
+```
+
+The in-session `/snapcompact benchmark [1-5]` runs the **dev** split only. The test split is deliberately outside the repository and is run by the tracked harness.
+
+The script reads `OPENCODE_GO_API_KEY` (or `SNAPCOMPACT_BENCH_API_KEY`) from the environment or the DSH credential store. It accepts `--provider`, `--model`, `--api-url`, `--share`, `--runs` and `--out`.
+
+## Reading the report
+
+The report includes fixture id/seed/hash, the fixed schedule, per-arm/per-run/per-turn/per-class/per-region/per-character-class results, means/min/max/95% intervals, usage audit, weighted cost, the measurement-instrument table and the product-gate table.
+
+Every score is per run over 40 questions. Per-class and per-region tallies pool all runs, so their denominator is the per-run question count × 3; the gates are still judged per run. The current numbers, with the product arms separated from the instrument controls, are on [evaluation-results.md](evaluation-results.md). v4's historical numbers are in [evaluation-audit.md](evaluation-audit.md), so the results page no longer repeats them.
+
+The pre-registered gates are:
+
+| Gate                        | Threshold                     |
+| --------------------------- | ----------------------------- |
+| Pure visual overall         | ≥ 38/40 mean over 3 test runs |
+| Exact-string subset         | ≥ 15/16                       |
+| Cross-region                | ≥ 5/6                         |
+| Temporal / causal           | ≥ 5/6                         |
+| Negation / constraint       | ≥ 4/5                         |
+| CJK                         | ≥ 3/4                         |
+| Numeric                     | ≥ 2/3                         |
+| Head / tail / middle region | ≥ 6/7 / 5/6 / 25/27           |
+| Peak single-request prompt  | ≤ 0.40× original              |
+| Total weighted cost         | ≤ 0.78× original              |
+
+Instrument acceptance (gold ceiling ≥38 and ≥ pure visual − 1, degraded ≤32 and ≥4 worse, ordering, no leakage, reproducibility, no test tuning) must pass before the product gates decide anything.
 
 ## Interpretation limits
 
-A fixed fixture is reproducible, not representative of every language, provider or long-running project. A single run can invert one or two questions; `benchmark 3` exists for published ranges. Standalone fixture requests differ from a full routed conversation's system/tool envelope. The accepted score is deliberately more forgiving than strict matching; quote both when comparing.
-
-The visual arms are the production local-rendering path: bounded head/tail text plus bitmap frames, with no summary call. v3 scatters facts across head, middle and tail and reports regions separately, so a middle-frame score is visible on its own. A checkpoint that fits the benchmark's half-of-source budget may still be rejected by a real session whose trigger leaves less room; the report flags over-budget checkpoints.
-
-Visual arms can be skipped for missing vision metadata, undeclared pricing, unreadable request resizing or an insufficient frame budget. That is a safety fallback, not evidence of successful image comprehension. A response without provider usage is marked unmeasured rather than used for a fabricated token-saving claim.
-
-## Reproduction
-
-```text
-/snapcompact benchmark      # one run
-/snapcompact benchmark 3    # three QA runs; use for published ranges
-```
-
-For real-project evaluation, obtain permission for both the history and destination provider, then prepare redacted fixtures. Never commit private session logs as public benchmark assets.
+A generated scenario is reproducible, not representative of every language, provider or project. The route is one model line; a different vision encoder can change frame legibility. The test split is held out from tuning but is still synthetic. The exact-token index is a product feature, not a benchmark trick; the degraded control removes it so the frame path is still tested. Weighted cost is relative, not a bill. The report must be read with the pre-registration, not as a universal savings claim.
