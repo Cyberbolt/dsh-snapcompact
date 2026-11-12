@@ -4,7 +4,7 @@
 
 ## v5.1 test and the aborted v5 record
 
-### v5.1 frozen test result
+### v5.1 test result
 
 Status: **valid** for v5.1. This is not the frozen v5 result; see the aborted v5 record below.
 
