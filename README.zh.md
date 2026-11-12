@@ -213,6 +213,7 @@ Checkpoint rule: for every later question, re-read the relevant frame or the ind
 - [配置与路由计价](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)
 - [架构与阅读指南](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/architecture.md)
 - [评测与解释](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation.md)
+- [评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)
 - [0.7.0 迁移](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/migration-0.7.md)
 - [第三方声明](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.zh.md)
 - [问题与反馈](https://github.com/Cyberbolt/dsh-snapcompact/issues)

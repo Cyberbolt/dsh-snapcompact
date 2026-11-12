@@ -1,12 +1,12 @@
 # 评测 v5 预注册
 
-[English](evaluation-v5-prereg.md)
+[English](../evaluation-v5-prereg.md)
 
 状态：**冻结的设计与阈值**，在 v5 任何调优之前写成。之后唯一允许的编辑是冻结元数据（commit、fixture hash、report hash）和一条会强制重跑的明确 changelog。看到结果后再改任务、rubric、阈值、臂、schedule 或分析，视为失败运行，而不是新计划。
 
 ## 为什么 v5 替换 v4
 
-Phase A1 审计（[evaluation-audit.md](zh/evaluation-audit.md)）发现 v4 准确率套件是单请求精确串压力测试，固定行号合成事实容易过拟合，没有 held-out 划分或 gold/degraded 对照，region 标签是渲染位置而非语义类别。v4 保留为历史回归工具；它不是 v5 的门槛。
+Phase A1 审计（[evaluation-audit.md](evaluation-audit.md)）发现 v4 准确率套件是单请求精确串压力测试，固定行号合成事实容易过拟合，没有 held-out 划分或 gold/degraded 对照，region 标签是渲染位置而非语义类别。v4 保留为历史回归工具；它不是 v5 的门槛。
 
 ## 任务集
 
@@ -166,6 +166,8 @@ hash 和 commit 在第一次完整 dev 运行前一次性填入。之后生成�
 
 ## Changelog
 
+- **2026-11-12 — 报告口径修正（不改阈值、rubric 或任何判定）。** 五个分类别产品门槛（跨区域、时序/因果、否定、CJK、数值）此前把三次运行合并计数直接与每次阈值比较，于是"≥ 5/6"会被三次合计仅 5 次命中满足。现在先按有效运行次数折算再比较，打印形如 `6.00/6` 的每次命中。所有判定不变（6.00/6、6.00/6、5.00/5、4.00/4、3.00/3）；任务、rubric、阈值、fixture 均未改动。已记录的 test 报告 hash `2e62ad36…` 由修正前的代码产生，后续运行的 hash 会不同。
+- **2026-11-12 — 中止的 v5 细节记录于此（不改任何测量）。** 中止的 v5 运行中 `original` 臂已完成 38/38/38；中止发生在 `gold-text` 第 1 次运行的呈现/上限环节；本地日志为 `.artifacts/bench-v5/test.log`。结果页只保留一行指针，完整记录在本 changelog。
 - **2026-11-12 — v5.1 偏离（在看到 v5 部分结果后授权）。** 冻结的 v5 test（hash `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec`）被中止，记为 invalid；它不是通过。v5.1 使用 hash `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13`，包含 commit `71ae82d` 的 CJK action rubric 放宽，并把 ceiling 检查改为 `gold >= visual - 1`。理由：visual 满分 40/40 时严格 `gold >= visual` 退化，而 gold 本身是 39–40 的随机量。**产品门槛未变：** overall ≥38/40、exact ≥15/16、各分类门槛、0.40×/0.78× 成本线全部原样保留。本轮不允许再改 rubric、gold 提示、阈值或 fixture；未来改动只能开 v6（新 seed、新冻结）。
 - **2026-11-12**：CJK action rubric 接受首句改写（例如用 `扩容连接池` 回答 `先扩容连接池，再重放队列`）；完整短语和首句本来已接受。任务类别和 exact-string 权重未变。
 - **2026-11-12**：gold-text 臂现在包含与 pure-visual checkpoint 相同的 exact-token 索引和相同的收尾重读规则，因此是严格的信息超集，而不是另一种呈现的纯文本臂。任务、rubric、阈值未变。

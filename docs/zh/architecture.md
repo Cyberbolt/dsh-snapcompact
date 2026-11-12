@@ -1,6 +1,6 @@
 # 架构与阅读指南
 
-[English](architecture.md)
+[English](../architecture.md)
 
 ## 先看数据流
 

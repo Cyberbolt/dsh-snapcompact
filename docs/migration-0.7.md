@@ -9,7 +9,7 @@
 - **Removed:** the exact-text archive, the `snapcompact_recall` tool, the archive projection, archive attachments on checkpoints, and the archive settings/metrics.
 - **Added:** a bounded, deterministic exact-token text index in every visual checkpoint. It carries labeled checksums, paths, commands, identifiers and key facts as text, capped at 80 lines.
 - **Changed:** serialization defaults are denser (1,500 characters per message text, 1,200 per tool result), routine log lines are elided, and frames default to 40 with 2 px letter spacing.
-- **Changed:** the benchmark is the v5 generated task-level suite. The old 40-question single-request fixture and the long-session suite are retired as gates; their historical results remain in [evaluation-results.md](evaluation-results.md).
+- **Changed:** the benchmark is the v5 generated task-level suite. The old 40-question single-request fixture and the long-session suite are retired as gates; their historical results remain in [evaluation-audit.md](evaluation-audit.md).
 
 There is no hidden recall path. A 0.7.0 checkpoint has no archive attachment and the host has no `snapcompact_recall` tool from this plugin.
 

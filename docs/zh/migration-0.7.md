@@ -1,6 +1,6 @@
 # 迁移到 0.7.0
 
-[English](migration-0.7.md)
+[English](../migration-0.7.md)
 
 ## 变化
 
@@ -9,7 +9,7 @@
 - **移除：** exact-text 归档、`snapcompact_recall` 工具、archive projection、checkpoint 上的归档附件，以及归档设置/指标。
 - **增加：** 每个视觉 checkpoint 内的有界、确定性 exact-token 文本索引。它以文本承载带标签的校验和、路径、命令、标识符和关键事实，最多 80 行。
 - **变化：** 序列化默认更密（消息文本 1,500 字符，工具结果 1,200），常规日志行被省略，帧默认 40、字间距 2 px。
-- **变化：** benchmark 是 v5 生成的 task-level 套件。旧的 40 题单请求 fixture 和长会话套件作为门槛退役；历史结果保留在 [evaluation-results.md](zh/evaluation-results.md)。
+- **变化：** benchmark 是 v5 生成的 task-level 套件。旧的 40 题单请求 fixture 和长会话套件作为门槛退役；历史结果保留在 [evaluation-audit.md](evaluation-audit.md)。
 
 没有隐藏 recall 路径。0.7.0 checkpoint 没有归档附件，host 也没有本插件提供的 `snapcompact_recall` 工具。
 
@@ -33,4 +33,4 @@ pnpm check
 pnpm run check:install
 ```
 
-v5 benchmark 在 `scripts/benchmark-v5.ts`。test split 生成到 `.artifacts/`，不入库。见 [evaluation.md](zh/evaluation.md) 和 [evaluation-v5-prereg.md](zh/evaluation-v5-prereg.md)。
+v5 benchmark 在 `scripts/benchmark-v5.ts`。test split 生成到 `.artifacts/`，不入库。见 [evaluation.md](evaluation.md) 和 [evaluation-v5-prereg.md](evaluation-v5-prereg.md)。

@@ -1,10 +1,10 @@
 # 评测
 
-[English](evaluation.md)
+[English](../evaluation.md)
 
-Snapcompact 当前评测是 **v5**：生成的、task-level、多轮 benchmark，带冻结的 dev/test 划分、预注册 rubric 和显式对照。它替代 v4 的单请求 40 题压力测试和六轮 session 成本套件作为验收入口。v4 数字作为历史数据保留在 [evaluation-results.md](zh/evaluation-results.md)。
+Snapcompact 当前评测是 **v5**：生成的、task-level、多轮 benchmark，带冻结的 dev/test 划分、预注册 rubric 和显式对照。它替代 v4 的单请求 40 题压力测试和六轮 session 成本套件作为验收入口。v4 数字作为历史数据保留在 [evaluation-audit.md](evaluation-audit.md)，当前结果见[评测结果](evaluation-results.md)。
 
-v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](zh/evaluation-v5-prereg.md)。退役 v4 的审计是 [evaluation-audit.md](zh/evaluation-audit.md)。
+v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](evaluation-v5-prereg.md)。退役 v4 的审计是 [evaluation-audit.md](evaluation-audit.md)。
 
 ## 测什么
 
@@ -32,13 +32,18 @@ v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](zh/evaluation-
 
 ## 臂
 
-| 臂                | 输入                                                                 | 工具 | 目的         |
-| ----------------- | -------------------------------------------------------------------- | ---- | ------------ |
-| `original`        | 完整 fixture 历史                                                    | 无   | 对照；不压缩 |
-| `native-text`     | 生成一次的 native summary                                            | 无   | Host 基线    |
-| `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标         |
-| `gold-text`       | 与 pure visual 相同的 head/middle/tail 选择，文本形式                | 无   | 理解上限     |
-| `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 负控         |
+| 臂                | 输入                                                                 | 工具 | 目的                         |
+| ----------------- | -------------------------------------------------------------------- | ---- | ---------------------------- |
+| `original`        | 完整 fixture 历史                                                    | 无   | 对照：完全不压缩             |
+| `native-text`     | 生成一次的 native summary                                            | 无   | Host 基线：一次有损摘要      |
+| `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标：发布的 checkpoint      |
+| `gold-text`       | 与 pure visual 相同的选取和索引，中段为精确文本                      | 无   | 上限：能拿到的分数（非产品） |
+| `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 降级负控（非产品）           |
+
+五个臂里只有三个构成产品对比。`gold-text` 和 `degraded-visual` 是测量工具的一部分，永远不进产品结论：
+
+- `gold-text` 与 `pure-visual` 使用相同的选取和相同的 exact-token 索引，只是中段以精确文本而不是像素送达。它回答"这道题最多能拿多少分"。如果上限都到不了 38，说明题目或 rubric 坏了，视觉方案的高分就没有意义。
+- `degraded-visual` 隔帧保留、每帧降采样 50%、去掉索引。它回答"分数是否真的来自读帧"。如果弄坏帧不掉分，说明这套题根本没在考帧路径。
 
 冻结 test 还跑了离线 `recall-ref` 臂（生产 checkpoint + 归档 recall）检查非劣效。该臂从未注册到生产，冻结 test 后删除；发布的 harness 没有归档或 recall 代码。
 
@@ -89,7 +94,9 @@ SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmar
 
 ## 读报告
 
-报告包含 fixture id/seed/hash、固定 schedule、逐臂/逐次/逐轮/逐类别/逐区域/逐字符类结果、mean/min/max/95% 区间、usage audit、加权成本、测量工具表和产品门槛表。v4 历史数字单独打印。
+报告包含 fixture id/seed/hash、固定 schedule、逐臂/逐次/逐轮/逐类别/逐区域/逐字符类结果、mean/min/max/95% 区间、usage audit、加权成本、测量工具表和产品门槛表。
+
+所有分数按"每次 40 题"计。逐类别与逐区域是多次运行合并的统计，因此分母是"每次题数 × 3"；门槛仍按每次运行判定。当前数字、以及产品臂与校验臂的分离，见[评测结果](evaluation-results.md)；v4 历史数字见[评测审计](evaluation-audit.md)，结果页不再重复。
 
 预注册门槛：
 

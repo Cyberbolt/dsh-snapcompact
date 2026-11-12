@@ -1,136 +1,116 @@
 # 评测结果
 
-[English](evaluation-results.md)
+[English](../evaluation-results.md)
 
-## v5.1 test 与 v5 中止记录
+> **状态：有效。** v5.1 test，每臂 3 次运行：产品门槛 12/12 通过，测量工具校验 7/7 通过。
+> 路由 `opencode-go/deepseek-v4.1-flash` · fixture `project-recall-v5-20261113`（种子 20261113，SHA-256 `087da65c…`）· 报告 SHA-256 `2e62ad36…` · 冻结设计 commit `71ae82d`。
 
-### v5.1 test 结果
+## 结论
 
-状态：v5.1 **有效**。这不是冻结 v5 的结果；见下面的 v5 中止记录。
+snapcompact 每次运行 **39.67/40**，与不压缩历史的 39.33 持平（差 0.33 题，在运行间波动之内），高于原生摘要的 32.33。它只用了不压缩方案峰值 prompt 的 **5.6%**、加权成本的 **18.9%**。一句话：丢信息的压缩每次要付约 7 题，而这个 checkpoint 一题不丢。
 
-- Fixture：`project-recall-v5-20261113`，种子 20261113，SHA-256 `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13`。
-- 路由：`opencode-go/deepseek-v4.1-flash`。
-- 每臂 3 次。生产/native/degraded 使用 `reasoning_effort: low`；gold 使用 provider 默认。
-- 报告 SHA-256：`2e62ad36f99162a479bb46642b9bc10398c0fb9e449628513789fb58d3ec791b`。
+## 术语
 
-| 臂                |  Accepted mean（逐次） | 精确串 mean |  帧 | 峰值 prompt |    加权 |
-| ----------------- | ---------------------: | ----------: | --: | ----------: | ------: |
-| `original`        |     39.33 (40, 38, 40) |       16.00 |   — |     128,092 | 140,860 |
-| `native-text`     |     32.33 (34, 31, 32) |       13.67 |   — |       3,332 |  19,612 |
-| `pure-visual`     | **39.67** (39, 40, 40) |   **15.67** |   3 |       7,178 |  26,604 |
-| `gold-text`       |     39.67 (40, 40, 39) |       15.67 |   — |      15,782 |  52,718 |
-| `degraded-visual` |     11.67 (11, 12, 12) |        1.67 |   3 |       5,096 |  66,653 |
+| 词              | 意思                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| 臂（arm）       | 一组实验条件：同一份历史，换一种呈现方式                                                     |
+| 一次运行（run） | 一个臂跑完 40 题的完整一遍（10 轮 × 4 题）。文中分数一律按"每次 40 题"计，除非标注"3 次合计" |
+| 精确串          | 16 道要求逐字符复制的题（校验和、路径、命令、标识符）                                        |
+| 帧（frame）     | 历史被渲染成的一张图片                                                                       |
+| 峰值 prompt     | 一次运行内单个请求的最大 prompt token（报告取首个有效运行）                                  |
+| 加权成本        | `input + 0.1·cacheRead + 1.25·cacheWrite + 4·output`，相对单位，不是账单                     |
 
-Pure visual：mean 39.67/40、精确 15.67/16、head 21/21、middle 80/81、tail 18/18、CJK 12/12、跨区域 18/18、时序/因果 18/18、否定 15/15、数值 9/9。峰值 prompt 是 original 的 **0.056×**，加权成本 **0.189×**。usage audit 对账全部 150 个请求：reported 4,758,294、computed 4,758,294、unreported prompt 0。
+## 三个产品臂
 
-**测量工具验收（全过）：**
+| 臂                          | 每次得分（3 次）        | 精确串（每次 /16） | 帧  | 峰值 prompt | 加权成本 |
+| --------------------------- | ----------------------- | ------------------ | --- | ----------- | -------- |
+| `original` — 不压缩         | 39.33（40, 38, 40）     | 16.00              | —   | 128,092     | 140,860  |
+| `native-text` — 原生摘要    | 32.33（34, 31, 32）     | 13.67              | —   | 3,332       | 19,612   |
+| `pure-visual` — snapcompact | **39.67**（39, 40, 40） | 15.67              | 3   | 7,178       | 26,604   |
 
-| 检查                 | 结果                                                |
-| -------------------- | --------------------------------------------------- |
-| Gold 上限 ≥38        | 39.67 pass                                          |
-| Gold ≥ pure visual   | 39.67 vs 39.67 pass（严格；授权的 v5.1 容差未用到） |
-| Degraded ≤32         | 11.67 pass                                          |
-| Degraded 至少差 4 题 | 28.00 pass                                          |
-| 排序                 | gold 39.67 ≥ visual 39.67 ≥ degraded 11.67 pass     |
-| 无泄漏 / 可复现      | pass                                                |
+`original` 是历史全给时模型能考多少。`native-text` 是普通有损摘要的代价：32.33，少约 7 题。`pure-visual` 是实际发布的 checkpoint——3 帧加一个有界的 exact-token 文本索引，checkpoint 计量 6,317 tokens——它把这 7 题拿了回来。
 
-**产品门槛（全过）：** overall 39.67 ≥ 38；exact 15.67 ≥ 15；跨区域 18/18；时序/因果 18/18；否定 15/15；CJK 12/12；数值 9/9；head 21/21；middle 80/81；tail 18/18；峰值 0.056× ≤ 0.40×；加权 0.189× ≤ 0.78×。
+## 两个校验臂（不属于产品结论）
 
-### Recall 参照（离线，同一 test split）
+把它想成一场开卷考试分三组：一组拿到教材照片（`pure-visual`），一组拿到教材原文（`gold-text`），一组拿到故意压坏的照片（`degraded-visual`）。
 
-离线 `recall-ref` 臂在**同一** test fixture（`087da…`）和同一视觉 checkpoint 上跑三次：
+| 臂                           | 它测什么                         | 实测  | 判据                 |
+| ---------------------------- | -------------------------------- | ----- | -------------------- |
+| `gold-text` — 原文上限       | 历史以精确文本给足时还能得多少分 | 39.67 | ≥ 38 且 ≥ visual − 1 |
+| `degraded-visual` — 降级负控 | 分数是否真来自"读帧"             | 11.67 | ≤ 32 且至少差 4 题   |
 
-| 臂           | 逐次       |  Mean | 工具调用 |
-| ------------ | ---------- | ----: | -------: |
-| `recall-ref` | 39, 40, 40 | 39.67 |       29 |
+`gold-text` 与 snapcompact 使用相同的 head/middle/tail 选取和相同的 exact-token 索引，只是中段以文本而不是像素送达。它是**天花板**，不是产品：如果天花板都到不了 38，说明题目或 rubric 坏了，snapcompact 的高分就没有意义。本次天花板与 snapcompact 完全相同（39.67），说明中段渲染成像素没有损失。
 
-非劣效：pure visual 39.67 ≥ recall 39.67 − 1；观测差异为 0。参照臂从未注册到生产，test 后删除。
+`degraded-visual` 隔帧保留、每帧降采样 50%、去掉索引。它的分数必须崩塌；如果弄坏了帧分数却不变，说明这套题根本没在考帧路径。本次从 39.67 掉到 11.67。
 
-### v5 中止记录（invalid）
+这两行都不进产品结论。它们只负责让上面那张表可信。
 
-冻结 v5 test 使用 SHA-256 `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec`，在 gold run 1 因呈现/上限问题中止。其 original 臂已完成，为 **38/38/38**。没有最终 v5 报告；这次部分运行 **invalid**，不计为通过。本地日志在 `.artifacts/bench-v5/test.log`；冻结 v5 hash 和中止记录写在这里，不静默删除。
+## 门槛
 
-### v5.1 偏离
+| 组   | 检查                   | 阈值                          | 实测                  | 结果 |
+| ---- | ---------------------- | ----------------------------- | --------------------- | ---- |
+| 校验 | 原文上限               | ≥ 38/40                       | 39.67                 | 通过 |
+| 校验 | 上限 ≥ snapcompact − 1 | gold ≥ visual − 1             | 39.67 vs 39.67        | 通过 |
+| 校验 | 降级负控               | ≤ 32/40                       | 11.67                 | 通过 |
+| 校验 | 降级至少差 4 题        | ≥ 4.00                        | 28.00                 | 通过 |
+| 校验 | 排序（严格）           | gold ≥ visual > degraded      | 39.67 / 39.67 / 11.67 | 通过 |
+| 校验 | 无泄漏                 | 40 题 + ≥ 20 decoy            | 40 / 20               | 通过 |
+| 校验 | 可复现                 | fixture 与 report hash 已记录 | 已记录                | 通过 |
+| 产品 | 总分                   | ≥ 38/40                       | 39.67                 | 通过 |
+| 产品 | 精确串                 | ≥ 15/16                       | 15.67                 | 通过 |
+| 产品 | 跨区域                 | ≥ 5/6                         | 6.00/6                | 通过 |
+| 产品 | 时序 / 因果            | ≥ 5/6                         | 6.00/6                | 通过 |
+| 产品 | 否定 / 约束            | ≥ 4/5                         | 5.00/5                | 通过 |
+| 产品 | CJK                    | ≥ 3/4                         | 4.00/4                | 通过 |
+| 产品 | 数值                   | ≥ 2/3                         | 3.00/3                | 通过 |
+| 产品 | head 区域              | ≥ 6/7                         | 7.00/7                | 通过 |
+| 产品 | middle 区域            | ≥ 25/27                       | 26.67/27              | 通过 |
+| 产品 | tail 区域              | ≥ 5/6                         | 6.00/6                | 通过 |
+| 产品 | 峰值 prompt            | ≤ 0.40× original              | 0.056×                | 通过 |
+| 产品 | 加权成本               | ≤ 0.78× original              | 0.189×                | 通过 |
 
-- **CJK rubric 放宽（commit `71ae82d`）**及 fixture hash 从 `a7a169…` 改为 `087da…`：CJK action rubric 接受首句改写，例如用 `扩容连接池` 回答 `先扩容连接池，再重放队列`。完整短语和首句本来已接受；exact-string 权重未变。
-- **exact-token 文本索引**进入生产 checkpoint（最多 80 行带标签文本），因为 64 字符摘要无法从像素可靠读出。负控去掉它。
-- **Gold 呈现**：gold 臂包含与 pure visual 相同的索引和相同的收尾重读规则。
-- **逐臂 reasoning**：生产/native/degraded 使用 `reasoning_effort: low`；gold 使用 provider 默认。
-- **上限容差**：v5.1 在看到 v5 部分结果后允许 `gold ≥ visual − 1`，因为 visual 满分时严格比较退化，而 gold 是 39–40 的随机量。本次严格比较仍然通过。**产品门槛未变。**
-- **负控**：50% 降采样、隔帧、去掉索引。
-- v5.1 test 开始后没有改 rubric、gold 提示、阈值或 fixture；未来改动只能开 v6（新 seed、新冻结）。
+## 分类与区域命中
 
-### 不是靠放水过线
+snapcompact，三次运行合并。3 次合计的分母恒为"每次题数 × 3"；所有阈值一律按每次运行判定。
 
-v5 original 是 **38/38/38**；v5.1 original 是 **40/38/40**。任务没有被变简单：original 也提高了，pure visual 的精确串是 15.67/16，所有分类门槛通过。视觉提升来自 exact-token 索引、2 px 字间距、foveation 和更密序列化，而不是删难题或放宽 exact-string 评分。
+| 类别        | 每次题数 | 3 次合计 | 每次  |
+| ----------- | -------- | -------- | ----- |
+| 精确命令    | 4        | 12/12    | 4.00  |
+| 精确路径    | 4        | 12/12    | 4.00  |
+| 精确校验和  | 4        | 12/12    | 4.00  |
+| 精确标识符  | 4        | 11/12    | 3.67  |
+| 跨区域      | 6        | 18/18    | 6.00  |
+| 时序 / 因果 | 6        | 18/18    | 6.00  |
+| 否定 / 约束 | 5        | 15/15    | 5.00  |
+| CJK         | 4        | 12/12    | 4.00  |
+| 数值        | 3        | 9/9      | 3.00  |
+| head 区域   | 7        | 21/21    | 7.00  |
+| middle 区域 | 27       | 80/81    | 26.67 |
+| tail 区域   | 6        | 18/18    | 6.00  |
 
-v5 工具见 [evaluation.md](zh/evaluation.md)；设计与阈值冻结于 [evaluation-v5-prereg.md](zh/evaluation-v5-prereg.md)。test split 由种子 20261113 生成到 `.artifacts/`，不入库。test fixture SHA-256 是 `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13`。
+全部 120 个计分答案里只有一次失手：一道落在 middle 区域、类别为精确标识符的题，出现在第 1 次运行的第 7 轮。另外两次运行满分。
 
-## v5 dev 验证
+## 成本
 
-dev split（种子 20261112，SHA-256 `d208662ccf6c27401648002924f8d8d89e3f4437d5e50ae715f7f481deae409b`）用于迭代和工具验收，不用于验收决定。代表性单次结果：
+峰值 prompt 与加权成本取自各臂首个有效运行；比值以 `original` 为基准。usage audit 对账全部 150 个请求：reported 4,758,294、computed 4,758,294、未上报 prompt 0。加权成本是相对单位，不是账单。
 
-| 臂                   |  分数 | 精确串 | 备注                       |
-| -------------------- | ----: | -----: | -------------------------- |
-| `original`           | 38/40 |  16/16 | 对照                       |
-| `pure-visual`        | 40/40 |  16/16 | 3 帧 + exact-token 索引    |
-| `gold-text`          | 40/40 |  16/16 | 文本 + 同一索引            |
-| `degraded-visual`    | 11/40 |   1/16 | 50% 降采样、隔帧、去掉索引 |
-| `recall-ref`（离线） | 40/40 |  16/16 | 仅参照                     |
+两个校验臂都比它们检查的对象更贵：原文上限的峰值 prompt 为 15,782、加权 52,718；降级负控的峰值 prompt 为 5,096、加权 66,653，而 snapcompact 只有 26,604。帧读不清时模型会反复找，这正是生产上必须保证帧可读的原因。
 
-同一次 dev 运行中，pure visual 峰值 prompt 7,212 tokens、加权 34,073；`original` 为 128,100 和 254,491（峰值 0.056×、加权 0.134×）。exact-token 索引让校验和、路径、命令无需搜索工具就精确。负控刻意很重：去掉索引并隔帧，因此测的是帧路径而不是文本索引。
+## 本次运行的口径
 
-dev 还说明了为什么工具需要上限和负控：更早的纯视觉版本没有字间距时读 26/40，校验和 0/4；索引和 2 px tracking 把同一任务带到 40/40。细节见 [evaluation-audit.md](zh/evaluation-audit.md) 和预注册里的 changelog。
+- `gold-text` 与 snapcompact 拿到同一个 exact-token 索引和同一条收尾重读规则，因此是严格的信息超集，而不是另一种呈现。
+- CJK rubric 接受首句改写（例如用 `扩容连接池` 回答 `先扩容连接池，再重放队列`），见 commit `71ae82d`。
+- `gold-text` 使用 provider 默认 reasoning，其余臂使用 `low`。这个不对称只会抬高上限，不会压低它。
+- 上限检查允许 `gold ≥ visual − 1`（v5.1 授权容差），排序检查仍要求严格 `gold ≥ visual`。两者都通过；**没有任何产品阈值发生变化**。
 
-## v4 历史结果
+## 出处
 
-v4 是**不同的工具**：单请求携带 `engineering-recall-v3` 全部 40 题，加一个六轮长会话成本套件。它作为历史保留，不是 v5 门槛。
+- 设计、冻结阈值与完整历史：[evaluation-v5-prereg.md](evaluation-v5-prereg.md) —— 其 changelog 记录了中止的 v5 运行和每一处 v5.1 偏离。
+- 复现命令、臂的定义与 schedule：[evaluation.md](evaluation.md)。
+- v4 历史数字与退役它的审计：[evaluation-audit.md](evaluation-audit.md)。
+- 冻结的 v5 test（SHA-256 `a7a169…`）在 `gold-text` 第 1 次运行因呈现/上限问题中止；其 `original` 臂已完成 38/38/38。该部分运行 **invalid**，不计为通过。
+- test split 由提交的种子生成到 `.artifacts/`，不入库。
 
-| v4 工具            | 臂                   | 结果                                          | 状态 |
-| ------------------ | -------------------- | --------------------------------------------- | ---- |
-| accuracy，0.4 三次 | `snapcompact-recall` | 39.7/40；head 21/21、middle 60/60、tail 38/39 | 历史 |
-| accuracy，0.4 三次 | `snapcompact`        | 28–31/40                                      | 历史 |
-| accuracy，0.4 三次 | `original`           | 39–40/40（一次失败）                          | 历史 |
-| accuracy，0.4 三次 | `native-text`        | 40/40                                         | 历史 |
-| session，一次      | `snapcompact-recall` | 8/8，加权 0.78×，峰值 0.28×                   | 历史 |
-| session，一次      | `snapcompact`        | 4/8，加权 0.70×，峰值 0.28×                   | 历史 |
+## 边界
 
-v4 accuracy 的 recall 臂是 0.4 份额、单请求携带 40 题；其成本不是稳态会话成本，报告当时也这么说。v4 session 只有六轮、8 题，100% recall 点是建模而非测量。完整 v4 表格和复现命令保留在本文件的 git 历史里；当前仓库不再提供 v4 harness。
-
-## 撤回与保留的结论
-
-**撤回：**
-
-- “recall 是精确的”作为**产品**结论。它描述的是 v4 recall 臂，不是纯视觉使用。0.7.0 移除了 recall 工具。
-- “纯视觉只有 28–31/40”作为**能力上限**。它是 v4 fixture 的覆盖/预算和字间距假象。v5 dev 纯视觉在有界 exact-token 索引和 2 px tracking 下是 40/40。
-- “长会话纯视觉 4/8”作为**普遍**结果。它是覆盖假象：v4 视觉臂只保留最新的中段帧。v5 foveate 两端、保留精确 head/tail，并加索引。
-- “0.4 份额偏向 recall”作为**默认建议**。0.4 仍是默认，但 v5 测的是整个 checkpoint；没有 recall 路径可偏向。
-- v4 的“33% recall 轮 = 0.78×”作为**可比**成本结果。v5 的任务、schedule 和成本口径不同。
-
-**保留：**
-
-- Usage audit 和加权成本公式。
-- 从提交种子确定性生成 fixture。
-- 精确串题占任务 40%。
-- 持久多轮历史和逐轮成本。
-- 精确 head/tail 文本 + 位图中段。
-- `FILES` 索引。
-- v4 结果作为历史数据，带上述 caveat。
-
-## 复现
-
-```sh
-# dev 验证（不是验收入口）
-SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
-
-# 冻结 test，三次运行
-SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=test --runs=3 --out=.artifacts/bench-v5/test
-```
-
-test fixture 由提交种子生成；仓库含生成器和 hash，不含 test 内容。冻结非劣效检查用的离线 `recall-ref` 臂不在发布 harness 中。
-
-## Caveats
-
-结果只对路由 `opencode-go/deepseek-v4.1-flash` 成立。benchmark 对生产、native、degraded 臂使用 `reasoning_effort: low`，gold 上限使用 provider 默认；不同解码设置可能移动一两题。exact-token 索引是产品特性，不是 benchmark 技巧：由同一序列化历史生成，最多 80 行带标签文本，负控去掉它。加权成本是相对单位，不是账单。生成场景可复现，但不代表所有语言或项目。
+结果只对路由 `opencode-go/deepseek-v4.1-flash` 成立；不同解码设置可能移动一两题。exact-token 索引是产品特性，不是 benchmark 技巧：它由同一份序列化历史生成，最多 80 行带标签文本，降级负控会去掉它。生成场景可复现，但不代表所有语言或项目。这些数字要与预注册一起读，不能当作普遍节省承诺。

@@ -2,135 +2,115 @@
 
 [简体中文](zh/evaluation-results.md)
 
-## v5.1 test and the aborted v5 record
+> **Status: valid.** v5.1 test, 3 runs per arm: 12/12 product gates and 7/7 instrument checks pass.
+> Route `opencode-go/deepseek-v4.1-flash` · fixture `project-recall-v5-20261113` (seed 20261113, SHA-256 `087da65c…`) · report SHA-256 `2e62ad36…` · frozen design commit `71ae82d`.
 
-### v5.1 test result
+## Verdict
 
-Status: **valid** for v5.1. This is not the frozen v5 result; see the aborted v5 record below.
+Snapcompact scored **39.67/40 per run**, level with the uncompressed history at 39.33 (0.33 questions apart, inside run-to-run noise) and ahead of the native summary at 32.33. It used **5.6%** of the uncompressed peak prompt and **18.9%** of its weighted cost. In one sentence: a compaction that drops information costs about seven questions per run, and this checkpoint loses none.
 
-- Fixture: `project-recall-v5-20261113`, seed 20261113, SHA-256 `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13`.
-- Route: `opencode-go/deepseek-v4.1-flash`.
-- Runs: 3 per arm. Production/native/degraded use `reasoning_effort: low`; gold uses the provider default.
-- Report SHA-256: `2e62ad36f99162a479bb46642b9bc10398c0fb9e449628513789fb58d3ec791b`.
+## Terms
 
-| Arm               |   Accepted mean (runs) | Exact mean | Frames | Peak prompt | Weighted |
-| ----------------- | ---------------------: | ---------: | -----: | ----------: | -------: |
-| `original`        |     39.33 (40, 38, 40) |      16.00 |      — |     128,092 |  140,860 |
-| `native-text`     |     32.33 (34, 31, 32) |      13.67 |      — |       3,332 |   19,612 |
-| `pure-visual`     | **39.67** (39, 40, 40) |  **15.67** |      3 |       7,178 |   26,604 |
-| `gold-text`       |     39.67 (40, 40, 39) |      15.67 |      — |      15,782 |   52,718 |
-| `degraded-visual` |     11.67 (11, 12, 12) |       1.67 |      3 |       5,096 |   66,653 |
+| Term          | Meaning                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------ |
+| arm           | one experimental condition: the same history, presented differently                                          |
+| run           | one pass of an arm over all 40 questions (10 turns × 4). Every score is per run unless it says "3-run total" |
+| exact string  | 1 of 16 questions that must be copied character for character (checksums, paths, commands, identifiers)      |
+| frame         | one rendered image of the checkpoint history                                                                 |
+| peak prompt   | the largest single-request prompt inside a run (the report prints the first measured run)                    |
+| weighted cost | `input + 0.1·cacheRead + 1.25·cacheWrite + 4·output`; a relative unit, not a bill                            |
 
-Pure visual: 39.67/40 mean, 15.67/16 exact, 21/21 head, 80/81 middle, 18/18 tail, 12/12 CJK, 18/18 cross-region, 18/18 temporal/causal, 15/15 negation, 9/9 numeric. Peak prompt is **0.056×** original and weighted cost is **0.189×** original. The usage audit reconciles all 150 requests: 4,758,294 reported, 4,758,294 computed, 0 unreported prompt tokens.
+## Product arms
 
-**Instrument acceptance (all pass):**
+| Arm                              | Score per run (3 runs) | Exact per run (/16) | Frames | Peak prompt | Weighted cost |
+| -------------------------------- | ---------------------- | ------------------- | ------ | ----------- | ------------- |
+| `original` — nothing compressed  | 39.33 (40, 38, 40)     | 16.00               | —      | 128,092     | 140,860       |
+| `native-text` — one host summary | 32.33 (34, 31, 32)     | 13.67               | —      | 3,332       | 19,612        |
+| `pure-visual` — snapcompact      | **39.67** (39, 40, 40) | 15.67               | 3      | 7,178       | 26,604        |
 
-| Check                     | Result                                                                     |
-| ------------------------- | -------------------------------------------------------------------------- |
-| Gold ceiling ≥38          | 39.67 pass                                                                 |
-| Gold ≥ pure visual        | 39.67 vs 39.67 pass (strict; the authorized v5.1 tolerance was not needed) |
-| Degraded ≤32              | 11.67 pass                                                                 |
-| Degraded ≥4 worse         | 28.00 pass                                                                 |
-| Ordering                  | gold 39.67 ≥ visual 39.67 ≥ degraded 11.67 pass                            |
-| No leakage / reproducible | pass                                                                       |
+`original` is what the model can do with the full history. `native-text` is what a normal lossy summary costs: 32.33, about seven questions worse. `pure-visual` is the shipped checkpoint — 3 frames plus a bounded exact-token text index, priced at 6,317 checkpoint tokens — and it gives the seven questions back.
 
-**Product gates (all pass):** overall 39.67 ≥ 38; exact 15.67 ≥ 15; cross-region 18/18; temporal/causal 18/18; negation 15/15; CJK 12/12; numeric 9/9; head 21/21; middle 80/81; tail 18/18; peak 0.056× ≤ 0.40×; weighted 0.189× ≤ 0.78×.
+## Instrument controls (not product results)
 
-### Recall reference (offline, same test split)
+Think of one open-book exam in three groups: one gets photographs of the textbook (`pure-visual`), one gets the textbook itself (`gold-text`), one gets deliberately damaged photographs (`degraded-visual`).
 
-The offline `recall-ref` arm ran three times on the **same** test fixture (`087da…`) and the same visual checkpoint:
+| Arm                                 | What it measures                                                      | Result | Criterion                    |
+| ----------------------------------- | --------------------------------------------------------------------- | ------ | ---------------------------- |
+| `gold-text` — exact-text ceiling    | how many points survive when the history is handed over as exact text | 39.67  | ≥ 38 and ≥ visual − 1        |
+| `degraded-visual` — damaged control | whether the score really comes from reading the frames                | 11.67  | ≤ 32 and ≥ 4 questions worse |
 
-| Arm          | Scores     |  Mean | Tool calls |
-| ------------ | ---------- | ----: | ---------: |
-| `recall-ref` | 39, 40, 40 | 39.67 |         29 |
+`gold-text` uses the same head/middle/tail selection and the same exact-token index as snapcompact, but the middle arrives as text instead of pixels. It is the **ceiling**, not a product: if the ceiling could not reach 38, the task or the rubric would be broken and a high snapcompact score would mean nothing. This run the ceiling and snapcompact are identical at 39.67, so rendering the middle as pixels cost nothing.
 
-Non-inferiority: pure visual 39.67 ≥ recall 39.67 − 1; the observed difference is 0. The reference arm was never registered in production and is removed after this test.
+`degraded-visual` keeps every other frame, downscales each by 50% and drops the index. Its score must collapse; if damaging the frames changed nothing, the suite would not be testing the frame path at all. It fell from 39.67 to 11.67.
 
-### Aborted v5 record (invalid)
+Neither row belongs in the product verdict. They are what makes the table above trustworthy.
 
-The frozen v5 test used SHA-256 `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec` and was aborted during gold run 1 after a presentation/ceiling issue. Its original arm had completed at **38/38/38**. There is no final v5 report; the partial run is **invalid** and is not counted as a pass. The local log is `.artifacts/bench-v5/test.log`; the frozen v5 hash and the abort are recorded here rather than silently deleted.
+## Gates
 
-### v5.1 deviations
+| Group      | Check                       | Threshold                          | Actual                | Result |
+| ---------- | --------------------------- | ---------------------------------- | --------------------- | ------ |
+| Instrument | Exact-text ceiling          | ≥ 38/40                            | 39.67                 | pass   |
+| Instrument | Ceiling ≥ snapcompact − 1   | gold ≥ visual − 1                  | 39.67 vs 39.67        | pass   |
+| Instrument | Damaged control             | ≤ 32/40                            | 11.67                 | pass   |
+| Instrument | Damaged ≥ 4 questions worse | ≥ 4.00                             | 28.00                 | pass   |
+| Instrument | Ordering (strict)           | gold ≥ visual > degraded           | 39.67 / 39.67 / 11.67 | pass   |
+| Instrument | No leakage                  | 40 questions + ≥ 20 decoys         | 40 / 20               | pass   |
+| Instrument | Reproducible                | fixture and report hashes recorded | recorded              | pass   |
+| Product    | Overall                     | ≥ 38/40                            | 39.67                 | pass   |
+| Product    | Exact-string subset         | ≥ 15/16                            | 15.67                 | pass   |
+| Product    | Cross-region                | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Temporal / causal           | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Negation / constraint       | ≥ 4/5                              | 5.00/5                | pass   |
+| Product    | CJK                         | ≥ 3/4                              | 4.00/4                | pass   |
+| Product    | Numeric                     | ≥ 2/3                              | 3.00/3                | pass   |
+| Product    | Head region                 | ≥ 6/7                              | 7.00/7                | pass   |
+| Product    | Middle region               | ≥ 25/27                            | 26.67/27              | pass   |
+| Product    | Tail region                 | ≥ 5/6                              | 6.00/6                | pass   |
+| Product    | Peak prompt                 | ≤ 0.40× original                   | 0.056×                | pass   |
+| Product    | Weighted cost               | ≤ 0.78× original                   | 0.189×                | pass   |
 
-- **CJK rubric relaxation (commit `71ae82d`)** and the fixture-hash change from `a7a169…` to `087da…`: the CJK action rubric accepts a leading-clause paraphrase such as `扩容连接池` for `先扩容连接池，再重放队列`. The full phrase and first clause were already accepted; the exact-string weight is unchanged.
-- **Exact-token text index** in the production checkpoint (up to 80 labeled lines), because 64-character digests are not reliably readable from pixels. The degraded control omits it.
-- **Gold presentation**: the gold arm includes the same index and the same closing re-read rule as pure visual.
-- **Per-arm reasoning**: production/native/degraded use `reasoning_effort: low`; gold uses the provider default.
-- **Ceiling tolerance**: v5.1 allows `gold ≥ visual − 1` after seeing partial v5 results, because at a full visual score the strict comparison degenerates and gold is a 39–40 random quantity. The strict comparison still passed here. **No product gate changed.**
-- **Degraded control**: 50% downscale, every other frame, index omitted.
-- No rubric, gold prompt, threshold or fixture change was made after the v5.1 test started; a future change requires a v6 with a new seed and freeze.
+## Hits by class and region
 
-### Not passing by lowering standards
+Snapcompact, pooled over the three runs. The 3-run denominator is always the per-run question count × 3; every threshold is judged per run.
 
-The v5 original arm was **38/38/38**; the v5.1 original arm was **40/38/40**. The task was not made easier: the original also improved, and the pure-visual exact subset is 15.67/16 with all class gates passing. The visual improvement comes from the exact-token index, 2 px letter spacing, foveation, and the denser serializer — not from deleting hard questions or relaxing exact-string scoring.
+| Class                 | Questions per run | 3-run total | Per run |
+| --------------------- | ----------------- | ----------- | ------- |
+| Exact command         | 4                 | 12/12       | 4.00    |
+| Exact path            | 4                 | 12/12       | 4.00    |
+| Exact checksum        | 4                 | 12/12       | 4.00    |
+| Exact identifier      | 4                 | 11/12       | 3.67    |
+| Cross-region          | 6                 | 18/18       | 6.00    |
+| Temporal / causal     | 6                 | 18/18       | 6.00    |
+| Negation / constraint | 5                 | 15/15       | 5.00    |
+| CJK                   | 4                 | 12/12       | 4.00    |
+| Numeric               | 3                 | 9/9         | 3.00    |
+| Head region           | 7                 | 21/21       | 7.00    |
+| Middle region         | 27                | 80/81       | 26.67   |
+| Tail region           | 6                 | 18/18       | 6.00    |
 
-The v5 instrument is described in [evaluation.md](evaluation.md); its design and thresholds were frozen in [evaluation-v5-prereg.md](evaluation-v5-prereg.md). The test split is generated from seed 20261113 under `.artifacts/` and is not committed. The test fixture SHA-256 is `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13`.
+Across all 120 scored answers there is exactly one miss: a single question in the middle region, classed as an exact identifier, on turn 7 of run 1. The other two runs are perfect.
 
-## v5 dev validation
+## Cost
 
-The dev split (seed 20261112, SHA-256 `d208662ccf6c27401648002924f8d8d89e3f4437d5e50ae715f7f481deae409b`) was used for iteration and instrument checks, not for the acceptance decision. Representative one-run results:
+Peak prompt and weighted cost come from the first measured run of each arm; ratios are against `original`. The usage audit reconciles all 150 requests: 4,758,294 reported and 4,758,294 computed total tokens, 0 unreported prompt tokens. Weighted cost is a relative unit, not a bill.
 
-| Arm                    | Score | Exact | Notes                                           |
-| ---------------------- | ----: | ----: | ----------------------------------------------- |
-| `original`             | 38/40 | 16/16 | control                                         |
-| `pure-visual`          | 40/40 | 16/16 | 3 frames + exact-token index                    |
-| `gold-text`            | 40/40 | 16/16 | text + same index                               |
-| `degraded-visual`      | 11/40 |  1/16 | 50% downscale, every other frame, index omitted |
-| `recall-ref` (offline) | 40/40 | 16/16 | reference only                                  |
+Both instrument arms cost more than the arm they check: the ceiling used a 15,782-token peak prompt and 52,718 weighted, and the damaged control a 5,096 peak prompt and 66,653 weighted against snapcompact's 26,604. Unreadable frames make the model search longer, which is the practical reason frames have to stay legible in production.
 
-On the same dev run, pure visual used a 7,212-token peak prompt and 34,073 weighted units versus 128,100 and 254,491 for `original` (0.056× peak, 0.134× weighted). The exact-token index is why checksums, paths and commands are exact without a search tool. The degraded control is deliberately harsh: it removes the index and every other frame, so it measures the frame path rather than the text index.
+## Conventions of this run
 
-The dev runs also showed why the instrument needs a ceiling and a negative control: an earlier pure-visual build without letter spacing read 26/40, with 0/4 checksums; the index and 2 px tracking took the same task to 40/40. The details are in [evaluation-audit.md](evaluation-audit.md) and the changelog in the pre-registration.
+- `gold-text` receives the same exact-token index and the same closing re-read rule as snapcompact, so it is a strict information superset rather than a different presentation.
+- The CJK rubric accepts a leading-clause paraphrase (for example `扩容连接池` for `先扩容连接池，再重放队列`), per commit `71ae82d`.
+- `gold-text` uses the provider default reasoning effort while the other arms use `low`. The asymmetry can only raise the ceiling, not lower it.
+- The ceiling check allows `gold ≥ visual − 1` (the authorized v5.1 tolerance) while the ordering check still requires `gold ≥ visual` strictly. Both passed; **no product threshold changed**.
 
-## v4 historical results
+## Provenance
 
-v4 is a **different instrument**: a single request with all 40 questions of `engineering-recall-v3`, plus a six-turn long-session cost suite. It is retained here as history, not as the v5 gate.
+- Design, frozen thresholds and the full history: [evaluation-v5-prereg.md](evaluation-v5-prereg.md) — its changelog carries the aborted v5 run and every v5.1 deviation.
+- Reproduction commands, arms and the schedule: [evaluation.md](evaluation.md).
+- v4 historical numbers and the audit that retired it: [evaluation-audit.md](evaluation-audit.md).
+- The frozen v5 test (SHA-256 `a7a169…`) was aborted during `gold-text` run 1 on a presentation/ceiling issue; its `original` arm had completed at 38/38/38. That partial run is **invalid** and is not counted as a pass.
+- The test split is generated from the committed seed under `.artifacts/` and is not committed.
 
-| v4 instrument           | Arm                  | Result                                        | Status     |
-| ----------------------- | -------------------- | --------------------------------------------- | ---------- |
-| accuracy, 3 runs at 0.4 | `snapcompact-recall` | 39.7/40; head 21/21, middle 60/60, tail 38/39 | historical |
-| accuracy, 3 runs at 0.4 | `snapcompact`        | 28–31/40                                      | historical |
-| accuracy, 3 runs at 0.4 | `original`           | 39–40/40 (one failed run)                     | historical |
-| accuracy, 3 runs at 0.4 | `native-text`        | 40/40                                         | historical |
-| session, 1 run          | `snapcompact-recall` | 8/8, 0.78× weighted, 0.28× peak               | historical |
-| session, 1 run          | `snapcompact`        | 4/8, 0.70× weighted, 0.28× peak               | historical |
+## Boundaries
 
-The v4 accuracy run's recall arm had a 0.4 share and a single request carrying all forty questions. Its cost is not steady-state session cost; the report said so. The v4 session suite had only six turns and eight questions, and its 100% recall point was modeled, not measured. The full v4 tables and reproduction commands are preserved in the git history of this document; the current repository no longer ships the v4 harness.
-
-## Retracted and retained conclusions
-
-**Retracted:**
-
-- "Recall is exact" as a **product** conclusion. It described the v4 recall arm, not pure visual use. The recall tool is removed in 0.7.0.
-- "Pure visual is 28–31/40" as a **capability limit**. It was a coverage/budget and letter-spacing artifact of the v4 fixture. v5 dev pure visual is 40/40 with a bounded exact-token index and 2 px tracking.
-- "Long-session pure visual is 4/8" as a **general** result. It was a coverage artifact: the v4 visual arm kept only the newest middle frames. v5 foveates both edges, keeps the exact head/tail and adds the index.
-- "0.4 share favors recall" as a **default recommendation**. 0.4 remains the default, but v5 measures the checkpoint as a whole; there is no recall path to favor.
-- v4's "33% recall turns = 0.78×" as a **comparable** cost result. v5 uses a different task, schedule and cost basis.
-
-**Retained:**
-
-- The usage audit and weighted-cost formula.
-- Deterministic fixtures from committed seeds.
-- Exact-string questions at 40% of the task.
-- Persistent multi-turn history and per-turn cost.
-- Exact head/tail text plus bitmap middle.
-- The `FILES` index.
-- v4 results as historical data, with the caveats above.
-
-## Reproduction
-
-```sh
-# dev validation (not the acceptance gate)
-SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
-
-# frozen test, three runs
-SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=test --runs=3 --out=.artifacts/bench-v5/test
-```
-
-The test fixture is generated from the committed seed; the repository contains the generator and hashes, not the test content. The offline `recall-ref` arm used for the frozen non-inferiority check is not part of the shipped harness.
-
-## Caveats
-
-The results are route-specific (`opencode-go/deepseek-v4.1-flash`). The benchmark uses `reasoning_effort: low` for production, native and degraded arms, and the provider default for the gold ceiling; a different decoding setting can move a one- or two-question difference. The exact-token index is a product feature, not a benchmark trick: it is generated from the same serialized history, capped at 80 labeled lines, and the degraded control removes it. Weighted cost is a relative unit, not a bill. A generated scenario is reproducible, not representative of every language or project.
+Route-specific (`opencode-go/deepseek-v4.1-flash`); a different decoding setting can move a question or two. The exact-token index is a product feature, not a benchmark trick: it is generated from the same serialized history, capped at 80 labeled lines, and the damaged control removes it. A generated scenario is reproducible, not representative of every language or project. Read these numbers with the pre-registration, not as a universal savings claim.

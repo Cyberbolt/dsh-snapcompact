@@ -213,6 +213,7 @@ This release declares DSH `^0.2.2-rc.1` and is verified on `0.2.2-rc.1`. Install
 - [Configuration and route pricing](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md)
 - [Architecture and reading guide](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/architecture.md)
 - [Evaluation and interpretation](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation.md)
+- [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md)
 - [0.7.0 migration](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/migration-0.7.md)
 - [Third-party notices](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/THIRD_PARTY_NOTICES.md)
 - [Issues and feedback](https://github.com/Cyberbolt/dsh-snapcompact/issues)

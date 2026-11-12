@@ -1,6 +1,6 @@
 # 配置
 
-[English](configuration.md)
+[English](../configuration.md)
 
 配置**所选 Snapcompact preset 的隔离 compaction group 内的 dsh-snapcompact row**，而不是第二个全局 compaction service。standard、PTC、Cordis 三个变体挂载同一个 row id 和配置键，所以同一组设置对任一变体生效。插件页的设置卡管理常用键；preset/config 编辑器和下面的 YAML 覆盖其余项。两者都通过活动 profile 的 configuration patch 持久化；不要手改 profile 文件。
 

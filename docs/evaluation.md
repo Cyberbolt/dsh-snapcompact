@@ -2,7 +2,7 @@
 
 [简体中文](zh/evaluation.md)
 
-Snapcompact's current evaluation is **v5**: a generated, task-level, multi-turn benchmark with a frozen dev/test split, a pre-registered rubric, and explicit controls. It replaces the v4 single-request 40-question pressure test and the six-turn session cost suite as the acceptance instrument. The v4 numbers remain in [evaluation-results.md](evaluation-results.md) as historical data.
+Snapcompact's current evaluation is **v5**: a generated, task-level, multi-turn benchmark with a frozen dev/test split, a pre-registered rubric, and explicit controls. It replaces the v4 single-request 40-question pressure test and the six-turn session cost suite as the acceptance instrument. The v4 numbers remain in [evaluation-audit.md](evaluation-audit.md) as historical data, and the current results are in [evaluation-results.md](evaluation-results.md).
 
 The v5 design and thresholds were frozen before tuning in [evaluation-v5-prereg.md](evaluation-v5-prereg.md). The audit that retired v4 is [evaluation-audit.md](evaluation-audit.md).
 
@@ -32,13 +32,18 @@ No model judges an answer. The prompt contains only the question text and JSON k
 
 ## Arms
 
-| Arm               | Input                                                                                   | Tools | Purpose                |
-| ----------------- | --------------------------------------------------------------------------------------- | ----- | ---------------------- |
-| `original`        | Full fixture history                                                                    | None  | Control; no compaction |
-| `native-text`     | Native summary generated once                                                           | None  | Host baseline          |
-| `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None  | Target                 |
-| `gold-text`       | Same head/middle/tail selection as text                                                 | None  | Comprehension ceiling  |
-| `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None  | Negative control       |
+| Arm               | Input                                                                                   | Tools | Purpose                                |
+| ----------------- | --------------------------------------------------------------------------------------- | ----- | -------------------------------------- |
+| `original`        | Full fixture history                                                                    | None  | Control: nothing compressed            |
+| `native-text`     | Native summary generated once                                                           | None  | Host baseline: one lossy summary       |
+| `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None  | Target: the shipped checkpoint         |
+| `gold-text`       | Same head/middle/tail selection and index, middle as exact text                         | None  | Ceiling: available points (no product) |
+| `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None  | Damaged control (no product)           |
+
+Three of the five arms form the product comparison. `gold-text` and `degraded-visual` are instrument controls and never enter a product verdict:
+
+- `gold-text` hands over the same selection and the same exact-token index as `pure-visual`, but the middle arrives as exact text instead of pixels. It answers "how many points are available at all?". If the ceiling cannot reach 38, the task or the rubric is broken and a high visual score means nothing.
+- `degraded-visual` keeps every other frame, downscales each by 50% and drops the index. It answers "does the score really come from reading frames?". If damaging the frames costs no points, the suite is not testing them.
 
 The frozen test also ran an offline `recall-ref` arm (production checkpoint + archive recall) to check non-inferiority. That arm was never registered in production and was removed after the frozen test; the shipped harness has no archive or recall code.
 
@@ -89,7 +94,9 @@ The script reads `OPENCODE_GO_API_KEY` (or `SNAPCOMPACT_BENCH_API_KEY`) from the
 
 ## Reading the report
 
-The report includes fixture id/seed/hash, the fixed schedule, per-arm/per-run/per-turn/per-class/per-region/per-character-class results, means/min/max/95% intervals, usage audit, weighted cost, the measurement-instrument table and the product-gate table. It prints the v4 historical numbers separately.
+The report includes fixture id/seed/hash, the fixed schedule, per-arm/per-run/per-turn/per-class/per-region/per-character-class results, means/min/max/95% intervals, usage audit, weighted cost, the measurement-instrument table and the product-gate table.
+
+Every score is per run over 40 questions. Per-class and per-region tallies pool all runs, so their denominator is the per-run question count × 3; the gates are still judged per run. The current numbers, with the product arms separated from the instrument controls, are on [evaluation-results.md](evaluation-results.md). v4's historical numbers are in [evaluation-audit.md](evaluation-audit.md), so the results page no longer repeats them.
 
 The pre-registered gates are:
 

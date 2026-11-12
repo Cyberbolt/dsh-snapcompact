@@ -1,6 +1,6 @@
 # 评测审计：v4 与 recall 时代的 benchmark
 
-[English](evaluation-audit.md)
+[English](../evaluation-audit.md)
 
 状态：**Phase A1 审计**，在 v5 任何实现或调优之前写成。本文刻意不依赖新 benchmark 的结果：它评判的是产生 0.6.x 数字的测量工具，而不是产品方向。
 
@@ -93,7 +93,7 @@ recall 臂是有用的**离线参照**，但不是视觉可用性的对照：它
 - recall 仅作为同一 test 集上的离线非劣效参照；
 - 预注册阈值、均值、方差/区间、逐区域与逐字符类错误、固定多轮 schedule。
 
-详细设计与阈值冻结在 [evaluation-v5-prereg.md](zh/evaluation-v5-prereg.md)。如果新 benchmark 与旧 benchmark 冲突，两者都报告；不静默删除任何一方。
+详细设计与阈值冻结在 [evaluation-v5-prereg.md](evaluation-v5-prereg.md)。如果新 benchmark 与旧 benchmark 冲突，两者都报告；不静默删除任何一方。
 
 ## 保留用于对照的历史数字
 
