@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#install)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**DeepSeek Harness 上下文压缩插件：把 DSH 会话的历史上下文渲染成图片，让模型直接读图，而不是读摘要。**
+**DeepSeek Harness 上下文压缩插件：将 DSH 的会话历史渲染为图片，用图片代替文本摘要，保留更多信息并减少 token 消耗。**
 
 具体实现：DSH 触发上下文压缩时，保持首尾部分的原内容，将中段部分渲染成图片（渲染在本地完成，不需要调用模型），每份压缩结果旁附一份可复制的精确文本索引和 `FILES` 文件地图。
 
@@ -52,7 +52,7 @@ DSH Desktop 请优先使用应用内的插件页面。
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
 ```
 
 tarball URL 请执行：

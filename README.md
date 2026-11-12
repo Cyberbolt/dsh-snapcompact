@@ -10,7 +10,7 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#install)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary.**
+**A DeepSeek Harness context compaction plugin: renders DSH session history as images instead of text summaries, keeping more information while using fewer tokens.**
 
 Concretely: when DSH triggers context compaction, the start and the end of the context stay as ordinary text while the middle is rendered as images (locally, with no model call), and each checkpoint carries a copyable index of exact strings and a `FILES` file map.
 
@@ -52,7 +52,7 @@ A locally packed tarball:
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
 ```
 
 A tarball URL:

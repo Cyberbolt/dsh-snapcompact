@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary."
+    "description": "A DeepSeek Harness context compaction plugin: renders DSH session history as images instead of text summaries, keeping more information while using fewer tokens."
   }
 }
