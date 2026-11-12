@@ -69,6 +69,36 @@ describe('checkpoint budget', () => {
     ).toMatchObject({ basis: 'threshold', tokens: 500 });
   });
 
+  it('spends the configured share of the trigger room instead of half', () => {
+    const budget = resolveCheckpointBudget({
+      totalTokens: 126_272,
+      sourceTokens: 84_272,
+      thresholdTokens: 126_272,
+      share: 0.4,
+    });
+    expect(budget).toMatchObject({ kind: 'ok', basis: 'threshold', tokens: 33_708 });
+  });
+
+  it('applies the configured share to the source fallback', () => {
+    expect(
+      resolveCheckpointBudget({ totalTokens: 0, sourceTokens: 1_001, share: 0.4 }),
+    ).toMatchObject({ kind: 'ok', basis: 'source', tokens: 400 });
+  });
+
+  it('rejects shares outside (0, 1]', () => {
+    for (const share of [0, -0.1, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => resolveCheckpointBudget({ totalTokens: 0, sourceTokens: 1_000, share })).toThrow(
+        RangeError,
+      );
+    }
+    expect(() =>
+      resolveCheckpointBudget({ totalTokens: 0, sourceTokens: 1_000, share: 0.25 }),
+    ).not.toThrow();
+    expect(() =>
+      resolveCheckpointBudget({ totalTokens: 0, sourceTokens: 1_000, share: 0.5 }),
+    ).not.toThrow();
+  });
+
   it('always leaves the post-compaction total under the threshold', () => {
     for (const [total, source, threshold] of [
       [126_272, 84_272, 126_272],

@@ -62,6 +62,7 @@ describe('plugin configuration', () => {
       maxCarriedImages: 4,
     });
     expect(config.routePolicies).toEqual([]);
+    expect(config.budget).toEqual({ checkpointShare: 0.4 });
     config.methodOrder.pop();
     expect(resolveConfig({}).methodOrder).toHaveLength(3);
   });
@@ -116,6 +117,10 @@ describe('plugin configuration', () => {
     { guard: { minCompactableRatio: -0.1 } },
     { guard: { minSourceRatio: 1 } },
     { guard: { unknown: 1 } },
+    { budget: { checkpointShare: 0.2 } },
+    { budget: { checkpointShare: 0.51 } },
+    { budget: { checkpointShare: 'half' } },
+    { budget: { unknown: 1 } },
     { rendering: { maxFrames: 65 } },
     { rendering: { timeoutMs: 15_001 } },
     { rendering: { maxSourceBytes: 65 * 1024 * 1024 } },

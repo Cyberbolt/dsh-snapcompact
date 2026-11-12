@@ -40,6 +40,19 @@ export const GUARD_DEFAULTS = Object.freeze({
   minSourceRatio: 0.01,
 });
 
+/**
+ * Checkpoint budget defaults.
+ *
+ * `checkpointShare` is the fraction of the room left under the trigger (or of
+ * the source when no window is declared) that one checkpoint may spend. The
+ * historical rule was one half; a smaller share leaves more headroom, which
+ * matters because a checkpoint, its recall pages and the next answer all share
+ * the same window.
+ */
+export const BUDGET_DEFAULTS = Object.freeze({
+  checkpointShare: 0.4,
+});
+
 /** Defaults shared by the strict runtime parser and the loader-facing schema. */
 export const SERIALIZATION_DEFAULTS = Object.freeze({
   toolResultMaxChars: 2_000,
@@ -111,6 +124,12 @@ const configSchema = z
           .max(64 * 1024 * 1024)
           .default(64 * 1024 * 1024),
         timeoutMs: z.number().int().positive().max(15_000).default(15_000),
+      })
+      .prefault({}),
+    budget: z
+      .strictObject({
+        /** Fraction of the trigger room one checkpoint may spend (0.25–0.5). */
+        checkpointShare: z.number().gte(0.25).lte(0.5).default(BUDGET_DEFAULTS.checkpointShare),
       })
       .prefault({}),
     guard: z
@@ -311,6 +330,17 @@ export const Config: ReturnType<typeof schema.object> = schema.object({
       .max(64 * 1024 * 1024)
       .default(64 * 1024 * 1024),
     timeoutMs: schema.number().step(1).min(1).max(15_000).default(15_000),
+  }),
+  budget: schema.object({
+    checkpointShare: schema
+      .number()
+      .step(0.05)
+      .min(0.25)
+      .max(0.5)
+      .default(BUDGET_DEFAULTS.checkpointShare)
+      .description(
+        '单个 checkpoint 可花掉触发余量的比例（0.25–0.5，默认 0.4）。调低会给压缩后的会话留更多余量，但可能减少帧数/可读性；历史行为是 0.5。',
+      ),
   }),
   guard: schema.object({
     minCompactableRatio: schema

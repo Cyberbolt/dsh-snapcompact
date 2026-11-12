@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ArchiveService } from '../../archives/service.js';
 import type { SnapcompactEngine } from '../../compaction/engine.js';
 import type { ArchiveIndex } from './archive-projection.js';
-import { parseBenchmarkRuns, registerCommands } from './commands.js';
+import { parseBenchmarkRequest, registerCommands } from './commands.js';
 
 interface CapturedCommand {
   readonly name: string;
@@ -51,16 +51,29 @@ describe('snapcompact command', () => {
     const { ctx, command } = captureCommand();
     register(ctx);
     expect(command().description).toContain('/compact');
-    expect(command().input?.hint).toBe('status | benchmark [1-5]');
-    expect(command().input?.hint).not.toContain('run');
+    expect(command().input?.hint).toBe('status | benchmark [1-5] | benchmark session [1-5]');
+    expect(command().input?.hint).not.toContain(' run');
   });
 
-  it('parses benchmark, benchmark 3 and rejects invalid counts', () => {
-    expect(parseBenchmarkRuns('benchmark')).toEqual({ runs: 1 });
-    expect(parseBenchmarkRuns('benchmark 3')).toEqual({ runs: 3 });
-    expect(parseBenchmarkRuns('status')).toBeNull();
-    for (const invalid of ['benchmark 0', 'benchmark 6', 'benchmark abc', 'benchmark 1 2']) {
-      expect(parseBenchmarkRuns(invalid), invalid).toHaveProperty('error');
+  it('parses accuracy and session benchmark runs', () => {
+    expect(parseBenchmarkRequest('benchmark')).toEqual({ kind: 'accuracy', runs: 1 });
+    expect(parseBenchmarkRequest('benchmark 3')).toEqual({ kind: 'accuracy', runs: 3 });
+    expect(parseBenchmarkRequest('benchmark session')).toEqual({ kind: 'session', runs: 1 });
+    expect(parseBenchmarkRequest('benchmark session 2')).toEqual({
+      kind: 'session',
+      runs: 2,
+    });
+    expect(parseBenchmarkRequest('status')).toBeNull();
+    for (const invalid of [
+      'benchmark 0',
+      'benchmark 6',
+      'benchmark abc',
+      'benchmark 1 2',
+      'benchmark session 0',
+      'benchmark session 6',
+      'benchmark session abc',
+    ]) {
+      expect(parseBenchmarkRequest(invalid), invalid).toHaveProperty('error');
     }
   });
 

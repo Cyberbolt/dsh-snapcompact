@@ -8,6 +8,9 @@ Manual compaction is `/compact`; it resolves to whichever backend the preset mou
 
 ```yaml
 methodOrder: [snapcompact, shake, soft]
+budget:
+  # Fraction of the trigger room one checkpoint may spend; 0.5 restores the old rule.
+  checkpointShare: 0.4
 policy:
   auto: true
   thresholdRatio: 0.8
@@ -91,7 +94,7 @@ Chains saved before the `handoff` method was removed are normalized on read: the
 Semantics that are easy to miss:
 
 - `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so placing it before `snapcompact` preempts the visual path.
-- The checkpoint budget (half of the room under the trigger) only constrains `snapcompact`; every other method only has to produce a checkpoint smaller than the source.
+- The checkpoint budget (a configured share of the room under the trigger) only constrains `snapcompact`; every other method only has to produce a checkpoint smaller than the source.
 - The archive is created before the chain runs, so a `[soft]` chain still keeps `snapcompact_recall` available.
 - Cancellation aborts the transaction; it never falls through to the next method.
 
@@ -136,19 +139,34 @@ An explicit pair such as `thresholdRatio: 0.2` with `retainRatio: 0.16` therefor
 
 ### Checkpoint budget
 
-`snapcompact` may spend at most half of the room left under that threshold:
+`snapcompact` may spend at most `budget.checkpointShare` of the room left under that threshold (0.25–0.5, default 0.4):
 
 ```text
 fixed  = max(0, surface - source)
 room   = threshold - fixed
-budget = floor(min(room, source) / 2)    # no declared window: floor(source / 2)
+budget = floor(min(room, source) × checkpointShare)   # no window: floor(source × share)
 ```
 
 `surface` is the whole request pressure before compaction and `source` the history the checkpoint replaces; both come from the token meter the native engine re-measures after committing. Everything a checkpoint cannot replace — system prompt, tool schemas, output reservation, retained tail — stays in `fixed`.
 
-Spending half of the room keeps the post-compaction total below the threshold with an equal share of headroom, which is the condition the native engine re-checks before it accepts a checkpoint. When automatic pressure fires, `room ≈ source`, so this matches the older "half of the source" rule and only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold, where the room is larger than the source and the source stays the binding half. A route without a declared context window, or a failed model lookup, falls back to `floor(source / 2)`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
+Leaving `1 - share` of the room free means the post-compaction total stays below the threshold with a real margin, which is the condition the native engine re-checks before it accepts a checkpoint. The historical rule was 0.5; 0.4 leaves more room for the checkpoint, the recall pages and the next answer that share the same window. When automatic pressure fires, `room ≈ source`, so the threshold basis equals `source × share`; it only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold. A route without a declared context window, or a failed model lookup, falls back to `source × share`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
 
-The budget is recomputed per compaction from the live route, so it follows `thresholdRatio`, `headroomTokens` and per-model overrides without another setting. Older rows may still carry `minCompressionRatio`; it is accepted for upgrade compatibility and ignored.
+The budget is recomputed per compaction from the live route, so it follows `thresholdRatio`, `headroomTokens` and per-model overrides without another setting. Set `budget.checkpointShare: 0.5` to restore the old behaviour. Older rows may still carry `minCompressionRatio`; it is accepted for upgrade compatibility and ignored.
+
+`/snapcompact status` prints the configured share and the actual rule; the exact token budget is computed at compaction time from that compaction's source history.
+
+A smaller share can cost one or two frames on a short history. The 0.4 default favors the recall path and longer sessions; if the visual-only path (no recall tools) is the primary use, 0.5 restores the previous frame count and accuracy. The evaluation results report both arms rather than hiding that tradeoff.
+
+### Recall
+
+Search defaults to bounded snippets:
+
+- `detail: "snippet"` (default) returns up to three windows per query, each with `snippetChars` characters of context on both sides (40–400, default 120). The matching-line count is complete even when only three snippets are returned.
+- `complete: true` means every query matched and nothing was clipped. `missing` and `truncated` report query indexes, not query strings, so a retry does not echo the whole batch.
+- `detail: "lines"` returns full lines with `nextOffset` / `nextColumn` cursors, for code that needs an exact full row.
+- A batch accepts up to 20 literals and is capped at 20,000 serialized characters. Every model round re-sends the checkpoint and the previous pages, so one batched call is usually much cheaper than one call per fact.
+
+The tool has no configuration keys; these are per-call arguments. The checkpoint's guide text asks the model to batch all independent literals in its first recall turn and to retry only reported indexes.
 
 ## Visual eligibility
 

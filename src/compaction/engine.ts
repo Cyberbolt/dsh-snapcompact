@@ -223,6 +223,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     const budget = resolveCheckpointBudget({
       totalTokens: surfaceTokens,
       sourceTokens,
+      share: this.settings.budget.checkpointShare,
       ...(pressure?.kind === 'ok' ? { thresholdTokens: pressure.thresholdTokens } : {}),
     });
     return { budget, contextWindow };

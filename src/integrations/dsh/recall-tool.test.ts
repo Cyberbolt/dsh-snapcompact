@@ -78,14 +78,28 @@ describe('archive recall authorization', () => {
       .parse(await test.invoke({ action: 'list' }));
     expect(list.total).toBe(1);
     expect(list.archives[0]?.archiveId).toBe(test.reference.attachmentId);
-    const page = z.object({ lines: z.array(z.object({ text: z.string() })) }).parse(
-      await test.invoke({
-        action: 'search',
-        archiveId: test.reference.attachmentId,
-        query: '[.*]',
-      }),
+    const page = z
+      .object({
+        complete: z.boolean(),
+        results: z.array(
+          z.object({
+            matches: z.array(z.object({ line: z.number(), text: z.string() })),
+            matchCount: z.number(),
+          }),
+        ),
+      })
+      .parse(
+        await test.invoke({
+          action: 'search',
+          archiveId: test.reference.attachmentId,
+          query: '[.*]',
+        }),
+      );
+    expect(page.complete).toBe(true);
+    expect(page.results[0]?.matchCount).toBe(1);
+    expect(page.results[0]?.matches.some((match) => match.text.includes('[.*] is literal'))).toBe(
+      true,
     );
-    expect(page.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
     const foreign = z
       .object({ total: z.number() })
       .parse(await test.invoke({ action: 'list' }, test.foreign.agent));
@@ -95,10 +109,30 @@ describe('archive recall authorization', () => {
   it('defaults read and search to the newest completed archive', async () => {
     const test = await setup();
     const page = z
-      .object({ lines: z.array(z.object({ text: z.string() })), matchCount: z.number() })
+      .object({
+        complete: z.boolean(),
+        results: z.array(
+          z.object({
+            matches: z.array(z.object({ text: z.string() })),
+            matchCount: z.number(),
+          }),
+        ),
+      })
       .parse(await test.invoke({ action: 'search', query: '[.*]' }));
-    expect(page.matchCount).toBe(1);
-    expect(page.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
+    expect(page.complete).toBe(true);
+    expect(page.results[0]?.matchCount).toBe(1);
+    expect(page.results[0]?.matches.some((match) => match.text.includes('[.*] is literal'))).toBe(
+      true,
+    );
+    const lines = z
+      .object({
+        lines: z.array(z.object({ text: z.string() })),
+        matchCount: z.number(),
+        totalLines: z.number(),
+      })
+      .parse(await test.invoke({ action: 'search', query: '[.*]', detail: 'lines' }));
+    expect(lines.matchCount).toBe(1);
+    expect(lines.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
     await expect(
       test.invoke({ action: 'search', query: 'anything' }, test.foreign.agent),
     ).rejects.toThrow('No completed compaction archive');
@@ -108,23 +142,38 @@ describe('archive recall authorization', () => {
     const test = await setup();
     const batch = z
       .object({
-        totalLines: z.number(),
-        truncated: z.boolean(),
+        complete: z.boolean(),
         results: z.array(
           z.object({
-            query: z.string(),
-            lines: z.array(z.object({ text: z.string() })),
+            matches: z.array(z.object({ text: z.string() })),
             matchCount: z.number(),
           }),
         ),
       })
       .parse(await test.invoke({ action: 'search', queries: ['[.*]', 'exact', '[.*]'] }));
     expect(batch.results).toHaveLength(2);
-    expect(batch.results[0]?.query).toBe('[.*]');
     expect(batch.results[0]?.matchCount).toBe(1);
-    expect(batch.results[0]?.lines.some((line) => line.text === '[.*] is literal')).toBe(true);
+    expect(batch.results[0]?.matches.some((match) => match.text.includes('[.*] is literal'))).toBe(
+      true,
+    );
     expect(batch.results[1]?.matchCount).toBe(1);
-    expect(batch.truncated).toBe(false);
+    expect(batch.complete).toBe(true);
+    const lines = z
+      .object({
+        truncated: z.boolean(),
+        results: z.array(
+          z.object({ query: z.string(), lines: z.array(z.object({ text: z.string() })) }),
+        ),
+      })
+      .parse(
+        await test.invoke({
+          action: 'search',
+          queries: ['[.*]', 'exact'],
+          detail: 'lines',
+        }),
+      );
+    expect(lines.results[0]?.query).toBe('[.*]');
+    expect(lines.results[1]?.query).toBe('exact');
     await expect(
       test.invoke({ action: 'search', query: '[.*]', queries: ['exact'] }),
     ).rejects.toThrow('not both');
@@ -159,6 +208,11 @@ describe('archive recall authorization', () => {
       { action: 'search', archiveId: test.reference.attachmentId },
       { action: 'read', archiveId: test.reference.attachmentId, limit: 201 },
       { action: 'read', archiveId: test.reference.attachmentId, offset: -1 },
+      { action: 'read', detail: 'snippet' },
+      { action: 'list', snippetChars: 100 },
+      { action: 'search', query: 'x', detail: 'lines', snippetChars: 100 },
+      { action: 'search', query: 'x', snippetChars: 39 },
+      { action: 'search', query: 'x', detail: 'full' },
     ])
       await expect(test.invoke(input)).rejects.toThrow();
     expect(read).not.toHaveBeenCalled();

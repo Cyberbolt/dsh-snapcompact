@@ -66,15 +66,17 @@ export function parseAnswerObject(text: string): {
   return { answers: {}, mode: 'failed' };
 }
 
-/** Score one parsed answer object against the fixture. */
+/** Score one parsed answer object against the fixture, optionally only selected keys. */
 export function buildOutcomes(
   fixture: Fixture,
   answers: Readonly<Record<string, string>>,
   regions: ReadonlyMap<string, Region>,
   transcript: string,
+  keys?: readonly string[],
 ): QuestionOutcome[] {
   const outcomes: QuestionOutcome[] = [];
   for (const [key, question] of Object.entries(fixture.questions)) {
+    if (keys !== undefined && !keys.includes(key)) continue;
     const given = answers[key] ?? null;
     const normalized = given === null ? null : normalizeAnswer(given);
     const accepted = acceptedAnswers(question);

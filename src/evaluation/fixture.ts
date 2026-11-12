@@ -49,7 +49,7 @@ const fixtureSchema = z
   .strictObject({
     version: z.literal(3),
     id: z.string().min(1),
-    paddingLines: z.number().int().min(100).max(2_000),
+    paddingLines: z.number().int().min(100).max(20_000),
     /** First message: facts that must stay in the exact head text. */
     head: z.string().default(''),
     /** Final message: facts that must stay in the exact tail text. */
@@ -153,8 +153,20 @@ function fillerLine(index: number): string {
   return `Observation ${index}: routine build log entry; no user-visible change.`;
 }
 
+export interface BuildFixtureOptions {
+  /**
+   * Physical lines per user message. The serialization clips each message at
+   * `messageTextMaxChars`, so long fixtures must use small chunks; the default
+   * keeps the historical ten-message shape.
+   */
+  readonly chunkLines?: number;
+}
+
 /** Build the deterministic conversation a fixture describes. */
-export function buildFixtureMessages(fixture: Fixture): Message[] {
+export function buildFixtureMessages(
+  fixture: Fixture,
+  options: BuildFixtureOptions = {},
+): Message[] {
   const override = new Map<number, string>();
   for (const decoy of fixture.decoys) override.set(decoy.line, decoy.text);
   for (const probe of fixture.probes) override.set(probe.line, probe.text);
@@ -162,7 +174,8 @@ export function buildFixtureMessages(fixture: Fixture): Message[] {
     { length: fixture.paddingLines },
     (_, index) => override.get(index) ?? fillerLine(index),
   );
-  const chunkSize = Math.ceil(lines.length / 10);
+  const requestedChunk = options.chunkLines ?? Math.ceil(lines.length / 10);
+  const chunkSize = Math.max(1, Math.min(lines.length, Math.floor(requestedChunk)));
   const padding: Message[] = [];
   for (let offset = 0; offset < lines.length; offset += chunkSize) {
     padding.push(
@@ -219,4 +232,144 @@ export function countArchiveCoverage(
     if (transcript.includes(question.source)) correct += 1;
   }
   return { correct, total: Object.keys(fixture.questions).length };
+}
+
+const LONG_HEAD =
+  'User constraints: archive before delete; reply in Simplified Chinese.\n' +
+  'The pinned runtime is 4.8.2-rc.1.\n' +
+  'Never run migrations with --force.';
+
+const LONG_TAIL =
+  'Release note: read-only verification passed before writes.\n' +
+  'The final release tag is v9.9.9-rc.1.\n' +
+  'The next action is run integration tests; do not deploy yet.';
+
+const LONG_FACTS = [
+  {
+    key: 's0',
+    fraction: 0.08,
+    value: 'MIGRATION_LOCK_V4',
+    question: 'What is the migration lock code?',
+    sentence: 'the migration lock code is MIGRATION_LOCK_V4.',
+  },
+  {
+    key: 's1',
+    fraction: 0.22,
+    value: 'RETRY_LIMIT_V4',
+    question: 'What is the retry limit identifier?',
+    sentence: 'the retry limit identifier is RETRY_LIMIT_V4.',
+  },
+  {
+    key: 's2',
+    fraction: 0.38,
+    value: 'BUCKET_V4',
+    question: 'What is the backup bucket identifier?',
+    sentence: 'the backup bucket identifier is BUCKET_V4.',
+  },
+  {
+    key: 's3',
+    fraction: 0.54,
+    value: 'FEATURE_FLAG_V4',
+    question: 'What is the feature flag identifier?',
+    sentence: 'the feature flag identifier is FEATURE_FLAG_V4.',
+  },
+  {
+    key: 's4',
+    fraction: 0.68,
+    value: 'TIMEOUT_V4',
+    question: 'What is the verification timeout identifier?',
+    sentence: 'the verification timeout identifier is TIMEOUT_V4.',
+  },
+  {
+    key: 's5',
+    fraction: 0.82,
+    value: 'OWNER_V4',
+    question: 'What is the owner team identifier?',
+    sentence: 'the owner team identifier is OWNER_V4.',
+  },
+] as const;
+
+export interface LongFixtureOptions {
+  /** Physical padding lines; the default is 5,000. */
+  readonly paddingLines?: number;
+  /** Lines per user message; the default 100 stays below messageTextMaxChars. */
+  readonly chunkLines?: number;
+}
+
+export interface LongFixture {
+  readonly fixture: Fixture;
+  readonly messages: readonly Message[];
+}
+
+/**
+ * A deterministic long session with head, tail and six middle facts.
+ *
+ * The facts are spread across the padding so a recall search cannot get all of
+ * them from one region. Pass `chunkLines` small enough that serialization does
+ * not clip a chunk; the default is safe for the default filler line.
+ */
+export function buildLongFixture(options: LongFixtureOptions = {}): LongFixture {
+  const paddingLines = options.paddingLines ?? 5_000;
+  const used = new Set<number>();
+  const probes = LONG_FACTS.map((fact) => {
+    const line = Math.floor(paddingLines * fact.fraction);
+    if (line < 1 || line >= paddingLines - 1 || used.has(line)) {
+      throw new Error(`Long fixture fact ${fact.key} has an unusable line ${line}.`);
+    }
+    used.add(line);
+    return {
+      line,
+      text: `Observation ${line}: ${fact.sentence}`,
+      key: fact.key,
+    };
+  });
+  const questions: Record<
+    string,
+    {
+      question: string;
+      answer: string;
+      source: string;
+      region: 'head' | 'middle' | 'tail';
+      kind: 'identifier';
+    }
+  > = {
+    l_head: {
+      question: 'What is the pinned runtime version?',
+      answer: '4.8.2-rc.1',
+      source: '4.8.2-rc.1',
+      region: 'head',
+      kind: 'identifier',
+    },
+    l_tail: {
+      question: 'What is the final release tag?',
+      answer: 'v9.9.9-rc.1',
+      source: 'v9.9.9-rc.1',
+      region: 'tail',
+      kind: 'identifier',
+    },
+  };
+  for (const fact of LONG_FACTS) {
+    questions[fact.key] = {
+      question: fact.question,
+      answer: fact.value,
+      source: fact.value,
+      region: 'middle',
+      kind: 'identifier',
+    };
+  }
+  const fixture = parseFixture({
+    version: 3,
+    id: `engineering-long-${paddingLines}`,
+    paddingLines,
+    head: LONG_HEAD,
+    text: LONG_TAIL,
+    suffix: '',
+    probes,
+    decoys: [],
+    questions,
+  });
+  return {
+    fixture,
+    messages: buildFixtureMessages(fixture, { chunkLines: options.chunkLines ?? 100 }),
+  };
 }

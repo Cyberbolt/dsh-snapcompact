@@ -22,8 +22,14 @@ export function registerRecallTool(
       const agent = exec.agent;
       if (!agent) throw new Error('Archive recall requires an owning session.');
       exec.signal.throwIfAborted();
-      if (args.action === 'list' && (args.query !== undefined || args.queries !== undefined))
-        throw new Error('query and queries are only valid for search.');
+      if (
+        args.action === 'list' &&
+        (args.query !== undefined ||
+          args.queries !== undefined ||
+          args.detail !== undefined ||
+          args.snippetChars !== undefined)
+      )
+        throw new Error('query, queries, detail and snippetChars are only valid for search.');
       if (args.action === 'list') {
         const entries = index.entries(agent.session);
         const selected = entries.slice(args.offset, args.offset + Math.min(args.limit, 100));

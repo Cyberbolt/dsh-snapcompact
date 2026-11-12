@@ -2,64 +2,134 @@
 
 [English](../evaluation.md)
 
-执行 `/snapcompact benchmark` 是**显式发起模型调用**。单次运行包含一次原生摘要生成和四个 QA 臂：三个单次臂（原始历史、原生摘要、视觉 OCR），以及一个 recall 臂——最多五轮工具、四十次实际调用，超过后 runner 会在无工具的情况下强制一次最终作答。OCR 臂会明确告知本回合没有工具，因此不会因为“模型请求了不存在的 recall”而扣分。无法安全生成图片时跳过视觉臂，不用文本调用冒充视觉成绩。
+Snapcompact 有两套调用模型的套件。**准确性套件**用一条固定历史回答 40 道题，衡量读取质量；**会话套件**在同一条长历史上连续跑 6 轮，衡量成本，包括 checkpoint 重发和留在历史里的 recall 页面。两套都不是账单测量，也不会上传私密会话内容。
 
-## 评测 v3
+两个命令都会显式发起模型请求：
 
-默认语料是 `engineering-recall-v3`：40 题分布在三个区域，20 个中段 probe、40 个 decoy。7 个头段事实留在精确 head 文本里，13 个尾段事实留在精确 tail 文本里，20 个中段事实落在位图中。decoy 是合理但不计分的事实，让摘要必须做取舍，而不是照抄一条 fact message。
+```text
+/snapcompact benchmark [1-5]          # 准确性套件
+/snapcompact benchmark session [1-5]  # 长会话语义成本套件
+```
 
-报告拆成四个臂：
+独立脚本 [`scripts/benchmark-live.ts`](../scripts/benchmark-live.ts) 对配置好的 OpenAI 兼容端点运行同样的套件，并把 JSON 和 Markdown 写到 `--out`。
 
-| 臂                   | 测什么                                                               |
-| -------------------- | -------------------------------------------------------------------- |
-| `original`           | 对照组：完整 fixture 原文，不压缩。                                  |
-| `native-text`        | 宿主原生摘要生成 + 一次 QA 读取。                                    |
-| `snapcompact`        | 生产视觉 checkpoint（有界头尾文本 + 位图帧），不带工具。             |
-| `snapcompact-recall` | 同一 checkpoint，带真实 `snapcompact_recall` schema 和有界工具循环。 |
+## 准确性套件
 
-### 评分
+语料是 `engineering-recall-v3`：40 道题分布在三个区域，20 个中段 probe、40 个 decoy。7 个头段事实留在精确 head 文本里，13 个尾段事实留在精确 tail 文本里，20 个中段事实落在位图中。decoy 是合理但不计分的事实，让摘要必须做取舍，而不是照抄一条 fact message。
 
-- **接受匹配**是主分。只裁掉答案外层空白，然后与 canonical answer 及 fixture 声明的等价写法比较，消除“引文带标签前缀”这类评分噪声；同时忽略一个结尾的 `.`/`。`，因为引用整句原文会把这个标点带出来。
-- **严格匹配**是副分。只与 canonical answer 比较，仍然只裁外层空白；内部空白和代码缩进保持有效。
-- 每题按 exact source 在序列化投影中的实际位置归入 `head`、`middle` 或 `tail`，不只依赖 fixture 的声明。找不到 source 的题标为 `unknown` 并报告。
-- 每次运行都记录 raw answer、解析模式（`raw`、`extracted`、`failed`）、分区/题型计数和 token usage。
-- `benchmark` 运行一次；`benchmark 3` 把四个 QA 臂重复三次，报告均值/最小/最大。原生摘要和视觉 checkpoint 只生成一次并复用，所以范围测的是读取稳定性，不是摘要生成稳定性；报告 warning 会写明这一点。
+| 方案                 | 衡量什么                                                                 |
+| -------------------- | ------------------------------------------------------------------------ |
+| `original`           | 对照组：完整语料，不压缩。                                               |
+| `native-text`        | 宿主原生摘要生成 + 一次 QA 读取。                                        |
+| `snapcompact`        | 生产视觉 checkpoint（有界头尾文本 + 位图帧），不带工具。                 |
+| `snapcompact-recall` | 同一 checkpoint + 真实 `snapcompact_recall` 工具 schema 和有界工具循环。 |
+
+一次请求携带全部 40 题。这使它成为读取压力测试，而不是稳态会话成本；报告不会用它宣称长会话节省。`benchmark 3` 把四个 QA 臂各跑三次；原生摘要和视觉 checkpoint 只生成一次并复用，所以区间衡量的是读取稳定性，不是摘要生成稳定性。
+
+### 计分
+
+- **接受匹配**是主分数。答案去掉首尾空白后，与规范答案及 fixture 声明的等价写法比较；它容忍引用整句时多出的句号，但内部空白和代码缩进仍然有效。
+- **严格匹配**是次分数：只接受规范答案，同样去掉首尾空白。
+- 每道题按它的精确 source 在序列化投影中的位置归为 `head` / `middle` / `tail`，而不是只信 fixture 标签；找不到的记为 `unknown` 并报告。
+- 每次运行记录原始答案、解析模式（`raw` / `extracted` / `failed`）、分区/分类计数、usage 和审计结果。
 
 ### Recall 臂
 
-recall 臂收到同一 checkpoint，外加生产的 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，页面读取逻辑与注册工具一致；页面只带行号、游标和命中数，provenance 留在归档文档里，不会随每次调用重复发送；一次 search 最多可批量查询 20 条独立字面量。报告记录工具调用数、模型轮次和工具结果序列化字节数，因此轮数变化时页面载荷的变化仍然可见；最多五轮工具、四十次实际工具调用；超过时 runner 会在无工具的情况下强制一次最终回答。这个上限对齐生产 agent：真实 agent 本身没有每回合 recall 次数限制。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index，但页面/查询语义相同。路由不支持工具时只有该臂失败，OCR 臂照常运行。
+recall 臂使用同一 checkpoint 加生产 `snapcompact_recall` schema。工具调用打到 benchmark 自己的归档，走注册工具同一个 reader。搜索默认 `detail: "snippet"`：每条查询最多 3 个有界窗口，命中行数完整。`complete: true` 表示每条查询都命中且没有被裁剪；`missing` / `truncated` 报告查询下标，重试时不回显整批查询。
+
+一次批量最多 20 条字面量，整个批次上限 20,000 个序列化字符。报告记录工具调用数、模型请求数和工具载荷字节，因此页面和轮次变化都可见。该臂最多 5 个工具轮、40 次执行调用；超过后强制一次不带工具的最终回答。benchmark 归档是直接创建的，不是已提交的 compaction，所以该臂绕过 session index；页面/查询语义与生产一致。路由拒绝工具时只有该臂失败，无工具臂仍会运行。
 
 ### 归档完整性
 
-任何 QA 调用之前，报告检查每题的 exact source 是否出现在归档 transcript 中。这是 recall 路径的确定性覆盖检查，不是模型召回分。
+任何 QA 调用之前，报告会检查每道题的精确 source 是否在归档 transcript 里。这是 recall 路径的确定性覆盖检查，不是模型 recall 分数。
+
+## 会话套件
+
+长语料由固定规则生成，默认 5,000 行 padding（约 337,000 字符，用 benchmark 计量约 84,000 token）。它有精确 head/tail 事实和 6 条分布在 8%–82% 的中段事实，recall 不可能从一个区域拿全。消息按 `messageTextMaxChars` 以下切块；否则序列化会先裁掉历史，模型根本看不到。
+
+schedule 是 `plain, plain, light, plain, heavy, plain`：
+
+| 轮次类型 | 问题数              | 对模型说的话                          |
+| -------- | ------------------- | ------------------------------------- |
+| `plain`  | 1 条 head/tail 事实 | 从 checkpoint 回答，不要调用 recall。 |
+| `light`  | 1 条中段事实        | 最多一次批量 recall，然后回答。       |
+| `heavy`  | 3 条中段事实        | 最多一次批量 recall，然后回答。       |
+
+六轮里 `light` 和 `heavy` 各占一轮，两轮检索合计三分之一。`plain` 轮若调用 recall、或检索轮调用超过一次，会记为 `offSchedule`。
+
+每个臂使用**同一条持久消息历史**：
+
+1. 源历史（original）或 checkpoint 放在开头，只放一次。
+2. 每轮追加问题、assistant 回答和 recall 工具流量。
+3. recall 页面不删除。后续轮会再次发送它们，这就是真实的页面常驻成本。
+
+四个臂与准确性套件相同。原生摘要只生成一次，其 usage 摊入 native 臂；视觉 checkpoint 只在本地渲染一次，渲染时间不计入模型成本。每轮记录：prompt、output、cache read/write、加权成本、模型请求数、recall 调用数、工具字节、正确率和耗时。
+
+### 成本口径
+
+```text
+prompt    = input + cacheRead + cacheWrite
+weighted  = input + 0.1·cacheRead + 1.25·cacheWrite + 4·output
+```
+
+加权成本是**相对单位**，不是账单。系数是透明假设，不是 provider 价目表。
+
+0% 和 33% 是实测臂：视觉臂没有检索轮，recall 臂跑上面的 schedule。100% 由实测 heavy/plain 轮次线性外推：
+
+```text
+modeled100 = recallCost + plainTurnCount × (meanHeavyCost − meanPlainVisualCost)
+```
+
+报告里标为 `modeled`，不能当作一次真实运行。归因表把 recall 臂的 prompt 拆成 checkpoint 重发（`checkpointTokens × requests`）、工具页（序列化字节 ÷ 4）和其余部分。
+
+容量表是确定性的，不调用模型：在 25 万、50 万、100 万 source 字符下按 `chars / 4` 估算 token，和路由窗口的触发阈值比较，并展示实测 checkpoint 大小。它展示“原文已经装不下”的区间，不宣称这些规模下的节省。
+
+## 用量审计
+
+DSH 的 `TokenUsage` 计数是互斥的：`inputTokens` 是未缓存输入，缓存输入单独放在 `cacheReadTokens` / `cacheWriteTokens`。benchmark 的 provider adapter 必须把 provider 字段映射到这三个桶，并保留 `total_tokens`。
+
+每个 measured 请求都要审计：
+
+```text
+computed = input + cacheRead + cacheWrite + output
+unreportedPrompt = max(0, reportedTotal − computed)
+```
+
+任何正的 `unreportedPrompt` 都会让该运行失败。这正是 v3 的缺陷：adapter 只读 `prompt_tokens_details.cached_tokens`，独立的 `prompt_cache_hit_tokens` 被漏掉，某次 recall 运行的 `total_tokens` 比映射后的 input+output 多 18,688。现在报告会打印审计，脚本在审计不完整时以非零退出。
 
 ## 报告指标
 
-- 接受匹配和严格匹配的计数、跨运行均值/最小/最大，以及合并后的 head/middle/tail 计数。
-- 分区、题型计数，以及每个未命中 key 的 expected 和 given。
-- 原生摘要生成 usage 与耗时；视觉帧数、checkpoint token、半源预算、是否超预算、准备耗时。
-- Provider 报告的 input/output/cacheRead/cacheWrite usage；缺失字段不编造。
-- prompt 总量遵循 DSH 合同：input + cacheRead + cacheWrite，不是可能包含 output 的 totalTokens。
-- recall 工具调用次数、额外 token，以及 OCR 臂与 recall 臂的 accepted 差值。
-- 本地密度检查（`src/rendering/density.test.ts`）固定帧数、每帧字符数和 PNG 字节数，不发起模型调用，也不测 recall。
-
-## 成本口径
-
-Token 经济性有两个轴：一次性生成和稳态读取。视觉路径没有生成调用，但 checkpoint 更大；原生摘要付一次生成调用，之后读取更小。报告展示生成 token、每轮读取 token、单次运行总 token 和 3 轮上下文投影。图片计价是估算，不是账单。只比较摘要的每轮读取和视觉 checkpoint 的每轮读取，会漏掉摘要生成调用。recall 成本由轮次决定：每个模型轮都会重发 checkpoint，所以读取总量更多跟随轮数而非页面大小；归因页面瘦身前，应同时看 recall 载荷字节和轮次。
+- 接受/严格匹配数、多次运行的均值/最小/最大、合并后的 head/middle/tail 计数。
+- 分区和分类计数，以及每个未命中 key 的 expected/given。
+- 原生摘要生成 usage 和耗时；视觉帧数、checkpoint token、配置份额预算、是否超预算、准备耗时。
+- input / cacheRead / cacheWrite / output 和审计，以及相对加权成本。
+- recall 工具调用、模型请求、序列化载荷字节。
+- 会话峰值 prompt、累计 prompt、output、加权成本、请求数、调用数、正确率和归因。
+- 本地密度检查（`src/rendering/density.test.ts`）固定帧数、每帧字符数和 PNG 字节；不调用模型，也不衡量 recall。
 
 ## 解释边界
 
-固定语料可复现，但不代表所有语言、provider 或长期项目。单次运行可能让一两道题顺序反转；发布范围请用 `benchmark 3`。独立 fixture 请求与完整会话的 system/tool envelope 不同。接受匹配刻意比严格匹配宽松；比较时两个都引用。
+固定语料可复现，但不代表所有语言、provider 或长期项目。单次运行可能反转一两道题；`benchmark 3` 用于发布区间。独立 fixture 请求与完整路由会话的 system/tool 包络不同。接受分数故意比严格匹配宽松；比较时两个都引用。
 
-视觉臂走生产本地渲染路径：有界头尾文本 + 位图帧，不调用摘要。v3 把事实分散到 head、middle、tail 并分区报告，中段帧的分数才单独可见。checkpoint 即使满足 benchmark 的“源历史一半”预算，真实会话也可能因触发阈值剩余空间更小而拒绝它；报告会标出超预算。
+视觉臂走生产本地渲染路径：有界头尾文本 + 位图帧，不调用摘要。checkpoint 即使满足 benchmark 的配置份额预算，真实会话也可能因触发阈值剩余空间更小而拒绝它；报告会标出超预算。视觉臂可能因缺少视觉元数据、未声明计价、请求缩放不可读或帧预算不足而跳过；这是安全回退，不是图像理解成功的证据。
 
-视觉臂可以因缺少视觉元数据、未声明计价、请求缩放不可读或帧预算不足而跳过。这是安全兜底，不是图片理解成功的证据。没有 provider usage 的响应标记为未测量，不用于编造省 token 的结论。
+没有 provider usage 的响应会标为未测量，而不是拿来编造节省。会话套件的 100% 点是显式 modeled，容量表是显式估算。只有实测臂、审计过的 usage 和 fixture 相对准确率是可引用的结论。
 
 ## 复现
 
 ```text
-/snapcompact benchmark      # 单次
-/snapcompact benchmark 3    # 三次 QA，用于发布范围
+/snapcompact benchmark            # 一次准确性运行
+/snapcompact benchmark 3          # 三次准确性运行；用于发布区间
+/snapcompact benchmark session    # 一次六轮会话运行
 ```
 
-真实项目评测需要同时获得历史和目标 provider 的许可，并准备脱敏 fixture。不要把私密会话日志提交为公开 benchmark 资产。
+可追踪的非交互运行：
+
+```sh
+node --experimental-strip-types scripts/benchmark-live.ts --preflight --lines=5000
+node --experimental-strip-types scripts/benchmark-live.ts --suite=all --runs=1 --share=0.4
+```
+
+脚本读取 `OPENCODE_GO_API_KEY`（或 `SNAPCOMPACT_BENCH_API_KEY`），并接受 `--provider`、`--model`、`--api-url` 指向 OpenAI 兼容 chat-completions 端点。`--preflight` 只渲染一次长语料，不调用模型。
+
+真实项目评测要先取得历史和目标 provider 的许可，再准备脱敏语料。不要把私密会话日志提交成公开 benchmark 资产。

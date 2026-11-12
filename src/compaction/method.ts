@@ -32,9 +32,9 @@ export interface MethodContext {
    * Largest estimated checkpoint this transaction may produce, in tokens.
    *
    * The engine derives it from the room left under the routed model's trigger
-   * threshold (half of what a checkpoint cannot replace, capped by the source),
-   * falling back to half of the source when the route declares no window. Zero
-   * means no frame can help.
+   * threshold (a configured share of what a checkpoint cannot replace, capped
+   * by the source), falling back to the same share of the source when the
+   * route declares no window. Zero means no frame can help.
    */
   readonly checkpointTargetTokens: number;
   readonly meter: Context['tokenMeter'];

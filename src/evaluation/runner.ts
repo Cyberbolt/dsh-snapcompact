@@ -12,7 +12,7 @@ import type { SnapcompactConfig } from '../config.js';
 import type { CompactionInput, CompactionSummary } from '../compaction/method.js';
 import { snapcompact } from '../compaction/methods/snapcompact.js';
 import { checkpointSummary } from '../compaction/checkpoint.js';
-import { billedPromptTokens, estimateCheckpoint } from '../budgeting/pricing.js';
+import { estimateCheckpoint } from '../budgeting/pricing.js';
 import type { Renderer } from '../rendering/worker-client.js';
 import { recallArgumentsSchema, readRecallPage, recallToolSchema } from '../archives/recall.js';
 import {
@@ -23,12 +23,14 @@ import {
 } from './fixture.js';
 import type { Fixture } from './fixture.js';
 import { aggregateArm, buildOutcomes, parseAnswerObject } from './scoring.js';
+import { auditFailure, auditUsage, mergeAudits, mergeUsage, promptTokens } from './usage.js';
 import type {
   ArmRun,
   EvaluationArm,
   EvaluationReport,
   Region,
   SummaryGeneration,
+  UsageAudit,
   VisualPreparation,
 } from './types.js';
 
@@ -50,34 +52,13 @@ const MAX_TOOL_ROUNDS = 5;
 /** The production agent has no hard recall cap; keep a generous bench ceiling. */
 const MAX_TOOL_CALLS = 40;
 
-function mergeUsage(
-  total: TokenUsage | undefined,
-  addition: TokenUsage | undefined,
-): TokenUsage | undefined {
-  if (addition === undefined) return total;
-  if (total === undefined) return { ...addition };
-  const sum = (left: number | undefined, right: number | undefined): number | undefined =>
-    left === undefined || right === undefined ? undefined : left + right;
-  const totalTokens = sum(total.totalTokens, addition.totalTokens);
-  const cacheReadTokens = sum(total.cacheReadTokens, addition.cacheReadTokens);
-  const cacheWriteTokens = sum(total.cacheWriteTokens, addition.cacheWriteTokens);
-  const reasoningTokens = sum(total.reasoningTokens, addition.reasoningTokens);
-  return {
-    inputTokens: total.inputTokens + addition.inputTokens,
-    outputTokens: total.outputTokens + addition.outputTokens,
-    ...(totalTokens === undefined ? {} : { totalTokens }),
-    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
-    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
-    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
-  };
-}
-
 function failedRun(
   run: number,
   total: number,
   elapsedMs: number,
   reason: string,
   usage?: TokenUsage,
+  audit?: UsageAudit,
 ): ArmRun {
   return {
     run,
@@ -93,9 +74,10 @@ function failedRun(
       ? {}
       : {
           usage,
-          promptTokens: billedPromptTokens(usage),
+          promptTokens: promptTokens(usage),
           outputTokens: usage.outputTokens,
         }),
+    ...(audit === undefined ? {} : { audit }),
     reason,
   };
 }
@@ -115,10 +97,12 @@ function skippedRun(run: number, total: number, reason: string): ArmRun {
   };
 }
 
-function questionsPrompt(fixture: Fixture): string {
+/** Question block shared by the accuracy suite and one long-session turn. */
+export function questionsPrompt(fixture: Fixture, keys?: readonly string[]): string {
   const questions: Record<string, string> = {};
-  for (const [key, question] of Object.entries(fixture.questions))
-    questions[key] = question.question;
+  for (const [key, question] of Object.entries(fixture.questions)) {
+    if (keys === undefined || keys.includes(key)) questions[key] = question.question;
+  }
   return (
     '\nAnswer these questions using ONLY the preceding historical material. ' +
     'Return a JSON object with exactly these keys and string answers; no Markdown.\n' +
@@ -126,58 +110,63 @@ function questionsPrompt(fixture: Fixture): string {
   );
 }
 
-interface AskOptions {
+export interface RunAgentTurnOptions {
   readonly ctx: Context;
   readonly agent: Agent;
   readonly archives: ArchiveService;
   readonly route: { readonly provider: string; readonly model: string };
-  readonly fixture: Fixture;
-  readonly regions: ReadonlyMap<string, Region>;
-  readonly transcript: string;
-  readonly questions: string;
   readonly signal: AbortSignal;
-  readonly run: number;
-  readonly content: readonly ContentBlock[];
+  /** Mutable request history; tool traffic and optionally the final answer are appended. */
+  readonly messages: RequestMessage[];
   readonly withTools?: boolean;
-  /** Appended to the question block when the arm deliberately runs without tools. */
-  readonly note?: string;
   readonly archive?: ArchiveRecord;
+  /** Persist the final assistant text for the next turn of a session benchmark. */
+  readonly appendFinal?: boolean;
+  readonly maxTokens?: number;
+  readonly maxToolRounds?: number;
+  readonly maxToolCalls?: number;
 }
 
-async function ask(options: AskOptions): Promise<ArmRun> {
-  const started = performance.now();
-  const messages: RequestMessage[] = [
-    {
-      role: 'user',
-      content: [
-        ...options.content,
-        {
-          type: 'text',
-          text:
-            options.note === undefined
-              ? options.questions
-              : `${options.questions}\n${options.note}`,
-        },
-      ],
-    },
-  ];
+export interface RunAgentTurnResult {
+  readonly status: 'stop' | 'error' | 'limit';
+  readonly text?: string;
+  readonly usage?: TokenUsage;
+  readonly rounds: number;
+  /** Largest single-request prompt in this turn, not the sum over tool rounds. */
+  readonly peakPromptTokens: number;
+  readonly recallCalls: number;
+  readonly recallBytes: number;
+  readonly recallQueries: readonly string[];
+  readonly reason?: string;
+}
+
+/**
+ * Drive one model turn against a mutable message history.
+ *
+ * This is the only place tool traffic is appended, so the accuracy arm and the
+ * persistent session arm share one round discipline. The caller scores the
+ * final text; this function only reports what happened.
+ */
+export async function runAgentTurn(options: RunAgentTurnOptions): Promise<RunAgentTurnResult> {
+  const maxToolRounds = options.maxToolRounds ?? MAX_TOOL_ROUNDS;
+  const maxToolCalls = options.maxToolCalls ?? MAX_TOOL_CALLS;
+  const maxTokens = options.maxTokens ?? EVALUATION_MAX_TOKENS;
   let usage: TokenUsage | undefined;
   let recallCalls = 0;
-  let recallRounds = 0;
   let recallBytes = 0;
+  let rounds = 0;
+  let peakPromptTokens = 0;
   const recallQueries: string[] = [];
   let toolsAllowed = options.withTools === true;
-  const total = Object.keys(options.fixture.questions).length;
-
   try {
-    for (let round = 0; round <= MAX_TOOL_ROUNDS + 1; round += 1) {
+    for (let round = 0; round <= maxToolRounds + 1; round += 1) {
       options.signal.throwIfAborted();
-      recallRounds += 1;
+      rounds += 1;
       const assembler = new BlockAssembler();
       for await (const chunk of options.ctx.llm.stream({
         ...options.route,
-        messages,
-        maxTokens: EVALUATION_MAX_TOKENS,
+        messages: options.messages,
+        maxTokens,
         sessionId: options.agent.id,
         purpose: 'compaction',
         signal: options.signal,
@@ -187,48 +176,33 @@ async function ask(options: AskOptions): Promise<ArmRun> {
       }
       options.signal.throwIfAborted();
       usage = mergeUsage(usage, assembler.usage);
+      if (assembler.usage !== undefined) {
+        peakPromptTokens = Math.max(peakPromptTokens, promptTokens(assembler.usage));
+      }
       const finish = assembler.finish;
 
       if (finish.kind === 'stop') {
-        const text = assembler
-          .blocks()
+        const blocks = assembler.blocks();
+        const text = blocks
           .flatMap((block) => (block.type === 'text' ? [block.text] : []))
           .join('\n');
-        const parsed = parseAnswerObject(text);
-        const outcomes = buildOutcomes(
-          options.fixture,
-          parsed.answers,
-          options.regions,
-          options.transcript,
-        );
-        const missed = outcomes.filter((outcome) => !outcome.correct).map((outcome) => outcome.key);
-        const exactMissed = outcomes
-          .filter((outcome) => !outcome.exact)
-          .map((outcome) => outcome.key);
-        if (usage === undefined)
-          return failedRun(
-            options.run,
-            total,
-            performance.now() - started,
-            'Provider returned no usage; not a measurement.',
+        if (options.appendFinal === true && text.length > 0) {
+          options.messages.push(
+            createAssistantMessage({
+              content: [{ type: 'text', text }],
+              source: { provider: options.route.provider, model: options.route.model },
+            }),
           );
+        }
         return {
-          run: options.run,
-          status: 'measured',
-          correct: outcomes.length - missed.length,
-          exactCorrect: outcomes.length - exactMissed.length,
-          total,
-          missed,
-          exactMissed,
-          outcomes,
-          usage,
-          promptTokens: billedPromptTokens(usage),
-          outputTokens: usage.outputTokens,
-          elapsedMs: performance.now() - started,
-          parseMode: parsed.mode,
-          ...(options.withTools === true
-            ? { recallCalls, recallQueries, recallRounds, recallBytes }
-            : {}),
+          status: 'stop',
+          text,
+          ...(usage === undefined ? {} : { usage }),
+          rounds,
+          recallCalls,
+          recallBytes,
+          recallQueries,
+          peakPromptTokens,
         };
       }
 
@@ -242,15 +216,15 @@ async function ask(options: AskOptions): Promise<ArmRun> {
         const assistantBlocks = blocks.filter(
           (block) => block.type === 'text' || block.type === 'tool-call',
         );
-        messages.push(
+        options.messages.push(
           createAssistantMessage({
             content: assistantBlocks,
             source: { provider: options.route.provider, model: options.route.model },
           }),
         );
         for (const call of calls) {
-          if (recallCalls >= MAX_TOOL_CALLS) {
-            messages.push(
+          if (recallCalls >= maxToolCalls) {
+            options.messages.push(
               createToolResultMessage({
                 callId: call.id,
                 content: [{ type: 'text', text: '{"error":"Recall tool-call limit reached."}' }],
@@ -300,7 +274,7 @@ async function ask(options: AskOptions): Promise<ArmRun> {
           recallQueries.push(trace);
           const payload = JSON.stringify(result);
           recallBytes += payload.length;
-          messages.push(
+          options.messages.push(
             createToolResultMessage({
               callId: call.id,
               content: [{ type: 'text', text: payload }],
@@ -308,9 +282,9 @@ async function ask(options: AskOptions): Promise<ArmRun> {
             }),
           );
         }
-        if (round >= MAX_TOOL_ROUNDS || recallCalls >= MAX_TOOL_CALLS) {
+        if (round >= maxToolRounds || recallCalls >= maxToolCalls) {
           toolsAllowed = false;
-          messages.push(
+          options.messages.push(
             createUserMessage({
               source: { kind: 'user' },
               content: [
@@ -327,21 +301,161 @@ async function ask(options: AskOptions): Promise<ArmRun> {
         continue;
       }
 
-      if (finish.kind === 'error')
-        throw new Error(finish.failure.message.slice(0, 1_000) || 'Evaluation call failed.');
-      throw new Error('Evaluation response did not finish normally: ' + finish.kind + '.');
+      if (finish.kind === 'error') {
+        return {
+          status: 'error',
+          reason: finish.failure.message.slice(0, 1_000) || 'Evaluation call failed.',
+          ...(usage === undefined ? {} : { usage }),
+          rounds,
+          recallCalls,
+          recallBytes,
+          recallQueries,
+          peakPromptTokens,
+        };
+      }
+      return {
+        status: 'error',
+        reason: 'Evaluation response did not finish normally: ' + finish.kind + '.',
+        ...(usage === undefined ? {} : { usage }),
+        rounds,
+        recallCalls,
+        recallBytes,
+        recallQueries,
+        peakPromptTokens,
+      };
     }
-    throw new Error('Recall tool-call round limit reached.');
+    return {
+      status: 'limit',
+      reason: 'Recall tool-call round limit reached.',
+      ...(usage === undefined ? {} : { usage }),
+      rounds,
+      recallCalls,
+      recallBytes,
+      recallQueries,
+      peakPromptTokens,
+    };
   } catch (error) {
     options.signal.throwIfAborted();
+    return {
+      status: 'error',
+      reason: error instanceof Error ? error.message.slice(0, 1_000) : 'Evaluation failed.',
+      ...(usage === undefined ? {} : { usage }),
+      rounds,
+      recallCalls,
+      recallBytes,
+      recallQueries,
+      peakPromptTokens,
+    };
+  }
+}
+
+interface AskOptions {
+  readonly ctx: Context;
+  readonly agent: Agent;
+  readonly archives: ArchiveService;
+  readonly route: { readonly provider: string; readonly model: string };
+  readonly fixture: Fixture;
+  readonly regions: ReadonlyMap<string, Region>;
+  readonly transcript: string;
+  readonly questions: string;
+  readonly signal: AbortSignal;
+  readonly run: number;
+  readonly content: readonly ContentBlock[];
+  readonly withTools?: boolean;
+  /** Appended to the question block when the arm deliberately runs without tools. */
+  readonly note?: string;
+  readonly archive?: ArchiveRecord;
+}
+
+async function ask(options: AskOptions): Promise<ArmRun> {
+  const started = performance.now();
+  const total = Object.keys(options.fixture.questions).length;
+  const messages: RequestMessage[] = [
+    {
+      role: 'user',
+      content: [
+        ...options.content,
+        {
+          type: 'text',
+          text:
+            options.note === undefined
+              ? options.questions
+              : `${options.questions}\n${options.note}`,
+        },
+      ],
+    },
+  ];
+  const result = await runAgentTurn({
+    ctx: options.ctx,
+    agent: options.agent,
+    archives: options.archives,
+    route: options.route,
+    signal: options.signal,
+    messages,
+    ...(options.withTools === true ? { withTools: true } : {}),
+    ...(options.archive === undefined ? {} : { archive: options.archive }),
+  });
+  const elapsedMs = performance.now() - started;
+  const audit =
+    result.usage === undefined
+      ? undefined
+      : { ...auditUsage([result.usage]), requests: result.rounds };
+  if (result.status !== 'stop') {
     return failedRun(
       options.run,
       total,
-      performance.now() - started,
-      error instanceof Error ? error.message.slice(0, 1_000) : 'Evaluation failed.',
-      usage,
+      elapsedMs,
+      result.reason ?? 'Evaluation failed.',
+      result.usage,
+      audit,
     );
   }
+  if (result.usage === undefined) {
+    return failedRun(
+      options.run,
+      total,
+      elapsedMs,
+      'Provider returned no usage; not a measurement.',
+    );
+  }
+  if (audit === undefined) throw new Error('Usage audit disappeared.');
+  const auditError = auditFailure(audit);
+  if (auditError !== undefined) {
+    return failedRun(options.run, total, elapsedMs, auditError, result.usage, audit);
+  }
+  const parsed = parseAnswerObject(result.text ?? '');
+  const outcomes = buildOutcomes(
+    options.fixture,
+    parsed.answers,
+    options.regions,
+    options.transcript,
+  );
+  const missed = outcomes.filter((outcome) => !outcome.correct).map((outcome) => outcome.key);
+  const exactMissed = outcomes.filter((outcome) => !outcome.exact).map((outcome) => outcome.key);
+  return {
+    run: options.run,
+    status: 'measured',
+    correct: outcomes.length - missed.length,
+    exactCorrect: outcomes.length - exactMissed.length,
+    total,
+    missed,
+    exactMissed,
+    outcomes,
+    usage: result.usage,
+    audit,
+    promptTokens: promptTokens(result.usage),
+    outputTokens: result.usage.outputTokens,
+    elapsedMs,
+    parseMode: parsed.mode,
+    ...(options.withTools === true
+      ? {
+          recallCalls: result.recallCalls,
+          recallQueries: result.recallQueries,
+          recallRounds: result.rounds,
+          recallBytes: result.recallBytes,
+        }
+      : {}),
+  };
 }
 
 function visualArm(arm: EvaluationArm, preparation: VisualPreparation): EvaluationArm {
@@ -397,7 +511,7 @@ export async function evaluate(
   const archiveCoverage = countArchiveCoverage(fixture, archive.document.transcript);
   const questions = questionsPrompt(fixture);
   const total = Object.keys(fixture.questions).length;
-  const budgetTokens = Math.floor(sourceTokens / 2);
+  const budgetTokens = Math.floor(sourceTokens * settings.budget.checkpointShare);
 
   let summaryGeneration: SummaryGeneration = { elapsedMs: 0 };
   let baseline: CompactionSummary | undefined;
@@ -553,6 +667,10 @@ export async function evaluate(
             content: visualSummary,
             withTools: true,
             archive,
+            note:
+              'Use at most two batched snapcompact_recall calls; send every independent literal ' +
+              'in each call. When complete=true, answer immediately and do not retry a query ' +
+              'that already matched.',
           }),
     );
   }
@@ -563,9 +681,15 @@ export async function evaluate(
     visualArm(aggregateArm('snapcompact', total, visualRuns), visualPreparation),
     visualArm(aggregateArm('snapcompact-recall', total, recallRuns), visualPreparation),
   ];
+  const usageAudit = mergeAudits([
+    ...[...originalRuns, ...nativeRuns, ...visualRuns, ...recallRuns].flatMap((run) =>
+      run.audit === undefined ? [] : [run.audit],
+    ),
+    ...(summaryGeneration.usage === undefined ? [] : [auditUsage([summaryGeneration.usage])]),
+  ]);
 
   return {
-    version: 2,
+    version: 3,
     fixture: fixture.id,
     provider: route.provider,
     model: route.model,
@@ -575,10 +699,12 @@ export async function evaluate(
     archiveCoverage,
     summaryGeneration,
     visualPreparation,
+    usageAudit,
     warning:
-      'Synthetic fixture only. Accepted matches are the primary score; exact matches are stricter. ' +
-      'Image/token estimates are not billed usage. The benchmark archive is not a committed compaction, ' +
-      'so the recall arm reads its known archive directly instead of the session index. ' +
+      'Synthetic accuracy pressure test only: one request carries all 40 questions, so its cost is ' +
+      'not steady-state session cost. Accepted matches are the primary score; exact matches are ' +
+      'stricter. Image/token estimates are not billed usage. The benchmark archive is not a committed ' +
+      'compaction, so the recall arm reads its known archive directly instead of the session index. ' +
       (runs === 1
         ? 'Single run: a one- or two-question difference is within rubric noise; run benchmark 3 for a range.'
         : 'Aggregates pool measured runs; the native summary and visual checkpoint were generated once.'),

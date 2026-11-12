@@ -206,9 +206,13 @@ export async function formatStatus(
       ? '图片路径：使用文本回退（图片能力或计价未明确）'
       : `图片路径：可尝试（${pricingLabel(imageRoute)}；仍需收益/预算校验）`,
   );
+  const checkpointShare = Math.round(settings.budget.checkpointShare * 100);
+  lines.push(
+    `checkpoint 预算：触发余量 × ${checkpointShare}%（上限为源历史 × ${checkpointShare}%；实际值在压缩时按源历史计算）`,
+  );
   lines.push(
     `渲染：${settings.rendering.width}×${settings.rendering.height}，最多 ${settings.rendering.maxFrames} 帧；` +
-      `checkpoint 预算 = 触发阈值下剩余空间的一半；最小字高 ${settings.rendering.minGlyphPx}px`,
+      `最小字高 ${settings.rendering.minGlyphPx}px`,
   );
   lines.push(`已完成归档：${index.entries(session).length}`);
   lines.push('提示：阈值和节省量都是估算，不是计费测量；精确字符串请用 snapcompact_recall 回查。');

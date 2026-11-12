@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../config.js';
 import {
   buildFixtureMessages,
+  buildLongFixture,
   classifyQuestionRegions,
   countArchiveCoverage,
   loadFixture,
@@ -46,6 +47,51 @@ describe('benchmark fixture v3', () => {
         expect(decoy.text.includes(question.source)).toBe(false);
       }
     }
+  });
+
+  it('builds a long session whose chunks survive serialization', () => {
+    const { fixture, messages } = buildLongFixture();
+    expect(fixture.paddingLines).toBe(5_000);
+    expect(Object.keys(fixture.questions)).toHaveLength(8);
+    expect(messages).toHaveLength(52);
+    for (const message of messages) {
+      const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : []));
+      for (const part of text) expect(part.length).toBeLessThanOrEqual(8_000);
+    }
+    const { serialized, regions } = classifyQuestionRegions(
+      fixture,
+      messages,
+      config.serialization,
+    );
+    for (const [key, question] of Object.entries(fixture.questions)) {
+      expect(regions.get(key), key).toBe(question.region);
+      expect(serialized.split(question.source).length - 1, key).toBe(1);
+    }
+    expect(countArchiveCoverage(fixture, serialized)).toEqual({ correct: 8, total: 8 });
+    expect(serialized.length).toBeGreaterThan(300_000);
+  });
+
+  it('accepts up to 20,000 padding lines and rejects more', () => {
+    const base = {
+      version: 3,
+      id: 'limit',
+      head: 'head',
+      text: 'tail',
+      suffix: '',
+      probes: [],
+      decoys: [],
+      questions: {
+        q: {
+          question: 'q?',
+          answer: 'tail',
+          source: 'tail',
+          region: 'tail',
+          kind: 'identifier',
+        },
+      },
+    };
+    expect(parseFixture({ ...base, paddingLines: 20_000 }).paddingLines).toBe(20_000);
+    expect(() => parseFixture({ ...base, paddingLines: 20_001 })).toThrow();
   });
 
   it('rejects duplicate probe and decoy lines', async () => {

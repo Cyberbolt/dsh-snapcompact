@@ -125,20 +125,22 @@ snapcompact.ts (RW)
 
 ## Use it
 
-| Entry point                    | What it does                                                                          |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `/compact`                     | Manual compaction; inside a Snapcompact preset it runs the chain                      |
-| `/snapcompact status`          | Route, effective threshold, compactable space, per-method availability, archive count |
-| `/snapcompact benchmark [1-5]` | Synthetic v3 comparison; up to eight auxiliary calls per run, may incur fees          |
-| `snapcompact_recall`           | List, page or literally search an archive                                             |
+| Entry point                            | What it does                                                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------- |
+| `/compact`                             | Manual compaction; inside a Snapcompact preset it runs the chain                      |
+| `/snapcompact status`                  | Route, effective threshold, compactable space, per-method availability, archive count |
+| `/snapcompact benchmark [1-5]`         | Synthetic 40-question accuracy comparison; may incur fees                             |
+| `/snapcompact benchmark session [1-5]` | Long-history cost suite (33% recall turns); may run for minutes and incur fees        |
+| `snapcompact_recall`                   | List, page or literally search an archive                                             |
 
 ```json
 { "action": "list" }
 { "action": "read", "archiveId": "sha256:…", "offset": 0, "limit": 100 }
-{ "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
+{ "action": "search", "queries": ["pnpm deploy --filter", "E_LOCK_TIMEOUT"] }
+{ "action": "search", "queries": ["E_LOCK_TIMEOUT"], "detail": "lines" }
 ```
 
-Recall returns physical line numbers, `(nextOffset, nextColumn)` cursors and a `matchCount` for searches. Text pages are capped at 200 line fragments and 20,000 UTF-16 code units. Search is a case-sensitive literal substring match, not a regular expression. `search` also accepts `queries` (up to 20) to batch independent lookups in one call; every tool round re-sends the checkpoint, so batching is cheaper. `archiveId` is optional for read/search and defaults to the newest completed compaction; an explicit ID must belong to a completed compaction in the owning session.
+Search is a case-sensitive literal substring match, not a regular expression. The default `detail: "snippet"` returns up to three short windows per query with a complete matching-line count, so a batched search is cheap to keep in history. `complete: true` means every query matched and nothing was clipped; `missing` and `truncated` list the query indexes that need a retry. Use `detail: "lines"` only when a full line is required; it returns physical line numbers and `(nextOffset, nextColumn)` cursors, capped at 200 line fragments and 20,000 UTF-16 code units per page. `queries` accepts up to 20 literals and the whole batch is capped at 20,000 serialized characters. `archiveId` is optional for read/search and defaults to the newest completed compaction; an explicit ID must belong to a completed compaction in the owning session.
 
 ## Configure
 
@@ -154,12 +156,12 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 | Archive limit     | `archiveMaxBytes`                                                          | 64 MiB                       |
 | Externalize above | `shakeThresholdChars`                                                      | 8192                         |
 
-`guard`, `serialization`, `routePolicies` and render limits are YAML-only. See the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md) for every field.
+`budget.checkpointShare`, `guard`, `serialization`, `routePolicies` and render limits are YAML-only. `budget.checkpointShare` (0.25–0.5, default 0.4) is the fraction of the trigger room one checkpoint may spend; 0.5 restores the previous behaviour. See the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md) for every field.
 
 ## Limits and privacy
 
 - **Not lossless.** Frames can drop characters; invisible trailing spaces are trimmed and each source newline becomes `¶`. The archive, not the frame, is the source of truth, and it cannot recover content another plugin already deleted. Up to four existing images are carried forward.
-- **Savings depend on the route and horizon.** A terse summary can be smaller per turn on short sessions; the visual path can win on long histories or cheap image tokens. A smaller checkpoint is not automatically a smaller bill.
+- **Savings depend on the route, horizon and recall rate.** A terse summary can be smaller per turn on short sessions. The visual path needs a long enough history to amortize its larger checkpoint and its recall pages. At a moderate recall rate it can still be cheaper than the original history; at every-turn recall the extra request per turn can erase the win. A smaller checkpoint is not automatically a smaller bill.
 - **Visual eligibility is narrow.** The route must declare image input and pricing; unreadable frames or a tight budget fall back to text. On a route without image pricing, DSH's own context meter can lag until provider usage anchors the next request; the plugin uses its own conservative frame price for the visual gate.
 - **`FILES` is an index, not a disk snapshot.** It sees read/write/edit calls, not `bash` or apply-patch.
 - **No telemetry.** Archives live in the profile's attachment storage; conversation data is not uploaded elsewhere.

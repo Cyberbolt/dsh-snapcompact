@@ -125,20 +125,22 @@ snapcompact.ts (RW)
 
 ## 使用
 
-| 入口                           | 作用                                                        |
-| ------------------------------ | ----------------------------------------------------------- |
-| `/compact`                     | 手动压缩；在任一 Snapcompact preset 内由 Snapcompact 链执行 |
-| `/snapcompact status`          | 查看路由、有效阈值、可压空间、各方法可用性和归档数量        |
-| `/snapcompact benchmark [1-5]` | 运行合成 v3 对照；单次最多八次辅助调用，可能产生费用        |
-| `snapcompact_recall`           | 列举、分页读取或字面量搜索归档                              |
+| 入口                                   | 作用                                                        |
+| -------------------------------------- | ----------------------------------------------------------- |
+| `/compact`                             | 手动压缩；在任一 Snapcompact preset 内由 Snapcompact 链执行 |
+| `/snapcompact status`                  | 查看路由、有效阈值、可压空间、各方法可用性和归档数量        |
+| `/snapcompact benchmark [1-5]`         | 运行 40 题合成准确性对照；可能产生费用                      |
+| `/snapcompact benchmark session [1-5]` | 长历史成本套件（33% 检索轮）；可能运行数分钟并产生费用      |
+| `snapcompact_recall`                   | 列举、分页读取或字面量搜索归档                              |
 
 ```json
 { "action": "list" }
 { "action": "read", "archiveId": "sha256:…", "offset": 0, "limit": 100 }
-{ "action": "search", "archiveId": "sha256:…", "query": "pnpm deploy --filter" }
+{ "action": "search", "queries": ["pnpm deploy --filter", "E_LOCK_TIMEOUT"] }
+{ "action": "search", "queries": ["E_LOCK_TIMEOUT"], "detail": "lines" }
 ```
 
-回查返回物理行号、`(nextOffset, nextColumn)` 游标，搜索还会返回 `matchCount`。文本分页最多返回 200 行片段和 20,000 个 UTF-16 码元。搜索是区分大小写的字面量子串匹配，不是正则。`search` 还接受 `queries`（最多 20 条），把独立查询合并到一次调用；每个工具轮都会重发 checkpoint，所以批量查询更省。read/search 的 `archiveId` 可省略，默认使用最新一个已完成压缩；显式传入的 ID 必须属于当前会话中已完成的压缩。
+搜索是区分大小写的字面量子串匹配，不是正则。默认 `detail: "snippet"` 为每条查询返回最多 3 个短窗口，并给出完整的命中行数，因此批量结果留在历史里也便宜。`complete: true` 表示每条查询都命中且没有被截断；`missing` / `truncated` 会列出需要重试的查询下标。只有需要整行时才用 `detail: "lines"`，它返回物理行号和 `(nextOffset, nextColumn)` 游标，每页最多 200 行片段、20,000 个 UTF-16 码元。`queries` 最多 20 条，整个批次上限 20,000 个序列化字符。read/search 的 `archiveId` 可省略，默认使用最新一个已完成压缩；显式传入的 ID 必须属于当前会话中已完成的压缩。
 
 ## 配置
 
@@ -154,12 +156,12 @@ snapcompact.ts (RW)
 | 归档上限 | `archiveMaxBytes`                                                            | 64 MiB                       |
 | 外置阈值 | `shakeThresholdChars`                                                        | 8192                         |
 
-`guard`、`serialization`、`routePolicies` 和渲染上限只在 YAML 里配置。完整字段见[配置文档](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
+`budget.checkpointShare`、`guard`、`serialization`、`routePolicies` 和渲染上限只在 YAML 里配置。`budget.checkpointShare`（0.25–0.5，默认 0.4）是单个 checkpoint 可花掉触发余量的比例；设为 0.5 可恢复旧行为。完整字段见[配置文档](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
 
 ## 限制与隐私
 
 - **不是无损压缩。** 帧可能漏字符；行尾不可见空格会被裁掉，每个源换行变成 `¶`。以归档为准，但归档也救不回其他插件已经删掉的内容。最多携带 4 张已有图片。
-- **省不省取决于路由和使用时长。** 短会话里精简摘要可能更小；长历史或图片 token 便宜时视觉路径更划算。checkpoint 更小，不等于账单更低。
+- **省不省取决于路由、使用时长和检索率。** 短会话里精简摘要可能更小；视觉路径需要足够长的历史来摊薄更大的 checkpoint 和 recall 页面。中等检索率下它仍可能比原始历史便宜；每轮都检索时，每轮多一次请求可能把节省抵消掉。checkpoint 更小，不等于账单更低。
 - **图片路径的适用条件很窄。** 路由必须声明图片输入和计价；帧不可读或预算不够时回退文本。路由没有图片计价时，DSH 自身的上下文计量可能在下一次 provider usage 锚定前滞后；插件用自己的保守帧价做视觉 gate。
 - **`FILES` 是索引，不是磁盘快照。** 它只看 read/write/edit，不看 `bash` 或 apply-patch。
 - **无遥测。** 归档保存在 profile 的 attachment 存储里，对话数据不会上传到别处。

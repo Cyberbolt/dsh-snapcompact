@@ -414,6 +414,96 @@ describe('untrusted archive repository', () => {
   });
 });
 
+describe('bounded snippet search', () => {
+  it('returns a clipped window per matching line and still counts every match', async () => {
+    const { service } = fixture();
+    const lines = Array.from({ length: 20 }, (_, index) => `line ${index} ` + 'x'.repeat(300));
+    for (const index of [3, 8, 12, 16]) {
+      lines[index] = 'prefix '.repeat(30) + 'TARGET' + ' suffix'.repeat(30);
+    }
+    const { reference, document } = await service.create({
+      sessionId: 's',
+      messages: [userMessage(lines.join('\n'))],
+    });
+    const physical = document.transcript.split('\n');
+    const expected = physical
+      .map((line, index) => (line.includes('TARGET') ? index + 1 : 0))
+      .filter((line) => line > 0);
+    const page = await service.readSnippets(reference, {
+      query: 'TARGET',
+      offset: 0,
+      contextChars: 40,
+    });
+    expect(page.matchCount).toBe(4);
+    expect(page.truncated).toBe(true);
+    expect(page.matches.map((match) => match.number)).toEqual(expected.slice(0, 3));
+    for (const match of page.matches) {
+      expect(match.text).toContain('TARGET');
+      expect(match.text.length).toBeLessThanOrEqual(40 * 2 + 'TARGET'.length + 2);
+      expect(match.text.startsWith('…')).toBe(true);
+      expect(match.text.endsWith('…')).toBe(true);
+    }
+    const all = await service.readSnippets(reference, {
+      query: 'TARGET',
+      offset: 0,
+      contextChars: 40,
+      maxMatches: 10,
+    });
+    expect(all.matches).toHaveLength(4);
+    expect(all.truncated).toBe(false);
+    const later = await service.readSnippets(reference, {
+      query: 'TARGET',
+      offset: (expected[1] ?? 1) - 1,
+      contextChars: 40,
+    });
+    expect(later.matchCount).toBe(3);
+    expect(later.matches[0]?.number).toBe(expected[1]);
+  });
+
+  it('never splits surrogate pairs at a snippet edge', async () => {
+    const { service } = fixture();
+    const text = '😀'.repeat(100) + 'TARGET' + '😀'.repeat(100);
+    const { reference } = await service.create({
+      sessionId: 's',
+      messages: [userMessage(text)],
+    });
+    for (const contextChars of [40, 41, 399]) {
+      const page = await service.readSnippets(reference, {
+        query: 'TARGET',
+        offset: 0,
+        contextChars,
+      });
+      const snippet = page.matches[0]?.text ?? '';
+      expect(snippet).toContain('TARGET');
+      expect(snippet.isWellFormed()).toBe(true);
+      expect(snippet.length).toBeLessThanOrEqual(contextChars * 2 + 'TARGET'.length + 2);
+    }
+  });
+
+  it('returns no matches for a missing literal or past the end, and validates inputs', async () => {
+    const { service } = fixture();
+    const { reference } = await service.create({
+      sessionId: 's',
+      messages: [userMessage('alpha\nbeta')],
+    });
+    expect(
+      await service.readSnippets(reference, { query: 'missing', offset: 0, contextChars: 40 }),
+    ).toMatchObject({ matches: [], matchCount: 0, truncated: false });
+    expect(
+      await service.readSnippets(reference, { query: 'alpha', offset: 99, contextChars: 40 }),
+    ).toMatchObject({ matches: [], matchCount: 0 });
+    for (const options of [
+      { query: '', offset: 0, contextChars: 40 },
+      { query: 'alpha', offset: -1, contextChars: 40 },
+      { query: 'alpha', offset: 0, contextChars: -1 },
+      { query: 'alpha', offset: 0, contextChars: 40, maxMatches: 0 },
+      { query: 'alpha', offset: 0, contextChars: 40, maxMatches: 11 },
+    ]) {
+      await expect(service.readSnippets(reference, options)).rejects.toThrow();
+    }
+  });
+});
+
 describe('archive pages and literal search', () => {
   it('uses zero-based physical offsets and one-based line numbers, clamping pages to 200 lines', async () => {
     const { service } = fixture();

@@ -68,7 +68,15 @@ describe('truthful evaluation accounting', () => {
       noRender,
       new AbortController().signal,
     );
-    expect(report.version).toBe(2);
+    expect(report.version).toBe(3);
+    expect(report.usageAudit).toMatchObject({
+      requests: 3,
+      inputTokens: 212,
+      outputTokens: 45,
+      computedTotalTokens: 257,
+      unreportedPromptTokens: 0,
+      complete: true,
+    });
     expect(report.arms.map((arm) => arm.runs[0]?.status)).toEqual([
       'measured',
       'measured',

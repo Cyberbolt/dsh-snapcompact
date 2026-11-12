@@ -6,6 +6,9 @@
 
 ```yaml
 methodOrder: [snapcompact, shake, soft]
+budget:
+  # 单个 checkpoint 可花掉触发余量的比例；0.5 恢复旧规则。
+  checkpointShare: 0.4
 policy:
   auto: true
   thresholdRatio: 0.8
@@ -89,7 +92,7 @@ bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模�
 容易误解的语义：
 
 - `shake` 只要存在超过 `shakeThresholdChars` 的工具输出就成功，放在 `snapcompact` 前面会抢先于视觉路径。
-- checkpoint 预算（触发阈值下剩余空间的一半）只约束 `snapcompact`；其它方法只要求 checkpoint 比源历史小。
+- checkpoint 预算（触发阈值下剩余空间的配置份额）只约束 `snapcompact`；其它方法只要求 checkpoint 比源历史小。
 - 归档在方法链之前创建，所以配置成 `[soft]` 仍然保留 `snapcompact_recall`。
 - 取消会终止事务，不会触发下一方法。
 
@@ -134,19 +137,34 @@ retain      = retainTokens ?? floor((W − O) × retainRatio)
 
 ### checkpoint 预算
 
-`snapcompact` 最多可以用掉阈值下剩余空间的一半：
+`snapcompact` 最多可以用掉阈值下剩余空间的 `budget.checkpointShare`（0.25–0.5，默认 0.4）：
 
 ```text
 fixed  = max(0, surface - source)
 room   = threshold - fixed
-budget = floor(min(room, source) / 2)    # 路由未声明窗口时：floor(source / 2)
+budget = floor(min(room, source) × checkpointShare)   # 路由未声明窗口时：floor(source × share)
 ```
 
 `surface` 是压缩前的整段请求压力，`source` 是 checkpoint 要替换的历史；两者都来自原生引擎提交后会重新测量的那个 token meter。checkpoint 无法替代的部分——系统提示、工具 schema、输出预留、保留尾部——都留在 `fixed` 里。
 
-只用掉一半剩余空间，可以让压缩后的总量回到阈值以下并留下同样多的余量；这也正是原生引擎在采纳 checkpoint 前会复核的条件。自动压力触发时 `room ≈ source`，所以它等价于旧的「源历史的一半」，只会按越界量收紧；对阈值以下的手动 `/compact` 同样成立，因为那时剩余空间大于源历史，仍然由源历史那一半来约束。路由未声明上下文窗口、或模型信息解析失败时回退到 `floor(source / 2)`；`room ≤ 0` 时直接跳过视觉路径，因为没有帧能把会话拉回阈值以下。
+留下 `1 - share` 的余量，可以让压缩后的总量回到阈值以下并保留真实余量；这也正是原生引擎在采纳 checkpoint 前会复核的条件。历史规则是 0.5；0.4 给 checkpoint、recall 页面和下一轮回答留出更多共享窗口的空间。自动压力触发时 `room ≈ source`，所以阈值口径等价于 `source × share`，只会按越界量收紧；对阈值以下的手动 `/compact` 同样成立。路由未声明上下文窗口、或模型信息解析失败时回退到 `source × share`；`room ≤ 0` 时直接跳过视觉路径，因为没有帧能把会话拉回阈值以下。
 
-预算在每次压缩时按当前路由现算，所以它会自动跟随 `thresholdRatio`、`headroomTokens` 和按模型覆盖，不需要额外设置项。旧配置里可能仍带着 `minCompressionRatio`；它只为升级兼容而被接受，实际会被忽略。
+预算在每次压缩时按当前路由现算，所以它会自动跟随 `thresholdRatio`、`headroomTokens` 和按模型覆盖，不需要额外设置项。设置 `budget.checkpointShare: 0.5` 可恢复旧行为。旧配置里可能仍带着 `minCompressionRatio`；它只为升级兼容而被接受，实际会被忽略。
+
+`/snapcompact status` 会打印当前份额和实际规则；精确 token 预算在压缩时按当次源历史计算。
+
+较小的份额在短历史上可能少一两帧。0.4 默认偏向 recall 路径和长会话；如果主要使用“无 recall 工具的纯视觉路径”，0.5 可以恢复原来的帧数和准确率。评测结果会同时报告两条臂，而不是掩盖这个取舍。
+
+### Recall
+
+搜索默认返回有界 snippet：
+
+- `detail: "snippet"`（默认）为每条查询返回最多 3 个窗口，命中点两侧各 `snippetChars` 个字符（40–400，默认 120）。即使只返回 3 条，命中行数仍然是完整的。
+- `complete: true` 表示每条查询都命中且没有被裁剪。`missing` / `truncated` 报告查询下标，不回显整批查询字符串，重试成本更低。
+- `detail: "lines"` 返回整行和 `nextOffset` / `nextColumn` 游标，适合需要完整代码行的场景。
+- 一次批量最多 20 条字面量，整个批次上限 20,000 个序列化字符。每个模型轮都会重发 checkpoint 和之前的页面，所以一次批量通常比逐题调用便宜得多。
+
+工具本身没有配置键；这些是每次调用的参数。checkpoint 的提示文本要求模型在第一次 recall 调用中批量发送所有独立字面量，并且只重试报告的下标。
 
 ## 图片启用条件
 

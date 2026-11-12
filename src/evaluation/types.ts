@@ -1,7 +1,26 @@
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 
-/** Every arm a v3 benchmark can run. */
+/** Every arm a v4 benchmark can run. */
 export type ArmName = 'original' | 'native-text' | 'snapcompact' | 'snapcompact-recall';
+
+/**
+ * Reconciliation of one run's provider usage.
+ *
+ * `inputTokens` is fresh (uncached) input. `reportedTotalTokens` is what the
+ * provider said; `computedTotalTokens` is the sum of the mapped components.
+ * Any positive gap is unreported prompt and invalidates the measurement.
+ */
+export interface UsageAudit {
+  readonly requests: number;
+  readonly inputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly outputTokens: number;
+  readonly reportedTotalTokens: number;
+  readonly computedTotalTokens: number;
+  readonly unreportedPromptTokens: number;
+  readonly complete: boolean;
+}
 
 /** Where the question's source text lives in the checkpoint projection. */
 export type Region = 'head' | 'middle' | 'tail' | 'unknown';
@@ -41,6 +60,7 @@ export interface ArmRun {
   readonly exactMissed: readonly string[];
   readonly outcomes: readonly QuestionOutcome[];
   readonly usage?: TokenUsage;
+  readonly audit?: UsageAudit;
   readonly promptTokens?: number;
   readonly outputTokens?: number;
   readonly elapsedMs: number;
@@ -106,9 +126,9 @@ export interface VisualPreparation {
   readonly reason?: string;
 }
 
-/** A versioned evaluation report. */
+/** A versioned accuracy-suite report. */
 export interface EvaluationReport {
-  readonly version: 2;
+  readonly version: 3;
   readonly fixture: string;
   readonly provider: string;
   readonly model: string;
@@ -118,5 +138,99 @@ export interface EvaluationReport {
   readonly archiveCoverage: RegionTally;
   readonly summaryGeneration: SummaryGeneration;
   readonly visualPreparation: VisualPreparation;
+  readonly usageAudit: UsageAudit;
+  readonly warning: string;
+}
+
+/** One controlled turn in the long-session cost suite. */
+export type SessionTurnMode = 'plain' | 'light' | 'heavy';
+
+/** One model turn in a persistent session, with its own reconciled usage. */
+export interface SessionTurn {
+  readonly index: number;
+  readonly mode: SessionTurnMode;
+  readonly correct: number;
+  readonly total: number;
+  readonly missed: readonly string[];
+  /** Sum over this turn's requests. */
+  readonly promptTokens: number;
+  /** Largest single-request prompt in this turn. */
+  readonly peakPromptTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  /** Relative weighted cost; not currency. */
+  readonly weightedCost: number;
+  /** Model requests in this turn, including tool rounds and the final answer. */
+  readonly rounds: number;
+  readonly recallCalls: number;
+  readonly recallBytes: number;
+  readonly elapsedMs: number;
+  /** The turn used more recall calls than its schedule allowed. */
+  readonly offSchedule: boolean;
+  readonly audit: UsageAudit;
+}
+
+/** One arm of the persistent long-session suite. */
+export interface SessionArm {
+  readonly name: ArmName;
+  readonly status: 'measured' | 'failed' | 'skipped';
+  readonly turns: readonly SessionTurn[];
+  readonly peakPromptTokens: number;
+  readonly promptTokens: number;
+  readonly outputTokens: number;
+  readonly cacheReadTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly weightedCost: number;
+  readonly correct: number;
+  readonly total: number;
+  readonly rounds: number;
+  readonly recallCalls: number;
+  readonly recallBytes: number;
+  readonly frames?: number;
+  readonly estimatedCheckpointTokens?: number;
+  readonly note?: string;
+  readonly reason?: string;
+}
+
+/** Deterministic capacity estimate; no model call. */
+export interface CapacityPoint {
+  readonly sourceChars: number;
+  readonly estimatedSourceTokens: number;
+  readonly originalFits: boolean;
+  readonly checkpointEstimatedTokens: number;
+  readonly contextWindow: number;
+}
+
+/** Modeled recall-rate sensitivity using measured components. */
+export interface SensitivityPoint {
+  readonly recallRate: number;
+  readonly weightedCost: number;
+  readonly ratioToOriginal: number;
+  readonly modeled: boolean;
+}
+
+/** Where the recall arm's prompt tokens went. */
+export interface SessionAttribution {
+  readonly checkpointResendTokens: number;
+  readonly toolPageTokens: number;
+  readonly otherPromptTokens: number;
+  readonly outputTokens: number;
+}
+
+/** A versioned long-session report. */
+export interface SessionReport {
+  readonly version: 1;
+  readonly fixture: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly timestamp: string;
+  readonly run: number;
+  readonly schedule: readonly SessionTurnMode[];
+  readonly arms: readonly SessionArm[];
+  readonly usageAudit: UsageAudit;
+  readonly capacity: readonly CapacityPoint[];
+  readonly sensitivity: readonly SensitivityPoint[];
+  readonly attribution: SessionAttribution;
   readonly warning: string;
 }

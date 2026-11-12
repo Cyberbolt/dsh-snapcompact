@@ -15,6 +15,12 @@ export const MAX_ARCHIVE_PAGE_CHARACTERS = 20_000;
 export const ARCHIVE_SEARCH_CONTEXT_BEFORE = 2;
 export const ARCHIVE_SEARCH_CONTEXT_AFTER = 4;
 
+/** Bounded snippet windows keep one recall call small enough to stay resident. */
+export const DEFAULT_SNIPPET_CONTEXT_CHARS = 120;
+export const MIN_SNIPPET_CONTEXT_CHARS = 40;
+export const MAX_SNIPPET_CONTEXT_CHARS = 400;
+export const MAX_SNIPPETS_PER_QUERY = 3;
+
 export interface ArchiveReadOptions {
   /** Zero-based physical transcript line, also in search mode; never a match ordinal. */
   offset: number;
@@ -46,6 +52,33 @@ export interface ArchivePage {
    * transcript. null means no query filtered this page.
    */
   matchCount: number | null;
+}
+
+export interface ArchiveSnippetOptions {
+  /** Case-sensitive literal substring; never empty. */
+  readonly query: string;
+  /** Zero-based physical line where the scan starts. */
+  readonly offset: number;
+  /** Characters kept on each side of the first match on a line. */
+  readonly contextChars: number;
+  /** Maximum returned snippets; matching-line count is still complete. */
+  readonly maxMatches?: number;
+}
+
+export interface ArchiveSnippetMatch {
+  /** One-based physical transcript line. */
+  readonly number: number;
+  /** Bounded excerpt around the first match, with … marking clipped edges. */
+  readonly text: string;
+}
+
+export interface ArchiveSnippetPage {
+  readonly matches: ArchiveSnippetMatch[];
+  /** Every matching physical line from offset onward, not just the returned ones. */
+  readonly matchCount: number;
+  /** More matching lines exist than were returned. */
+  readonly truncated: boolean;
+  readonly totalLines: number;
 }
 
 export interface ArchiveRecord {
@@ -125,6 +158,18 @@ function codePointBoundary(text: string, position: number): number {
   return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
     ? position - 1
     : position;
+}
+
+/** A bounded excerpt around the first match, with … marking a clipped edge. */
+function snippetAround(
+  text: string,
+  index: number,
+  queryLength: number,
+  contextChars: number,
+): string {
+  const start = codePointBoundary(text, Math.max(0, index - contextChars));
+  const end = codePointBoundary(text, Math.min(text.length, index + queryLength + contextChars));
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
 }
 
 export class ArchiveService {
@@ -230,6 +275,63 @@ export class ArchiveService {
       totalLines,
       truncated: nextOffset !== null,
       matchCount,
+    };
+  }
+
+  /**
+   * Return short windows around matching lines instead of full pages.
+   *
+   * The matching-line count is always complete so the caller can tell whether
+   * a query was unique; only the returned snippets are bounded. This is the
+   * default recall shape because every tool round re-sends its results.
+   */
+  async readSnippets(
+    reference: FileAttachmentRef,
+    options: ArchiveSnippetOptions,
+    signal?: AbortSignal,
+  ): Promise<ArchiveSnippetPage> {
+    signal?.throwIfAborted();
+    if (typeof options.query !== 'string' || options.query.length === 0) {
+      throw new TypeError('Archive snippet query must be a non-empty literal string');
+    }
+    if (!Number.isSafeInteger(options.offset) || options.offset < 0) {
+      throw new RangeError('Archive offset must be a nonnegative safe integer');
+    }
+    if (
+      !Number.isSafeInteger(options.contextChars) ||
+      options.contextChars < 0 ||
+      options.contextChars > 10_000
+    ) {
+      throw new RangeError('Archive snippet context must be an integer from 0 to 10,000');
+    }
+    const maxMatches = options.maxMatches ?? MAX_SNIPPETS_PER_QUERY;
+    if (!Number.isSafeInteger(maxMatches) || maxMatches < 1 || maxMatches > 10) {
+      throw new RangeError('Archive snippet match limit must be an integer from 1 to 10');
+    }
+    const document = await this.repository.get(reference, signal);
+    signal?.throwIfAborted();
+    const matches: ArchiveSnippetMatch[] = [];
+    let matchCount = 0;
+    let totalLines = 0;
+    for (const line of physicalLines(document.transcript)) {
+      signal?.throwIfAborted();
+      totalLines += 1;
+      if (line.number - 1 < options.offset) continue;
+      const index = line.text.indexOf(options.query);
+      if (index < 0) continue;
+      matchCount += 1;
+      if (matches.length >= maxMatches) continue;
+      matches.push({
+        number: line.number,
+        text: snippetAround(line.text, index, options.query.length, options.contextChars),
+      });
+    }
+    signal?.throwIfAborted();
+    return {
+      matches,
+      matchCount,
+      truncated: matchCount > matches.length,
+      totalLines,
     };
   }
 }
