@@ -92,8 +92,8 @@ interface ModelTurnResult {
   readonly audit: V5UsageAudit;
   readonly rounds: number;
   readonly peakPromptTokens: number;
-  readonly recallCalls: number;
-  readonly recallBytes: number;
+  readonly toolCalls: number;
+  readonly toolBytes: number;
   readonly reason?: string;
   readonly missingUsage: boolean;
 }
@@ -111,8 +111,8 @@ async function runModelTurn(options: {
   let merged: TokenUsage | undefined;
   let rounds = 0;
   let peakPromptTokens = 0;
-  let recallCalls = 0;
-  let recallBytes = 0;
+  let toolCalls = 0;
+  let toolBytes = 0;
   let missingUsage = false;
   let toolsAllowed = options.tools !== undefined;
   try {
@@ -154,8 +154,8 @@ async function runModelTurn(options: {
           audit: auditUsage(usages),
           rounds,
           peakPromptTokens,
-          recallCalls,
-          recallBytes,
+          toolCalls,
+          toolBytes,
           missingUsage,
         };
       }
@@ -173,8 +173,8 @@ async function runModelTurn(options: {
             audit: auditUsage(usages),
             rounds,
             peakPromptTokens,
-            recallCalls,
-            recallBytes,
+            toolCalls,
+            toolBytes,
             missingUsage,
           };
         }
@@ -188,7 +188,7 @@ async function runModelTurn(options: {
           }),
         );
         for (const call of calls) {
-          if (recallCalls >= MAX_TOOL_CALLS) {
+          if (toolCalls >= MAX_TOOL_CALLS) {
             options.messages.push(
               createToolResultMessage({
                 callId: call.id,
@@ -212,8 +212,8 @@ async function runModelTurn(options: {
               isError: true,
             };
           }
-          recallCalls += 1;
-          recallBytes += result.text.length;
+          toolCalls += 1;
+          toolBytes += result.text.length;
           options.messages.push(
             createToolResultMessage({
               callId: call.id,
@@ -222,7 +222,7 @@ async function runModelTurn(options: {
             }),
           );
         }
-        if (round >= MAX_TOOL_ROUNDS || recallCalls >= MAX_TOOL_CALLS) {
+        if (round >= MAX_TOOL_ROUNDS || toolCalls >= MAX_TOOL_CALLS) {
           toolsAllowed = false;
           options.messages.push(
             createUserMessage({
@@ -249,8 +249,8 @@ async function runModelTurn(options: {
           audit: auditUsage(usages),
           rounds,
           peakPromptTokens,
-          recallCalls,
-          recallBytes,
+          toolCalls,
+          toolBytes,
           missingUsage,
         };
       }
@@ -262,8 +262,8 @@ async function runModelTurn(options: {
         audit: auditUsage(usages),
         rounds,
         peakPromptTokens,
-        recallCalls,
-        recallBytes,
+        toolCalls,
+        toolBytes,
         missingUsage,
       };
     }
@@ -275,8 +275,8 @@ async function runModelTurn(options: {
       audit: auditUsage(usages),
       rounds,
       peakPromptTokens,
-      recallCalls,
-      recallBytes,
+      toolCalls,
+      toolBytes,
       missingUsage,
     };
   } catch (error) {
@@ -289,8 +289,8 @@ async function runModelTurn(options: {
       audit: auditUsage(usages),
       rounds,
       peakPromptTokens,
-      recallCalls,
-      recallBytes,
+      toolCalls,
+      toolBytes,
       missingUsage,
     };
   }
@@ -315,8 +315,8 @@ export async function runV5Arm(options: RunV5ArmOptions): Promise<V5ArmRun> {
       cacheWriteTokens: 0,
       weightedCost: 0,
       rounds: 0,
-      recallCalls: 0,
-      recallBytes: 0,
+      toolCalls: 0,
+      toolBytes: 0,
       elapsedMs: 0,
       audit: auditUsage([]),
       reason: options.input.skipReason,
@@ -380,8 +380,8 @@ export async function runV5Arm(options: RunV5ArmOptions): Promise<V5ArmRun> {
       ),
       weightedCost: result.usages.reduce((sum, usage) => sum + weightedCost(usage), 0),
       rounds: result.rounds,
-      recallCalls: result.recallCalls,
-      recallBytes: result.recallBytes,
+      toolCalls: result.toolCalls,
+      toolBytes: result.toolBytes,
       elapsedMs: performance.now() - turnStarted,
       parseMode: parsed.mode,
       audit: result.audit,
@@ -470,8 +470,8 @@ export async function runV5Arm(options: RunV5ArmOptions): Promise<V5ArmRun> {
     cacheWriteTokens: turns.reduce((sum, turn) => sum + turn.cacheWriteTokens, 0),
     weightedCost: turns.reduce((sum, turn) => sum + turn.weightedCost, 0),
     rounds: turns.reduce((sum, turn) => sum + turn.rounds, 0),
-    recallCalls: turns.reduce((sum, turn) => sum + turn.recallCalls, 0),
-    recallBytes: turns.reduce((sum, turn) => sum + turn.recallBytes, 0),
+    toolCalls: turns.reduce((sum, turn) => sum + turn.toolCalls, 0),
+    toolBytes: turns.reduce((sum, turn) => sum + turn.toolBytes, 0),
     elapsedMs: performance.now() - started,
     audit,
     ...(failedReason === undefined ? {} : { reason: failedReason }),
@@ -643,8 +643,10 @@ export async function prepareV5Arms(options: PrepareV5Options): Promise<Prepared
     {
       type: 'text',
       text:
-        'Exact-text gold checkpoint: the complete serialized history follows as text. ' +
-        'Answer exact strings character-for-character; there is no search tool.',
+        'Exact-text gold checkpoint: the complete serialized history follows as text, then the ' +
+        'same exact-token index as the pure-visual checkpoint. Read the relevant text or index for ' +
+        'every question; do not answer from memory. Copy exact strings character for character; ' +
+        'there is no search tool.',
     },
     ...(source.head.length > 0 ? [{ type: 'text' as const, text: source.head }] : []),
     ...(source.middle.length > 0 ? [{ type: 'text' as const, text: source.middle }] : []),
@@ -658,6 +660,12 @@ export async function prepareV5Arms(options: PrepareV5Options): Promise<Prepared
           },
         ]
       : []),
+    {
+      type: 'text' as const,
+      text:
+        'Checkpoint rule: for every later question, re-read the relevant text or exact-token index; ' +
+        'do not answer from memory or from an earlier answer. The text and index above are the only source.',
+    },
   ];
   const goldPreparation: V5Preparation = {
     elapsedMs: 0,
@@ -855,7 +863,6 @@ export async function runV5Suite(
   const visual = reports.find((entry) => entry.arm === 'pure-visual');
   const gold = reports.find((entry) => entry.arm === 'gold-text');
   const degraded = reports.find((entry) => entry.arm === 'degraded-visual');
-  const recall = reports.find((entry) => entry.arm === 'recall-ref');
   const original = reports.find((entry) => entry.arm === 'original');
   const visualMean = visual?.accepted.mean ?? 0;
   const goldMean = gold?.accepted.mean ?? 0;
@@ -971,14 +978,6 @@ export async function runV5Suite(
       '>= 5/6',
       regionMean('tail').correct + '/' + regionMean('tail').total,
       regionMean('tail').correct >= 5,
-    ),
-    gate(
-      'Non-inferiority vs recall',
-      'visual >= recall - 1',
-      recall === undefined
-        ? 'recall arm not run'
-        : visualMean.toFixed(2) + ' vs ' + recall.accepted.mean.toFixed(2),
-      recall !== undefined && visualMean >= recall.accepted.mean - 1,
     ),
     gate(
       'Peak prompt',

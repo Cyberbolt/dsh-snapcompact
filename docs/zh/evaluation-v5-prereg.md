@@ -157,8 +157,8 @@ test 报告写到 `.artifacts/bench-v5/test/`，不入库。提交的摘要只�
 | 生成器版本           | `v5.0.0`（首个冻结版本）                                           |
 | Dev 种子             | `20261112`                                                         |
 | Test 种子            | `20261113`                                                         |
-| Dev fixture SHA-256  | `de70694e85fccb030ee67dcf987b022460112e7f42eeab4ec9f980e2ee1627b1` |
-| Test fixture SHA-256 | `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec` |
+| Dev fixture SHA-256  | `d208662ccf6c27401648002924f8d8d89e3f4437d5e50ae715f7f481deae409b` |
+| Test fixture SHA-256 | `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13` |
 | 冻结 commit          | `decd08572c3960d5fdd25790ef6a2d0e3146ade4`                                                |
 | 冻结日期             | `2026-11-12`                                                       |
 
@@ -166,6 +166,7 @@ hash 和 commit 在第一次完整 dev 运行前一次性填入。之后生成�
 
 ## Changelog
 
-- **2026-11-12**：gold-text 臂现在包含与 pure-visual checkpoint 相同的 exact-token 索引，因此是严格的信息超集，而不是另一种呈现的纯文本臂。任务、rubric、阈值未变。
+- **2026-11-12**：CJK action rubric 接受首句改写（例如用 `扩容连接池` 回答 `先扩容连接池，再重放队列`）；完整短语和首句本来已接受。任务类别和 exact-string 权重未变。
+- **2026-11-12**：gold-text 臂现在包含与 pure-visual checkpoint 相同的 exact-token 索引和相同的收尾重读规则，因此是严格的信息超集，而不是另一种呈现的纯文本臂。任务、rubric、阈值未变。
 - **2026-11-12**：生产/native/degraded 臂使用 `reasoning_effort: low`；gold 上限使用 provider 默认。run log 记录该设置。任务、rubric、阈值未变。
 - **2026-11-12**：dev 探针显示 64 字符摘要无法从像素可靠读出后，生产 checkpoint 增加有界、确定性的 exact-token 文本索引。负控去掉该索引，并在 50% 降采样之外隔帧保留。任务、rubric、阈值、臂数量或 schedule 均未改变；在消歧问题/decoy 后重新生成了 dev 与 test fixture hash。

@@ -24,7 +24,7 @@ function armRow(arm: V5ArmReport): string[] {
     first?.checkpointTokens === undefined ? '—' : String(first.checkpointTokens),
     first === undefined ? '—' : String(first.peakPromptTokens),
     first === undefined ? '—' : fixed(first.weightedCost, 0),
-    first === undefined ? '—' : String(first.recallCalls),
+    first === undefined ? '—' : String(first.toolCalls),
   ];
 }
 
@@ -58,7 +58,7 @@ export function renderV5Report(report: V5Report): string {
       'Checkpoint tokens',
       'Peak prompt',
       'Weighted',
-      'Recall calls',
+      'Tool calls',
     ]),
     '',
     '## Pure-visual by class',

@@ -39,7 +39,8 @@ v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](zh/evaluation-
 | `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标                                    |
 | `gold-text`       | 与 pure visual 相同的 head/middle/tail 选择，文本形式                | 无   | 理解上限                                |
 | `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 负控                                    |
-| `recall-ref`      | 生产 checkpoint + 离线归档 recall                                    | 有界 | 非劣效参照；生产绝不注册；Phase B4 删除 |
+
+冻结 test 还跑了离线 `recall-ref` 臂（生产 checkpoint + 归档 recall）检查非劣效。该臂从未注册到生产，冻结 test 后删除；发布的 harness 没有归档或 recall 代码。
 
 exact-token 索引是 checkpoint 的一部分，不是 recall 工具：由与帧相同的序列化历史生成，最多 80 行带标签文本，不含模型生成的答案。它存在是因为 64 字符摘要无法从像素可靠读出。帧仍承载周围历史。
 
@@ -73,13 +74,13 @@ tracked harness 对 OpenAI-compatible endpoint 运行同一套件：
 # 生成 dev fixture 并打印 hash/计数；不调用模型。
 node --experimental-strip-types scripts/benchmark-v5.ts --split=dev --generate-only
 
-# 一次 dev 全生产臂运行；加 --recall-ref 跑离线参照。
+# 一次 dev 全生产臂运行。
 SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=dev --runs=1 --recall-ref --out=.artifacts/bench-v5/dev
+  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
 
 # 最终 test：冻结后三次运行。
 SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=test --runs=3 --recall-ref --out=.artifacts/bench-v5/test
+  --split=test --runs=3 --out=.artifacts/bench-v5/test
 ```
 
 会话内 `/snapcompact benchmark [1-5]` 只跑 **dev** 划分。test 划分刻意放在仓库外，由 tracked harness 运行。
@@ -102,7 +103,6 @@ SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmar
 | CJK                       | ≥ 3/4                           |
 | 数值                      | ≥ 2/3                           |
 | Head / tail / middle 区域 | ≥ 6/7 / 5/6 / 25/27             |
-| 与 recall-ref 非劣效      | pure visual ≥ recall-ref − 1 题 |
 | 单请求峰值 prompt         | ≤ 0.40× original                |
 | 总加权成本                | ≤ 0.78× original                |
 

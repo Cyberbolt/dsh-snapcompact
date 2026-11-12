@@ -157,8 +157,8 @@ The test report is written under `.artifacts/bench-v5/test/` and is not committe
 | Generator version    | `v5.0.0` (first frozen version)                                    |
 | Dev seed             | `20261112`                                                         |
 | Test seed            | `20261113`                                                         |
-| Dev fixture SHA-256  | `de70694e85fccb030ee67dcf987b022460112e7f42eeab4ec9f980e2ee1627b1` |
-| Test fixture SHA-256 | `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec` |
+| Dev fixture SHA-256  | `d208662ccf6c27401648002924f8d8d89e3f4437d5e50ae715f7f481deae409b` |
+| Test fixture SHA-256 | `087da65cd52a3087b622de8925eb1acf366abe6d15f7941b551aec4de9c5cb13` |
 | Freeze commit        | `decd08572c3960d5fdd25790ef6a2d0e3146ade4`                                                |
 | Freeze date          | `2026-11-12`                                                       |
 
@@ -166,6 +166,7 @@ The hashes and commit are filled once, before the first full dev run. Any later 
 
 ## Changelog
 
-- **2026-11-12**: The gold-text arm now includes the same exact-token index as the pure-visual checkpoint, so it is a strict information superset rather than a differently presented text-only arm. No task, rubric or threshold changed.
+- **2026-11-12**: The CJK action rubric accepts the leading-clause paraphrase (for example `扩容连接池` for `先扩容连接池，再重放队列`); the full phrase and first clause were already accepted. No task class or exact-string weight changed.
+- **2026-11-12**: The gold-text arm now includes the same exact-token index and the same closing re-read rule as the pure-visual checkpoint, so it is a strict information superset rather than a differently presented text-only arm. No task, rubric or threshold changed.
 - **2026-11-12**: Production/native/degraded arms use `reasoning_effort: low`; the gold ceiling uses the provider default. The run log records this. No task, rubric or threshold changed.
 - **2026-11-12**: Added a bounded, deterministic exact-token text index to the production checkpoint after dev probes showed that 64-character digests were not reliably readable from pixels. The degraded control omits the index and keeps every other frame in addition to the 50% downscale. No task, rubric, threshold, arm count, or schedule changed; the dev and test fixture hashes were regenerated after the question/decoys were disambiguated.

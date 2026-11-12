@@ -20,11 +20,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { PNG } from 'pngjs';
-import { fileAttachmentReferenceSchema } from '../../src/archives/format.js';
-import type { FileStore } from '../../src/archives/repository.js';
 
 /** Real disk bytes with a deliberately small, deterministic host policy; no provider I/O. */
-export class DiskAttachments implements FileStore {
+export class DiskAttachments {
   readonly imageLimits = {
     maxImageBytes: 16 * 1024 * 1024,
     maxImagesPerMessage: 20,
@@ -39,11 +37,11 @@ export class DiskAttachments implements FileStore {
     const digest = createHash('sha256').update(input.data).digest('hex');
     await mkdir(this.directory, { recursive: true });
     await writeFile(join(this.directory, digest), input.data);
-    return fileAttachmentReferenceSchema.parse({
-      attachmentId: `sha256:${digest}`,
+    return {
+      attachmentId: `sha256:${digest}` as FileAttachmentRef['attachmentId'],
       bytes: input.data.byteLength,
       name: input.name ?? 'file.bin',
-    });
+    };
   }
 
   async *readFileStream(ref: FileAttachmentRef, signal?: AbortSignal): AsyncIterable<Uint8Array> {

@@ -213,7 +213,7 @@ function toolResultText(message: Message, config: SnapcompactConfig['serializati
 /**
  * Serialize the selected history into a dense, frame-oriented projection.
  *
- * The exact archive is gone; this projection is the checkpoint. Tool calls and
+ * There is no archive; this projection is the checkpoint. Tool calls and
  * their results merge into one `»call:` section so the model reads the command
  * next to its output. The source text is clipped head-and-tail, never silently.
  */

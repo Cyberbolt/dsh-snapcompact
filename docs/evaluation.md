@@ -39,7 +39,8 @@ No model judges an answer. The prompt contains only the question text and JSON k
 | `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None    | Target                                                                         |
 | `gold-text`       | Same head/middle/tail selection as text                                                 | None    | Comprehension ceiling                                                          |
 | `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None    | Negative control                                                               |
-| `recall-ref`      | Production checkpoint + offline archive recall                                          | Bounded | Non-inferiority reference; never registered in production; removed at Phase B4 |
+
+The frozen test also ran an offline `recall-ref` arm (production checkpoint + archive recall) to check non-inferiority. That arm was never registered in production and was removed after the frozen test; the shipped harness has no archive or recall code.
 
 The exact-token index is part of the checkpoint, not a recall tool: it is generated from the same serialized history as the frames, capped at 80 labeled lines, and contains no model-generated answer. It exists because 64-character digests are not reliably readable from pixels. The frames still carry the surrounding history.
 
@@ -73,13 +74,13 @@ The tracked harness runs the same suites against an OpenAI-compatible endpoint:
 # Generate the dev fixture and print its hash/counts; no model call.
 node --experimental-strip-types scripts/benchmark-v5.ts --split=dev --generate-only
 
-# One dev run of all production arms; add --recall-ref for the offline reference.
+# One dev run of all production arms.
 SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=dev --runs=1 --recall-ref --out=.artifacts/bench-v5/dev
+  --split=dev --runs=1 --out=.artifacts/bench-v5/dev
 
 # Final test: three runs, after the freeze.
 SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmark-v5.ts \
-  --split=test --runs=3 --recall-ref --out=.artifacts/bench-v5/test
+  --split=test --runs=3 --out=.artifacts/bench-v5/test
 ```
 
 The in-session `/snapcompact benchmark [1-5]` runs the **dev** split only. The test split is deliberately outside the repository and is run by the tracked harness.
@@ -102,7 +103,6 @@ The pre-registered gates are:
 | CJK                           | ≥ 3/4                                 |
 | Numeric                       | ≥ 2/3                                 |
 | Head / tail / middle region   | ≥ 6/7 / 5/6 / 25/27                   |
-| Non-inferiority vs recall-ref | pure visual ≥ recall-ref − 1 question |
 | Peak single-request prompt    | ≤ 0.40× original                      |
 | Total weighted cost           | ≤ 0.78× original                      |
 

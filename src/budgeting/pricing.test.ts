@@ -1,17 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { billedPromptTokens, estimateCheckpoint, CHECKPOINT_WRAPPER_ALLOWANCE } from './pricing.js';
 import type { ImageRoute } from './capabilities.js';
-import { fileAttachmentReferenceSchema } from '../archives/format.js';
 
 const meter = { estimateMessage: () => 100 };
 const image = {
   type: 'image' as const,
   attachment: {
-    attachmentId: fileAttachmentReferenceSchema.parse({
-      attachmentId: `sha256:${'a'.repeat(64)}`,
-      name: 'image.png',
-      bytes: 100,
-    }).attachmentId,
+    attachmentId: `sha256:${'a'.repeat(64)}` as never,
     mediaType: 'image/png' as const,
     bytes: 100,
     width: 1024,

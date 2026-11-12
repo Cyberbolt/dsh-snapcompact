@@ -113,7 +113,7 @@ export function escapeCharacter(character: string): string {
  * Continuous text flow: a full row wraps at the frame edge, one `¶` marks each
  * source newline, and leading indentation is preserved verbatim. No source line
  * reserves the remainder of its row, which is where most of the density gain
- * comes from. The exact archive, not this projection, remains the source of truth.
+ * comes from. The exact head/tail and index, not this projection, remain the source of truth.
  */
 export function layoutText(
   text: string,

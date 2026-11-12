@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Session, SessionId } from '@deepseek-ai/dsh-session';
 import { createAssistantMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
-import { ArchiveRepository } from '../../src/archives/repository.js';
-import { ArchiveService } from '../../src/archives/service.js';
 import { SnapcompactEngine } from '../../src/compaction/engine.js';
 import { FILE_LIST_HEADER } from '../../src/compaction/file-ops.js';
 import type { MethodContext } from '../../src/compaction/method.js';
@@ -34,7 +32,6 @@ async function setup(
   );
   const renderer = rendererModule.createRenderer();
   cleanups.push(harness.dispose, () => renderer.dispose());
-  const archives = new ArchiveService(new ArchiveRepository(harness.attachments));
   const engine = new SnapcompactEngine(
     harness.ctx,
     resolveConfig({
@@ -46,7 +43,7 @@ async function setup(
     renderer,
     new AbortController().signal,
   );
-  return { ...harness, archives, engine, renderer };
+  return { ...harness, engine, renderer };
 }
 
 const longSource =

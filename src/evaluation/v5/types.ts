@@ -1,14 +1,13 @@
 import type { Message } from '@deepseek-ai/dsh-llm';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 
-/** The arms a v5 run can execute. `recall-ref` is offline-only and is removed in Phase B4. */
+/** The arms a production v5 run can execute. */
 export type V5ArmName =
   | 'original'
   | 'native-text'
   | 'pure-visual'
   | 'gold-text'
   | 'degraded-visual'
-  | 'recall-ref';
 
 /** Primary question class; cross-cutting tags are reported separately. */
 export type V5QuestionKind =
@@ -119,8 +118,8 @@ export interface V5TurnResult {
   readonly cacheWriteTokens: number;
   readonly weightedCost: number;
   readonly rounds: number;
-  readonly recallCalls: number;
-  readonly recallBytes: number;
+  readonly toolCalls: number;
+  readonly toolBytes: number;
   readonly elapsedMs: number;
   readonly parseMode: V5ParseMode;
   readonly audit: V5UsageAudit;
@@ -142,8 +141,8 @@ export interface V5ArmRun {
   readonly cacheWriteTokens: number;
   readonly weightedCost: number;
   readonly rounds: number;
-  readonly recallCalls: number;
-  readonly recallBytes: number;
+  readonly toolCalls: number;
+  readonly toolBytes: number;
   readonly elapsedMs: number;
   readonly audit: V5UsageAudit;
   readonly frames?: number;

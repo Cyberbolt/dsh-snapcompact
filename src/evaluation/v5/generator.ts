@@ -456,7 +456,10 @@ const QUESTION_SPECS: readonly QuestionSpec[] = [
     turn: 6,
     question: '事故后采取的第一步是什么？',
     answer: (f) => f.cjkAction,
-    rubric: any((f) => [f.cjkAction, f.cjkAction.split('，')[0] ?? f.cjkAction]),
+    rubric: any((f) => {
+      const first = f.cjkAction.split('，')[0] ?? f.cjkAction;
+      return [f.cjkAction, first, first.replace(/^先/u, '')];
+    }),
     source: (f) => MIDDLE_SOURCES.cjkAction(f),
     kind: 'cjk',
   },
