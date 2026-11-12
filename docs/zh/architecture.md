@@ -69,3 +69,7 @@ DSH 拥有 maintenance admission 和事务锁；插件不添加竞争的 session
 - **渲染确定但非无损。** 源投影可能丢字符；精确文本和索引是它们所含字符串的 source of truth。
 - **视觉路径不总是更便宜。** 它避免 summary 调用，峰值 prompt 通常小得多，但图片 token 贵或 horizon 短时可能比原始文本更贵。v5 benchmark 报告逐轮加权成本，不承诺普遍节省。
 - **估算大小、阅读准确率和金钱成本是不同测量。** 显式 benchmark 校准路由；绝不静默改用户配置。
+
+### 没有移植的渲染杠杆
+
+渲染器刻意保持为小型 1-bit TypeScript 路径。它没有实现 omp 的灰度 dim ink、内嵌 Silver TrueType fallback、六色句子 ink 或 line repetition。它改用通用 `* ` 标记 exact-token 行、2 px cell advance、Unifont 自带 CJK 覆盖，以及有界 exact-token 文本索引承载摘要和路径。这些省略写在这里，而不是藏在 benchmark 声明里；v5.1 测的就是实际发布的渲染器。

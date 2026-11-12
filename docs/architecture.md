@@ -69,3 +69,7 @@ DSH owns maintenance admission and transaction locks; the plugin adds no competi
 - **Rendering is deterministic but not lossless.** The source projection may drop characters; the exact text and index are the source of truth for the strings they contain.
 - **The visual path is not always cheaper.** It avoids a summary call and usually has a much smaller peak prompt, but a route with expensive image tokens or a short horizon can cost more than raw text. The v5 benchmark reports per-turn weighted cost; it does not promise a universal saving.
 - **Estimated size, reading accuracy and monetary cost are different measurements.** An explicit benchmark calibrates a route; it never silently changes user configuration.
+
+### Renderer levers not ported
+
+The renderer is deliberately a small 1-bit TypeScript path. It does not implement omp's grayscale dim ink, the embedded Silver TrueType fallback, six-hue sentence ink, or line repetition. Instead it uses generic `* ` markers for exact-token lines, a 2 px cell advance, Unifont's built-in CJK coverage, and the bounded exact-token text index for digests and paths. Those omissions are visible here rather than hidden in a benchmark claim; the v5.1 results measure the renderer that ships.
