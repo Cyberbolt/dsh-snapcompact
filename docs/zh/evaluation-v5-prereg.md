@@ -159,7 +159,7 @@ test 报告写到 `.artifacts/bench-v5/test/`，不入库。提交的摘要只�
 | Test 种子            | `20261113`                                                         |
 | Dev fixture SHA-256  | `de70694e85fccb030ee67dcf987b022460112e7f42eeab4ec9f980e2ee1627b1` |
 | Test fixture SHA-256 | `a7a169f31df57a3347e3efe0c1f65b0dd021b50ca604f491f5c0ea739fdea2ec` |
-| 冻结 commit          | `__FREEZE_COMMIT__`                                                |
+| 冻结 commit          | `decd08572c3960d5fdd25790ef6a2d0e3146ade4`                                                |
 | 冻结日期             | `2026-11-12`                                                       |
 
 hash 和 commit 在第一次完整 dev 运行前一次性填入。之后生成器任何改动都会改变 hash，并要求新的冻结。
