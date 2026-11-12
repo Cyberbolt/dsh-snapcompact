@@ -1,6 +1,6 @@
 {
   "name": "dsh-snapcompact",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "DeepSeek Harness plugin that compacts long chats by rendering history into compact bitmap frames a vision model can read, with exact head/tail text and a bounded exact-token index.",
   "type": "module",
   "license": "MIT",

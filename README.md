@@ -52,7 +52,7 @@ A locally packed tarball:
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.2.tgz"
 ```
 
 A tarball URL:

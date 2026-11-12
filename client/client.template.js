@@ -88,7 +88,7 @@ window.__ModuleLoader__.load({
       'method.snapcompact': 'Snapcompact',
       'method.snapcompactHint': '把中间历史渲染成像素字帧，视觉模型直接读。',
       'method.shake': 'Shake',
-      'method.shakeHint': '把超大工具输出归档，只保留引用。',
+      'method.shakeHint': '超大工具输出只留首尾摘录，中间丢弃。',
       'method.soft': 'Soft',
       'method.softHint': '回到 DSH 原生摘要；不保留视觉 checkpoint，也没有回查工具。',
       effective: '当前生效',
@@ -158,7 +158,7 @@ window.__ModuleLoader__.load({
       'method.snapcompactHint':
         'Render the middle of the history as pixel-font frames a vision model reads directly.',
       'method.shake': 'Shake',
-      'method.shakeHint': 'Archive oversized tool output and keep a reference.',
+      'method.shakeHint': 'Oversized tool output keeps only head/tail excerpts; the middle is dropped.',
       'method.soft': 'Soft',
       'method.softHint':
         'Fall back to the DSH native summary; no visual checkpoint and no search tool.',

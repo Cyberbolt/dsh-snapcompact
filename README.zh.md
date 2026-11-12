@@ -52,7 +52,7 @@ DSH Desktop 请优先使用应用内的插件页面。
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.2.tgz"
 ```
 
 tarball URL 请执行：
