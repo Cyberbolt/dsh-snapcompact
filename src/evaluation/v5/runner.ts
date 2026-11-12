@@ -802,9 +802,37 @@ function check(
   return { check, expected, actual, pass };
 }
 
-function armTally(arms: readonly V5ArmReport[], arm: V5ArmName, key: string): number {
+/** The slice of an arm report the class gates need; `V5ArmReport` satisfies it structurally. */
+export interface ArmTallies {
+  readonly arm: V5ArmName;
+  readonly measuredRuns: number;
+  readonly byKind: Record<string, { correct: number; total: number }>;
+}
+
+/**
+ * Pooled class tallies sum every measured run, but the frozen gates are per run.
+ * Divide by the run count before comparing, so a 3-run total is never held against a per-run threshold.
+ */
+export function classMean(
+  arms: readonly ArmTallies[],
+  arm: V5ArmName,
+  keys: readonly string[],
+): { correct: number; total: number } {
   const entry = arms.find((candidate) => candidate.arm === arm);
-  return entry?.byKind[key]?.correct ?? 0;
+  const runs = Math.max(1, entry?.measuredRuns ?? 1);
+  let correct = 0;
+  let total = 0;
+  for (const key of keys) {
+    const tally = entry?.byKind[key] ?? { correct: 0, total: 0 };
+    correct += tally.correct;
+    total += tally.total;
+  }
+  return { correct: correct / runs, total: total / runs };
+}
+
+/** Render a per-run tally such as `6.00/6`; the denominator is always an integer question count. */
+export function showTally(tally: { correct: number; total: number }): string {
+  return tally.correct.toFixed(2) + '/' + String(Math.round(tally.total));
 }
 
 function gate(
@@ -915,6 +943,11 @@ export async function runV5Suite(
     const runs = Math.max(1, visual?.measuredRuns ?? 1);
     return { correct: tally.correct / runs, total: tally.total / runs };
   };
+  const crossRegion = classMean(reports, 'pure-visual', ['cross-region']);
+  const temporalCausal = classMean(reports, 'pure-visual', ['temporal', 'causal']);
+  const negation = classMean(reports, 'pure-visual', ['negation']);
+  const cjk = classMean(reports, 'pure-visual', ['cjk']);
+  const numeric = classMean(reports, 'pure-visual', ['numeric']);
   const visualPeak = visual?.runs.find((run) => run.status === 'measured')?.peakPromptTokens ?? 0;
   const originalPeak =
     original?.runs.find((run) => run.status === 'measured')?.peakPromptTokens ?? 0;
@@ -928,57 +961,19 @@ export async function runV5Suite(
       (visual?.exact.mean ?? 0).toFixed(2),
       (visual?.exact.mean ?? 0) >= 15,
     ),
-    gate(
-      'Cross-region',
-      '>= 5/6',
-      String(armTally(reports, 'pure-visual', 'cross-region')),
-      armTally(reports, 'pure-visual', 'cross-region') >= 5,
-    ),
-    gate(
-      'Temporal/causal',
-      '>= 5/6',
-      String(
-        armTally(reports, 'pure-visual', 'temporal') + armTally(reports, 'pure-visual', 'causal'),
-      ),
-      armTally(reports, 'pure-visual', 'temporal') + armTally(reports, 'pure-visual', 'causal') >=
-        5,
-    ),
-    gate(
-      'Negation/constraint',
-      '>= 4/5',
-      String(armTally(reports, 'pure-visual', 'negation')),
-      armTally(reports, 'pure-visual', 'negation') >= 4,
-    ),
-    gate(
-      'CJK',
-      '>= 3/4',
-      String(armTally(reports, 'pure-visual', 'cjk')),
-      armTally(reports, 'pure-visual', 'cjk') >= 3,
-    ),
-    gate(
-      'Numeric',
-      '>= 2/3',
-      String(armTally(reports, 'pure-visual', 'numeric')),
-      armTally(reports, 'pure-visual', 'numeric') >= 2,
-    ),
-    gate(
-      'Head region',
-      '>= 6/7',
-      regionMean('head').correct + '/' + regionMean('head').total,
-      regionMean('head').correct >= 6,
-    ),
+    gate('Cross-region', '>= 5/6', showTally(crossRegion), crossRegion.correct >= 5),
+    gate('Temporal/causal', '>= 5/6', showTally(temporalCausal), temporalCausal.correct >= 5),
+    gate('Negation/constraint', '>= 4/5', showTally(negation), negation.correct >= 4),
+    gate('CJK', '>= 3/4', showTally(cjk), cjk.correct >= 3),
+    gate('Numeric', '>= 2/3', showTally(numeric), numeric.correct >= 2),
+    gate('Head region', '>= 6/7', showTally(regionMean('head')), regionMean('head').correct >= 6),
     gate(
       'Middle region',
       '>= 25/27',
-      regionMean('middle').correct + '/' + regionMean('middle').total,
+      showTally(regionMean('middle')),
       regionMean('middle').correct >= 25,
     ),
-    gate(
-      'Tail region',
-      '>= 5/6',
-      regionMean('tail').correct + '/' + regionMean('tail').total,
-      regionMean('tail').correct >= 5,
-    ),
+    gate('Tail region', '>= 5/6', showTally(regionMean('tail')), regionMean('tail').correct >= 5),
     gate(
       'Peak prompt',
       '<= 0.40x original',
