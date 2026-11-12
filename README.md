@@ -12,9 +12,9 @@
 
 **A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary.**
 
-The middle of a long context is rendered as images the model reads directly, while the start and the end stay ordinary text — so a command, path or checksum from many turns ago is still there to copy. Each checkpoint carries a copyable index of exact strings and a `FILES` file map; the render happens locally, so nothing is summarized and no extra API key is needed.
+Concretely: when DSH triggers context compaction, the start and the end of the context stay as ordinary text while the middle is rendered as images (locally, with no model call), and each checkpoint carries a copyable index of exact strings and a `FILES` file map.
 
-Built for long-running sessions that keep needing details from many turns ago — typically coding or debugging sessions. Not for short chats, text-only models, or `minimal` mode.
+The plugin suits long-running sessions that keep coming back to earlier details. It is not meant for compacting short chats.
 
 **Quick start:** Plugins → Add plugin → `dsh-snapcompact` → new session → **Snapcompact (Standard)**.
 
@@ -26,15 +26,15 @@ Requires DSH `0.2.x` and Node.js 24+.
 2. Install `dsh-snapcompact`.
 3. Restart if prompted, then create a new session and choose a variant.
 
-| Official mode | Choose                     | What it is                                                            |
-| ------------- | -------------------------- | --------------------------------------------------------------------- |
-| `standard`    | **Snapcompact (Standard)** | Shell, files, search, subagents, workflows, web, plan mode            |
-| `ptc`         | **Snapcompact (PTC)**      | `run_code` as the only direct tool; everything else through `tools.*` |
-| `cordis`      | **Snapcompact (Cordis)**   | `tool-cordis` and the official Cordis authoring skills                |
+| Official mode | Snapcompact preset         |
+| ------------- | -------------------------- |
+| `standard`    | **Snapcompact (Standard)** |
+| `ptc`         | **Snapcompact (PTC)**      |
+| `cordis`      | **Snapcompact (Cordis)**   |
 
-Installation only adds opt-in presets: official presets and running sessions are untouched, and choosing a variant is the enable action. `minimal` is not supported — it deliberately omits read/write/edit, so frames would defeat its purpose.
+`minimal` is not supported — it deliberately omits `read`/`write`/`edit`, so Snapcompact would defeat its purpose.
 
-To uninstall, remove the plugin from the Plugins page. Its presets disappear; checkpoints already committed stay in their sessions as ordinary summary messages. Upgrading from 0.6.x? 0.7.0 changed how exact strings are kept — read the [migration note](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/migration-0.7.md).
+To uninstall, remove the plugin from the Plugins page. Its presets disappear; checkpoints already committed stay in their sessions as ordinary summary messages.
 
 From the CLI:
 
@@ -65,9 +65,9 @@ The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `
 
 ## Why images instead of a summary?
 
-The idea of replacing a summary with images comes from the [Oh My Pi](https://github.com/can1357/oh-my-pi) `snapcompact` project; this plugin is an independent DSH implementation of it.
+Replacing a summary with images is an idea from `snapcompact` in [Oh My Pi](https://github.com/can1357/oh-my-pi); this plugin is an independent implementation of `snapcompact` for DSH.
 
-A vision model is billed largely by image area, not by how many characters the image contains. Up to the legibility limit, a dense frame carries more text per token than the same text sent verbatim, so the part of the history you no longer need character for character becomes a few readable images instead of a lossy summary.
+A vision model is billed mainly by image area, regardless of how many characters an image holds. Within the legibility limit, a dense frame carries more information per token than plain text. Content that would otherwise be condensed into a text summary is rendered as images instead, so more context survives at a lower token cost.
 
 |                 | Raw history | Native summary | Snapcompact                         |
 | --------------- | ----------- | -------------- | ----------------------------------- |
@@ -75,7 +75,7 @@ A vision model is billed largely by image area, not by how many characters the i
 | Compaction cost | 0           | One model call | 0 (local render)                    |
 | Exact strings   | Yes         | May be lost    | Verbatim in head/tail, indexed      |
 
-A terse summary can still be smaller per turn on short sessions; [Limits](#limits) explains when the trade-off reverses.
+A native summary can fit short sessions better; see [Limits](#limits).
 
 ## How it works
 
@@ -104,7 +104,7 @@ The `snapcompact` method (order 1) runs only when both hold: the route (this ses
 
 | Entry point           | What it does                                                                                       |
 | --------------------- | -------------------------------------------------------------------------------------------------- |
-| `/compact`            | Manual compaction; inside a Snapcompact preset it runs the chain                                   |
+| `/compact`            | Manual compaction; needs to run inside a Snapcompact preset                                        |
 | `/snapcompact status` | Current route (provider/model), effective threshold, compactable space and per-method availability |
 
 ## Configure
@@ -114,7 +114,7 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 ## Limits
 
 - **Not lossless, in two places.** The first is rendering: characters the bitmap font does not cover (emoji, rare scripts, combining marks) become `?`, tabs expand to spaces, inner space runs collapse and ANSI escapes are stripped; and the model reads pixels, not text, so a 64-character digest is not something to expect back from a picture. The second is serialization, before rendering: routine `INFO`/`PASS` lines, stack-call lines, long runs of repeated file listings and metric lines are deterministically elided, long fields keep only their head and tail with the middle removed, and an over-budget projection keeps both ends of the middle and drops the oldest dense center — every omission leaves a marker shaped like `[… elided …]`. Errors, labeled facts, commands and paths are not elided; for character-exact history rely on the exact head/tail text, which is never rendered, and strings like digests go into the text index.
-- **Savings depend on the model in use and the horizon you need.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
+- **Savings depend on the model in use and the context length.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
 - **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
 
 ## Troubleshooting
@@ -122,7 +122,7 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 <details>
 <summary>The Snapcompact presets are not in the picker</summary>
 
-Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, install through the app's Plugins page, not a CLI profile the app does not use.
+Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, install through the app's Plugins page.
 
 </details>
 
