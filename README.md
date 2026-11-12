@@ -10,35 +10,13 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#install)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**Compact a long DSH session by rendering it, not summarizing it.**
+**A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary.**
 
-When a session gets long, Snapcompact stops sending the middle of it verbatim and renders that part into dense PNG frames a vision model reads directly. The exact text at both ends stays verbatim, and a small text index beside the frames carries the checksums, paths and commands that pixels cannot be trusted to reproduce. The visual path calls no summarizer, needs no extra API key and makes no network request.
+The middle of a long context is rendered as images the model reads directly, while the start and the end stay ordinary text — so a command, path or checksum from many turns ago is still there to copy. Each checkpoint carries a copyable index of exact strings and a `FILES` file map; the render happens locally, so nothing is summarized and no extra API key is needed.
 
-It is an independent DSH implementation of the [Oh My Pi](https://github.com/can1357/oh-my-pi) `snapcompact` idea.
-
-Built for long coding or debugging sessions where you still need a command, path, checksum or identifier from many turns ago. Not for short chats, text-only models, or `minimal` mode.
+Built for long-running sessions that keep needing details from many turns ago — typically coding or debugging sessions. Not for short chats, text-only models, or `minimal` mode.
 
 **Quick start:** Plugins → Add plugin → `dsh-snapcompact` → new session → **Snapcompact (Standard)**.
-
-## Why render?
-
-A vision model is billed largely by image area, not by how many characters the image contains. Up to the legibility limit, a dense frame carries more text per token than the same text sent verbatim, so the part of the history you no longer need character for character becomes a few readable images instead of a lossy summary.
-
-|                 | Raw history | Native summary | Snapcompact                         |
-| --------------- | ----------- | -------------- | ----------------------------------- |
-| What survives   | Everything  | A summary      | Exact head/tail, frames, text index |
-| Compaction cost | 0           | One model call | 0 (local render)                    |
-| Exact strings   | Yes         | May be lost    | Verbatim in head/tail, indexed      |
-
-A terse summary can still be smaller per turn on short sessions; [Limits](#limits) explains when the trade-off reverses.
-
-## What you get
-
-- **Exact strings come back as text.** The first and last part of the history stay verbatim, and a bounded index lists checksums, paths, commands, identifiers and labeled facts as plain text you can copy.
-- **Your history becomes one message.** Compaction replaces the middle with a single checkpoint — an ordinary summary message in the session. Nothing else changes, and nothing is deleted from disk.
-- **No summarizer call on the visual path.** Rendering is local: no generation cost, no network round trip, no extra API key.
-- **A file map that survives.** A bounded `FILES` index built from read/write/edit calls, marked `(Read)` / `(Write)` / `(RW)`. It is navigation, not a disk snapshot.
-- **A safe fallback.** `snapcompact → shake → soft`, with the native summary last.
 
 ## Install
 
@@ -85,6 +63,20 @@ The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `
 
 </details>
 
+## Why images instead of a summary?
+
+The idea of replacing a summary with images comes from the [Oh My Pi](https://github.com/can1357/oh-my-pi) `snapcompact` project; this plugin is an independent DSH implementation of it.
+
+A vision model is billed largely by image area, not by how many characters the image contains. Up to the legibility limit, a dense frame carries more text per token than the same text sent verbatim, so the part of the history you no longer need character for character becomes a few readable images instead of a lossy summary.
+
+|                 | Raw history | Native summary | Snapcompact                         |
+| --------------- | ----------- | -------------- | ----------------------------------- |
+| What survives   | Everything  | A summary      | Exact head/tail, frames, text index |
+| Compaction cost | 0           | One model call | 0 (local render)                    |
+| Exact strings   | Yes         | May be lost    | Verbatim in head/tail, indexed      |
+
+A terse summary can still be smaller per turn on short sessions; [Limits](#limits) explains when the trade-off reverses.
+
 ## How it works
 
 ```text
@@ -106,7 +98,7 @@ one checkpoint: exact head/tail + frames + text index
 | 2     | `shake`       | none           | Large tool outputs replaced by bounded excerpts                 |
 | 3     | `soft`        | native summary | DSH's native text summary                                       |
 
-The visual method runs only when both hold: the route (the provider/model this session runs on, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
+The `snapcompact` method (order 1) runs only when both hold: the route (this session's provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
 
 ## Use it
 
