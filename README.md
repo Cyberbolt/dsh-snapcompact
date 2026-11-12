@@ -23,7 +23,7 @@ Built for long-running sessions that keep needing details from many turns ago â€
 Requires DSH `0.2.x` and Node.js 24+.
 
 1. Open **Plugins â†’ Add plugin**.
-2. Install `dsh-snapcompact@0.7.0`.
+2. Install `dsh-snapcompact`.
 3. Restart if prompted, then create a new session and choose a variant.
 
 | Official mode | Choose                     | What it is                                                            |
