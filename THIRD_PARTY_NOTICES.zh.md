@@ -17,3 +17,32 @@ checkpoint 的 `FILES` 段沿用 oh-my-pi 文件操作摘要的分组、前缀�
 DSH 接入使用 DeepSeek Harness（MIT）的公开 `BasicCompactionEngine` 扩展接口。DSH 包作为宿主提供的 peer dependencies，不将其实现或许可冒充本项目原创内容。
 
 原创应用代码见 [LICENSE](LICENSE)。
+
+## oh-my-pi snapcompact
+
+v5 的序列化、foveated archive 布局、stopword/tool-result dimming、模型感知帧形状等思路改编自 [`@oh-my-pi/snapcompact`](https://github.com/can1357/oh-my-pi/tree/main/packages/snapcompact)。上游包为 MIT 许可；本项目使用自己的 TypeScript 渲染器，不打包上游 Bun/native 渲染器。
+
+```text
+MIT License
+
+Copyright (c) 2025-2026 Can Bölük
+Copyright (c) 2026 Stencil Labs, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

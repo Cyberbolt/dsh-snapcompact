@@ -55,8 +55,8 @@ describe('visual source projection', () => {
     const serialized = serializeConversation(messages, config);
     expect(serialized).toContain('goal');
     expect(serialized).not.toContain('secret reasoning');
-    expect(serialized).toContain('chars omitted');
-    expect(serialized).toContain('[tool-call');
+    expect(serialized).toContain('ch elided');
+    expect(serialized).toContain('»call:');
     expect(serialized.length).toBeLessThan(20_000);
   });
 
@@ -119,7 +119,7 @@ describe('visual source projection', () => {
   it('clips long text with a visible omission marker', () => {
     const clipped = clipText('a'.repeat(100), 20);
     expect(clipped.startsWith('a'.repeat(12))).toBe(true);
-    expect(clipped).toContain('80 chars omitted');
+    expect(clipped).toContain('80ch elided');
     expect(clipped.length).toBeLessThan(120);
   });
 

@@ -32,9 +32,8 @@ describe('settings entry', () => {
   it('applies the schema defaults and leaves the threshold unset', () => {
     const current = resolve({});
     expect(current['methodOrder']).toEqual(['snapcompact', 'shake', 'soft']);
-    expect(current['maxFrames']).toBe(20);
+    expect(current['maxFrames']).toBe(40);
     expect(current['frameSize']).toBe(1568);
-    expect(current['archiveMaxBytes']).toBe(64 * 1024 * 1024);
     expect(current['thresholdRatio']).toBeUndefined();
     expect(current['retainRatio']).toBeUndefined();
     expect(current['retainTokens']).toBeUndefined();
@@ -47,7 +46,6 @@ describe('settings entry', () => {
         thresholdRatio: 0.72,
         frameSize: 1024,
         maxFrames: 3,
-        archiveMaxBytes: 1024 * 1024,
         shakeThresholdChars: 2048,
       }),
     ).toMatchObject({
@@ -85,7 +83,6 @@ describe('settings entry', () => {
     { thresholdRatio: 0.19 },
     { frameSize: 4096 },
     { maxFrames: 65 },
-    { archiveMaxBytes: 0 },
     { shakeThresholdChars: 128 },
     { retainRatio: 0.005 },
     { retainRatio: 0.51 },

@@ -14,7 +14,7 @@
       config:
         id: snapcompact
         name: Snapcompact (Standard)
-        description: 'Standard mode plus bitmap-frame compaction with exact-history recall and text fallbacks.'
+        description: 'Standard mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.'
         # The registry sorts presets by numeric order, so this variant sits
         # right after the official preset it mirrors.
         order: 1.5
@@ -93,7 +93,7 @@
                   methodOrder: [snapcompact, shake, soft]
               - id: command-compact
                 name: '@deepseek-ai/dsh-command-compact'
-          # Deliberately omit the destructive tool-result pruner; shake archives before externalizing.
+          # Deliberately omit the destructive tool-result pruner; shake externalizes large outputs.
           - id: delegation
             name: cordis:group
             group: true
@@ -141,7 +141,7 @@
       config:
         id: snapcompact-ptc
         name: Snapcompact (PTC)
-        description: 'PTC mode plus bitmap-frame compaction with exact-history recall and text fallbacks.'
+        description: 'PTC mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.'
         # The registry sorts presets by numeric order, so this variant sits
         # right after the official preset it mirrors.
         order: 2.5
@@ -223,7 +223,7 @@
                   methodOrder: [snapcompact, shake, soft]
               - id: command-compact
                 name: '@deepseek-ai/dsh-command-compact'
-          # Deliberately omit the destructive tool-result pruner; shake archives before externalizing.
+          # Deliberately omit the destructive tool-result pruner; shake externalizes large outputs.
           - id: delegation
             name: cordis:group
             group: true
@@ -275,7 +275,7 @@
       config:
         id: snapcompact-cordis
         name: Snapcompact (Cordis)
-        description: 'Cordis mode plus bitmap-frame compaction with exact-history recall and text fallbacks.'
+        description: 'Cordis mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.'
         # The registry sorts presets by numeric order, so this variant sits
         # right after the official preset it mirrors.
         order: 4.5
@@ -354,7 +354,7 @@
                   methodOrder: [snapcompact, shake, soft]
               - id: command-compact
                 name: '@deepseek-ai/dsh-command-compact'
-          # Deliberately omit the destructive tool-result pruner; shake archives before externalizing.
+          # Deliberately omit the destructive tool-result pruner; shake externalizes large outputs.
           - id: delegation
             name: cordis:group
             group: true

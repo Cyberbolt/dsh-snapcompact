@@ -30,7 +30,7 @@ export const CHAIN_PRESETS: readonly ChainPreset[] = Object.freeze([
     id: 'native-only',
     label: '仅原生摘要',
     order: ['soft'],
-    note: '完全使用 DSH 原生摘要；归档与 snapcompact_recall 仍然可用。',
+    note: '完全使用 DSH 原生摘要；不保留视觉 checkpoint，也没有回查工具。',
   },
 ]);
 

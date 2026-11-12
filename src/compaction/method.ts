@@ -2,7 +2,6 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-attachment';
 import type {} from '@deepseek-ai/dsh-token-meter';
 import type { ContentBlock, Message, TokenUsage, ToolSchema } from '@deepseek-ai/dsh-llm';
-import type { ArchiveRecord } from '../archives/service.js';
 import type { SnapcompactConfig, MethodName } from '../config.js';
 import type { ImageRoute, ModelRoute } from '../budgeting/capabilities.js';
 import type { Renderer } from '../rendering/worker-client.js';
@@ -38,7 +37,6 @@ export interface MethodContext {
    */
   readonly checkpointTargetTokens: number;
   readonly meter: Context['tokenMeter'];
-  readonly archive: ArchiveRecord;
   readonly config: SnapcompactConfig;
   readonly route: ModelRoute;
   readonly llm: Context['llm'];

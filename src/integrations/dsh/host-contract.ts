@@ -22,8 +22,6 @@ const REQUIREMENTS: readonly Requirement[] = [
     methods: ['saveFile', 'readFileStream'],
     numbers: ['imageLimits.maxImagesPerMessage'],
   },
-  { service: 'sessionProjections', methods: ['register'] },
-  { service: 'tools', methods: ['register'] },
   { service: 'commands', methods: ['register'] },
 ];
 

@@ -14,6 +14,7 @@ const options: RenderOptions = {
   maxSourceBytes: 64 * 1024 * 1024,
   timeoutMs: 15_000,
   lineHeight: 20,
+  letterSpacing: 0,
 };
 
 beforeAll(async () => {

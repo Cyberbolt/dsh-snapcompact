@@ -4,8 +4,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { BasicCompactionEngine } from '@deepseek-ai/dsh-compaction-basic';
 import type { LlmResolvedModelInfo, Message } from '@deepseek-ai/dsh-llm';
 import type { EpochHeader } from '@deepseek-ai/dsh-session';
-import type { ArchiveService } from '../archives/service.js';
-import { isArchiveReference } from '../archives/format.js';
 import { toNativePolicy } from '../config.js';
 import type { SnapcompactConfig, MethodName } from '../config.js';
 import type {
@@ -15,7 +13,6 @@ import type {
   MethodContext,
 } from './method.js';
 import { estimateCheckpoint } from '../budgeting/pricing.js';
-import { checkpointSummary } from './checkpoint.js';
 import {
   collectPolicyViabilityProblems,
   MIN_USEFUL_TOKENS,
@@ -42,7 +39,6 @@ export class SnapcompactEngine extends BasicCompactionEngine {
   constructor(
     ctx: Context,
     readonly settings: SnapcompactConfig,
-    private readonly archives: ArchiveService,
     readonly renderer: Renderer,
     private readonly lifetime: AbortSignal,
   ) {
@@ -85,7 +81,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       agent,
       header,
     );
-    if (sourceMessages.length === 0) throw new Error('There is no source history to archive.');
+    if (sourceMessages.length === 0) throw new Error('There is no source history to compact.');
     const { budget, contextWindow } = await this.checkpointBudget(
       header,
       provider,
@@ -96,26 +92,12 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     );
     this.assertUsefulSource(sourceTokens, contextWindow);
     const checkpointTargetTokens = budget.kind === 'ok' ? budget.tokens : 0;
-    const parentArchives = sourceMessages.flatMap((message) =>
-      message.content.flatMap((block) =>
-        block.type === 'file' && isArchiveReference(block.attachment) ? [block.attachment] : [],
-      ),
-    );
-    const archive = await this.archives.create(
-      {
-        sessionId: agent.id,
-        messages: sourceMessages,
-        parentArchives,
-      },
-      signal,
-    );
     const context: MethodContext = {
       input,
       sourceMessages,
       sourceTokens,
       checkpointTargetTokens,
       meter: this.ctx.tokenMeter,
-      archive,
       route: { provider, model },
       config: this.settings,
       llm: this.ctx.llm,
@@ -138,7 +120,7 @@ export class SnapcompactEngine extends BasicCompactionEngine {
           failures.push(`${name}: ${attempt.reason}`);
           continue;
         }
-        const summary = checkpointSummary(name, archive, attempt.result.summary);
+        const summary = attempt.result.summary;
         const tokens = estimateCheckpoint(summary, this.ctx.tokenMeter, attempt.imageRoute);
         if (tokens >= sourceTokens) {
           failures.push(`${name}: no estimated shrink (${tokens} vs ${sourceTokens}).`);
@@ -170,8 +152,8 @@ export class SnapcompactEngine extends BasicCompactionEngine {
   }
 
   /**
-   * Refuse to spend a model call (or create an archive) for a source history
-   * too small to pay for itself. The floor is `max(1024, window × ratio)` and
+   * Refuse to spend a model call for a source history too small to pay for
+   * itself. The floor is `max(1024, window × ratio)` and
    * `guard.minSourceRatio: 0` disables the check.
    */
   private assertUsefulSource(sourceTokens: number, contextWindow: number | undefined): void {

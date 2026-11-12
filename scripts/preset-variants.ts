@@ -28,7 +28,7 @@ export const PRESET_VARIANTS: readonly PresetVariant[] = [
     source: 'snapcompact.yml',
     name: 'Snapcompact (Standard)',
     description:
-      'Standard mode plus bitmap-frame compaction with exact-history recall and text fallbacks.',
+      'Standard mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.',
     order: 1.5,
   },
   {
@@ -37,7 +37,7 @@ export const PRESET_VARIANTS: readonly PresetVariant[] = [
     source: 'snapcompact-ptc.yml',
     name: 'Snapcompact (PTC)',
     description:
-      'PTC mode plus bitmap-frame compaction with exact-history recall and text fallbacks.',
+      'PTC mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.',
     order: 2.5,
   },
   {
@@ -46,7 +46,7 @@ export const PRESET_VARIANTS: readonly PresetVariant[] = [
     source: 'snapcompact-cordis.yml',
     name: 'Snapcompact (Cordis)',
     description:
-      'Cordis mode plus bitmap-frame compaction with exact-history recall and text fallbacks.',
+      'Cordis mode plus bitmap-frame compaction with exact head/tail, an exact-token index and text fallbacks.',
     order: 4.5,
   },
 ];

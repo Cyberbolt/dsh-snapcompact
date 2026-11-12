@@ -44,8 +44,8 @@ export const shake: CompactionMethod = async (context) => {
     if (!isExternalizable(message, text, context.config.shakeThresholdChars)) return text;
     changed = true;
     return (
-      `${text.slice(0, characterBoundary(text, 4096))}\n\n[Large tool output archived; exact content is available through ` +
-      `snapcompact_recall, archive ${context.archive.reference.attachmentId}, message ${message.id}.]\n\n` +
+      `${text.slice(0, characterBoundary(text, 4096))}\n\n[Large tool output omitted from this excerpt; ` +
+      `message ${message.id} is not available through a search tool.]\n\n` +
       text.slice(characterBoundary(text, Math.max(0, text.length - 1024)))
     );
   });

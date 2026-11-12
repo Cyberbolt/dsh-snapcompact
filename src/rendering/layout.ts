@@ -51,6 +51,8 @@ const UNASSIGNED = /\p{Unassigned}/u;
 const FORMAT = /\p{Format}/u;
 const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, 'gu');
 const TRAILING_SPACES = / +$/u;
+const LEADING_SPACES = /^ +/u;
+const INNER_SPACES = / {2,}/gu;
 
 function label(code: number): string {
   return `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -177,14 +179,18 @@ export function layoutText(
     }
     rowLastLine = sourceLine;
     glyphs.push({ glyph, character, x });
-    x += glyph.width;
+    x += glyph.width + options.letterSpacing;
     if (!isMarker) rowChars += 1;
   };
 
   const lines = normalized.split('\n');
   for (const [index, original] of lines.entries()) {
     const sourceLine = index + 1;
-    const line = original.replace(TRAILING_SPACES, '');
+    const trimmed = original.replace(TRAILING_SPACES, '');
+    const indent = LEADING_SPACES.exec(trimmed)?.[0] ?? '';
+    // Preserve indentation, collapse long internal runs: log padding costs
+    // frame cells but carries no meaning. Exact strings live in the text edges.
+    const line = indent + trimmed.slice(indent.length).replace(INNER_SPACES, ' ');
     for (const character of line) {
       const escaped = escapeCharacter(character);
       if (escaped === '?' && character !== '?') unrenderableChars += 1;

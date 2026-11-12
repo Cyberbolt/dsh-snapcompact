@@ -1,104 +1,102 @@
 # 配置
 
-插件配置属于**所选 Snapcompact preset 内隔离 compaction 组中的 dsh-snapcompact 行**，不是宿主全局第二个 compaction 服务。standard、PTC、Cordis 三个变体挂载相同的行 id 与配置键，因此会话选中哪个变体都使用同一份设置。插件页的设置卡管理常用项，其余项用 preset/配置编辑器或下面的 YAML。两者都通过当前 profile 的配置补丁持久化，不要手工重写 profile 文件。
+[English](configuration.md)
 
-手动压缩统一用 `/compact`，它解析到 preset 挂载的后端；`/snapcompact status` 只是只读诊断，不是压缩入口。
+配置**所选 Snapcompact preset 的隔离 compaction group 内的 dsh-snapcompact row**，而不是第二个全局 compaction service。standard、PTC、Cordis 三个变体挂载同一个 row id 和配置键，所以同一组设置对任一变体生效。插件页的设置卡管理常用键；preset/config 编辑器和下面的 YAML 覆盖其余项。两者都通过活动 profile 的 configuration patch 持久化；不要手改 profile 文件。
+
+手动压缩是 `/compact`；它解析到 preset 挂载的后端。`/snapcompact status` 是只读诊断，不是压缩入口。
 
 ```yaml
 methodOrder: [snapcompact, shake, soft]
 budget:
-  # 单个 checkpoint 可花掉触发余量的比例；0.5 恢复旧规则。
+  # 一个 checkpoint 可花掉触发余量的比例；0.5 恢复旧规则。
   checkpointShare: 0.4
 policy:
   auto: true
   thresholdRatio: 0.8
   retainRatio: 0.16
-  # Smaller model windows need less headroom; native validation applies.
   headroomTokens: 65536
 guard:
-  # thresholdRatio − retainRatio 低于该值时拒绝挂载；0 关闭。
+  # thresholdRatio - retainRatio 低于此值时拒绝挂载；0 关闭。
   minCompactableRatio: 0.1
-  # 源历史低于 max(1024, 窗口 × 该比例) 时跳过本次压缩；0 关闭。
+  # 源历史低于 max(1024, window x this) 时跳过本次压缩；0 关闭。
   minSourceRatio: 0.01
 rendering:
   width: 1568
   height: 1568
-  maxFrames: 20
+  maxFrames: 40
   lineHeight: 20
+  letterSpacing: 2
   minGlyphPx: 12
   maxTotalBytes: 16777216
   maxSourceBytes: 67108864
   timeoutMs: 15000
 serialization:
-  toolResultMaxChars: 2000
+  toolResultMaxChars: 1200
   toolArgumentMaxChars: 500
   toolCallMaxChars: 2000
-  messageTextMaxChars: 8000
+  messageTextMaxChars: 1500
   headChars: 2000
   tailChars: 2000
   includeReasoning: false
   maxCarriedImages: 4
-archiveMaxBytes: 67108864
 shakeThresholdChars: 8192
 routePolicies: []
 ```
 
-## 在应用内配置
+## 应用内设置
 
-**插件 → Snapcompact** 页面会为当前 profile 的 `snapcompact-settings` 行渲染设置卡。这一行与 preset 分开是有意的：DSH 只把 profile 平面里带 volatile 字段的入口投影到设置文档，而压缩插件本身必须留在可选 preset 内。该行把实时值作为 `snapcompactSettings` 服务发布，每个会话挂载 preset 时读取一次，因此一张卡配置所有 Snapcompact 变体。
+**Plugins → Snapcompact** 页为当前 profile 的 `snapcompact-settings` row 渲染设置卡。该 row 刻意与 preset 分离：DSH 只把 profile 平面条目的 volatile Config 字段投影到 settings document，而 compaction 插件必须留在 opt-in preset 内。row 通过 `snapcompactSettings` service 发布实时值；每个会话的 preset 实例在挂载时读取，所以一个卡片配置所有 Snapcompact 变体。
 
-卡片存储 8 个键，其中 6 个可编辑：
-
-| 界面项             | 配置路径                                | 默认                                          |
-| ------------------ | --------------------------------------- | --------------------------------------------- |
-| 方法链             | `methodOrder`                           | `[snapcompact, shake, soft]`                  |
-| 自定义触发阈值     | `policy.thresholdRatio`                 | 不设置（原生默认 0.8）                        |
-| 保留尾部（不显示） | `policy.retainRatio`（仅 YAML）         | 自动派生：`thresholdRatio ÷ 5`（0.8 时 0.16） |
-| 帧尺寸             | `rendering.width` 与 `rendering.height` | 1568                                          |
-| 最多帧数           | `rendering.maxFrames`                   | 20（上限 64）                                 |
-| 归档上限           | `archiveMaxBytes`                       | 64 MiB                                        |
-| 外置阈值           | `shakeThresholdChars`                   | 8192                                          |
+| 控件             | 配置路径                               | 默认                                      |
+| ---------------- | -------------------------------------- | ----------------------------------------- |
+| 方法链           | `methodOrder`                          | `[snapcompact, shake, soft]`              |
+| 自定义触发阈值   | `policy.thresholdRatio`                | 未设置（原生默认 0.8）                    |
+| 保留尾部（隐藏） | `policy.retainRatio`（YAML only）      | 派生：`thresholdRatio ÷ 5`（0.8 时 0.16） |
+| 帧尺寸           | `rendering.width` / `rendering.height` | 1568                                      |
+| 最大帧数         | `rendering.maxFrames`                  | 40（最大 64；host cap 优先）              |
+| 外置阈值         | `shakeThresholdChars`                  | 8192                                      |
 
 持久化与优先级：
 
-- 写入走 DSH 的设置服务，落到 profile 的配置补丁；重启后仍在，“恢复默认”（单字段或整卡）会移除覆盖。
-- 卡片保存的值覆盖 preset YAML 里的同名键。`thresholdRatio` 是例外：未开启自定义阈值时该键不存在，所以 preset 里的 `policy.thresholdRatio` 仍然生效。
-- 保留尾部自动派生：`retainRatio = thresholdRatio ÷ 5`。卡片不显示该键、也不写入；只有旧版保存过显式值时，才出现一行只读的「自定义」和「恢复自动」。`retainRatio` 与 `retainTokens` 仍然互斥，手写 YAML 同时给出两者会被严格解析器拒绝，YAML 显式覆盖依然可用。
-- 引擎在会话挂载 preset 时构造，因此改动对**新会话**生效；已有会话里 `/snapcompact status` 仍显示它启动时的配置。
-- 设置 schema 无法表达方法链顺序，所以为空、重复或不以 `soft` 结尾的已存值会被插件忽略；严格解析器仍是最后一道校验。
+- 写入通过 DSH settings service 到 profile 的 configuration patch；重启后保留，"Restore default" 可逐字段或整卡移除。
+- 保存的卡片值覆盖 preset YAML 的同名键。`thresholdRatio` 例外：自定义阈值启用前该键不存在，所以 preset 级 `policy.thresholdRatio` 仍生效。
+- 保留尾部自动：`retainRatio = thresholdRatio ÷ 5`。卡片隐藏它，也从不写入。只有旧版本保存的值会显示为只读 "Custom" 行，可用 "Restore automatic" 取消。`retainRatio` 和 `retainTokens` 仍互斥：strict parser 拒绝同时设置的 YAML。
+- 引擎在会话挂载 preset 时构造，所以改动对**新会话**生效；已有会话的 `/snapcompact status` 继续报告启动时配置。
+- settings schema 无法表达链顺序，所以空、重复或不以 `soft` 结尾的已存链会被插件忽略；strict parser 是最终门槛。
 
-bundle 还会在 profile 平面声明一行 UI 载体（`snapcompact-ui`，模块 `dsh-snapcompact`），配置是 `role: ui`。DSH 的浏览器模块扫描只读取「裸包名」Loader 行的 `dsh.client`，这一行就是让配置卡能被加载的入口；它不注册压缩、工具或命令。请保持启用：禁用后插件页不再显示设置卡（preset 本身仍然可用）。
+bundle 还声明 profile 平面的 carrier row（`snapcompact-ui`，module `dsh-snapcompact`），config 为 `role: ui`。DSH 的浏览器模块扫描器只从裸包名 Loader 条目读取 `dsh.client`，所以该 row 只为让卡片可加载；它不注册 compaction、工具或命令。保持启用：禁用会从插件页移除设置卡（preset 仍工作）。
 
-9 个键之外的内容仍然只走 YAML：`policy` 的其余字段、`guard`、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight` 与 `rendering.minGlyphPx`。
+上述键之外都是 YAML-only：其余 `policy`、`guard`、`serialization`、`routePolicies`、`rendering.maxTotalBytes`、`rendering.maxSourceBytes`、`rendering.timeoutMs`、`rendering.lineHeight`、`rendering.letterSpacing` 和 `rendering.minGlyphPx`。
 
-## 原生策略
+## 原生 policy
 
-`policy` 传入 `BasicCompactionEngine`。支持 thresholdRatio、headroomTokens、retainRatio/retainTokens（互斥）、summarizationProvider/summarizationModel（成对）、maxTokens、compactionRetries、maxOverflowRetries、auto、modelPolicies。空对象使用宿主原生默认。
+`policy` 由 `BasicCompactionEngine` 校验。支持 thresholdRatio、headroomTokens、retainRatio/retainTokens（互斥）、summarizationProvider/summarizationModel（成对）、maxTokens、compactionRetries、maxOverflowRetries、auto 和 modelPolicies。空对象使用原生默认。
 
-不要为小窗口模型盲目沿用 65,536 token headroom。原生后端会按目标模型的容量、输出预留和尾部保留预算验证。插件还会在挂载时额外校验阈值与保留尾部之间的差值（见[保留尾部与收益守卫](#保留尾部与收益守卫)）。
+不要把小窗口模型直接套上 65,536-token headroom。原生后端校验容量、输出预留和保留尾部预算。插件额外在挂载时校验 threshold 与 retain 的间隙（见[保留尾部与收益门槛](#保留尾部与收益门槛)）。
 
 ## 方法链与回退顺序
 
-`methodOrder` 是候选方法的优先级列表。引擎按顺序尝试，在**第一个成功的候选**处停止；顺序就是回退顺序，不是多阶段流水线。方法链必须非空、不重复，并以 `soft` 结尾。以下子集都合法：
+`methodOrder` 是候选方法的有序优先级列表。引擎依次尝试，在**第一个成功候选**停止；顺序是回退顺序，不是流水线阶段。链必须非空、不重复、以 `soft` 结尾。任何符合该形状的子集都合法：
 
-| 预设             | `methodOrder`                | 行为                                  |
-| ---------------- | ---------------------------- | ------------------------------------- |
-| 视觉优先（默认） | `[snapcompact, shake, soft]` | 先试本地视觉，再摘录，最后原生摘要    |
-| 视觉 + 原生      | `[snapcompact, soft]`        | 跳过摘录；视觉失败直接原生摘要        |
-| 仅原生摘要       | `[soft]`                     | 回到 DSH 原生摘要；归档与回查仍然可用 |
+| Preset               | `methodOrder`                | 行为                                 |
+| -------------------- | ---------------------------- | ------------------------------------ |
+| Visual-first（默认） | `[snapcompact, shake, soft]` | 本地视觉，然后摘录，最后原生摘要     |
+| Visual + native      | `[snapcompact, soft]`        | 跳过 shake；视觉失败用原生摘要       |
+| Native-only          | `[soft]`                     | 回到 DSH 原生摘要；无视觉 checkpoint |
 
-旧版本保存的方法链会在读取时归一化：`handoff` 被丢弃，其余顺序保留。手写 YAML 里如果仍写着 `handoff`，严格解析器会拒绝，需要删掉这个名字。
+`handoff` 方法移除前保存的链在读取时规范化：丢弃该名，保留其余顺序。手写 YAML 仍写 `handoff` 会被 strict parser 拒绝，删除该名即可。
 
-容易误解的语义：
+容易忽略的语义：
 
-- `shake` 只要存在超过 `shakeThresholdChars` 的工具输出就成功，放在 `snapcompact` 前面会抢先于视觉路径。
-- checkpoint 预算（触发阈值下剩余空间的配置份额）只约束 `snapcompact`；其它方法只要求 checkpoint 比源历史小。
-- 归档在方法链之前创建，所以配置成 `[soft]` 仍然保留 `snapcompact_recall`。
-- 取消会终止事务，不会触发下一方法。
+- 任何工具输出超过 `shakeThresholdChars` 时 `shake` 成功；放在 `snapcompact` 前会抢占视觉路径。
+- checkpoint 预算（触发余量的配置份额）只约束 `snapcompact`；其他方法只需产生比源更小的 checkpoint。
+- 取消会中止事务；绝不落到下一个方法。
+- 0.7.0 没有归档，也没有 recall 工具。`[soft]` 链不会保留隐藏搜索路径。
 
 ## 触发阈值
 
-自动压缩在测得的请求压力达到当前路由阈值时触发：
+自动压缩在测量到的请求压力达到路由模型阈值时开始：
 
 ```text
 threshold   = floor(min(W × thresholdRatio, W − O − headroomTokens))
@@ -106,85 +104,108 @@ retainRatio = thresholdRatio ÷ 5                 # 未显式设置时
 retain      = retainTokens ?? floor((W − O) × retainRatio)
 ```
 
-`W` 是适配器声明的上下文窗口，`O` 是本次请求的输出预留，`headroomTokens` 是容量安全余量。`thresholdRatio` 是窗口比例，不是绝对 token 数；小窗口模型通常需要更低的阈值和更小的 headroom。`retainRatio`/`retainTokens` 必须小于阈值，否则原生后端会拒绝该路由。
+`W` 是 adapter 声明的 context window，`O` 是有效输出预留，`headroomTokens` 是容量安全余量。`thresholdRatio` 是窗口比例，不是绝对 token 数；小窗口模型通常需要更低比例和更小 headroom。`retainRatio`/`retainTokens` 必须低于 threshold，否则原生后端拒绝该路由。
 
-派生尾部跟随的是阈值比例，而不是换算后的 token 阈值：当 headroom 压低阈值时，`retain` 仍按 `thresholdRatio` 计算，实际 token 占比可能超过 1/5。当前路由的真实数字以 `/snapcompact status` 为准。
+派生尾部跟随触发比例，而不是有效 token 数：headroom 压低 threshold 时，`retain` 仍按 `thresholdRatio` 缩放，所以其 token 占比可能超过 1/5。`/snapcompact status` 打印当前路由的解析尾部。
 
-`/snapcompact status` 会解析精确路由，打印当前 tokens、`W`、阈值 tokens、保留 tokens、两者之间的可压空间、守卫下限以及是否已越过阈值。这个展示只是对上述公式的解释，实际触发仍由原生引擎决定。阈值是配置期设置（修改后需重载），且不会关闭宿主的上下文溢出恢复。没有绝对 token 数阈值；请使用 `thresholdRatio`，并用 `/snapcompact status` 查看换算后的 token 数。
+`/snapcompact status` 解析确切路由，打印当前 tokens、`W`、threshold tokens、retained tokens、两者之间的可压空间、guard 下限以及压力是否越线。该显示只是解释公式；原生引擎仍是权威。阈值是配置时设置（需 reload），且绝不关闭 host 的 overflow recovery。
 
-### 保留尾部与收益守卫
+### 保留尾部与收益门槛
 
-触发阈值只有和保留尾部放在一起才有意义：
+触发阈值只有相对保留尾部才有意义：
 
 ```text
-可压空间 = 触发阈值 − 保留尾部
+compactable = threshold - retain
 ```
 
-尾部派生为 `thresholdRatio ÷ 5` 后，卡片路径的可压空间恒为 `4/5 × 阈值比例`（0.5 阈值时仍有 0.4），不会撞上 0.1 守卫。旧陷阱只可能出现在显式 retention 上：在 1M 窗口下，`thresholdRatio: 0.2` 配 `retainRatio: 0.16` 会预留约 158,720 token，只剩约 4% 的窗口（约 41K token）。checkpoint 加上保留文本很容易超过这个空间——这就是“占用 20%”在完整压缩后四舍五入成“19%”的原因。原生后端只拒绝 `retainRatio >= thresholdRatio`，无法判断这个差值是否小到不值得压缩。
+因为尾部派生为 `thresholdRatio ÷ 5`，自动卡片路径总留下 `4/5 × thresholdRatio` 可压（0.5 卡片下限时至少 0.4），所以不会触发 0.1 guard。显式保留才可能踩旧陷阱：1M 窗口、`thresholdRatio: 0.2`、`retainRatio: 0.16` 只留下约 4% 窗口；checkpoint 加保留文本很容易超过。
 
-`guard` 补上了这项检查：
+`guard` 补充检查：
 
-| 键                    | 默认   | 含义                                                                         |
-| --------------------- | ------ | ---------------------------------------------------------------------------- |
-| `minCompactableRatio` | `0.1`  | `thresholdRatio - retainRatio` 低于该值时拒绝挂载；`0` 关闭该校验。          |
-| `minSourceRatio`      | `0.01` | 单次压缩的源历史低于 `max(1024, 窗口 × 比例)` token 时跳过；`0` 关闭该检查。 |
+| Key                   | 默认   | 含义                                                                     |
+| --------------------- | ------ | ------------------------------------------------------------------------ |
+| `minCompactableRatio` | `0.1`  | `thresholdRatio - retainRatio` 低于此值时拒绝挂载。`0` 关闭。            |
+| `minSourceRatio`      | `0.01` | 源历史低于 `max(1024, window × ratio)` tokens 时跳过本次压缩。`0` 关闭。 |
 
-挂载校验在引擎构造函数里、原生默认值解析之后运行，因此同时覆盖全局 policy 和每个精确 `modelPolicies` 条目（沿用同一套继承规则）；错误会列出所有不可行的 scope、实际比例和修复方法。绝对 `retainTokens` 形式依赖具体窗口，不在挂载期判定；`/snapcompact status` 会打印真实可压空间，并在低于 `max(1024, 窗口 × minCompactableRatio)` 时警告。
+挂载检查在引擎构造函数、原生默认解析后运行，覆盖全局 policy 和每个精确 `modelPolicies` 条目。错误列出每个不可行 scope 的实际比例和修复方法。绝对 `retainTokens` 形式依赖窗口，所以不在挂载时拒绝；`/snapcompact status` 打印真实可压空间，并在低于 `max(1024, window × minCompactableRatio)` 时警告。
 
-收益门槛在测量完源历史之后、创建归档和调用任何方法之前运行：源太小会立即失败，不产生模型调用。手动 `/compact` 同样受该守卫约束；需要小规模手动压缩时调低 `guard.minSourceRatio`。
+源下限在源历史测量后、任何方法前运行：太小的源立即失败，不调用模型。手动 `/compact` 同样受 guard 约束；降低 `guard.minSourceRatio` 允许小手动运行。
 
-因此，显式组合 `thresholdRatio: 0.2` 加 `retainRatio: 0.16` 仍会在挂载时失败。修复方式：提高触发阈值（卡片下限为 `0.5`，宿主默认为 `0.8`）、降低或删除显式尾部（`retainRatio: 0.03` 在 1M 窗口下约 30K），或显式设置 `guard.minCompactableRatio: 0`。只保存过自定义阈值的 profile 不受影响：派生尾部替换了原来的默认值。
+### Checkpoint 预算
 
-### checkpoint 预算
-
-`snapcompact` 最多可以用掉阈值下剩余空间的 `budget.checkpointShare`（0.25–0.5，默认 0.4）：
+`snapcompact` 最多花掉 threshold 下余量的 `budget.checkpointShare`（0.25–0.5，默认 0.4）：
 
 ```text
 fixed  = max(0, surface - source)
 room   = threshold - fixed
-budget = floor(min(room, source) × checkpointShare)   # 路由未声明窗口时：floor(source × share)
+budget = floor(min(room, source) × checkpointShare)   # 无窗口：floor(source × share)
 ```
 
-`surface` 是压缩前的整段请求压力，`source` 是 checkpoint 要替换的历史；两者都来自原生引擎提交后会重新测量的那个 token meter。checkpoint 无法替代的部分——系统提示、工具 schema、输出预留、保留尾部——都留在 `fixed` 里。
+`surface` 是压缩前整个请求压力，`source` 是 checkpoint 替换的历史；两者来自原生引擎提交后重新测量的 token meter。checkpoint 无法替换的一切——system prompt、tool schema、输出预留、保留尾部——留在 `fixed`。
 
-留下 `1 - share` 的余量，可以让压缩后的总量回到阈值以下并保留真实余量；这也正是原生引擎在采纳 checkpoint 前会复核的条件。历史规则是 0.5；0.4 给 checkpoint、recall 页面和下一轮回答留出更多共享窗口的空间。自动压力触发时 `room ≈ source`，所以阈值口径等价于 `source × share`，只会按越界量收紧；对阈值以下的手动 `/compact` 同样成立。路由未声明上下文窗口、或模型信息解析失败时回退到 `source × share`；`room ≤ 0` 时直接跳过视觉路径，因为没有帧能把会话拉回阈值以下。
+留下 `1 - share` 的余量意味着压缩后总量以真实 margin 低于 threshold。历史规则是 0.5；0.4 给 checkpoint 和下一个回答留更多空间。自动压力触发时 `room ≈ source`，所以阈值基准等于 `source × share`；只会因会话超过触发点而收紧。手动 `/compact` 低于阈值时也正确。无声明窗口或模型查找失败时回退 `source × share`；`room ≤ 0` 跳过视觉路径。
 
-预算在每次压缩时按当前路由现算，所以它会自动跟随 `thresholdRatio`、`headroomTokens` 和按模型覆盖，不需要额外设置项。设置 `budget.checkpointShare: 0.5` 可恢复旧行为。旧配置里可能仍带着 `minCompressionRatio`；它只为升级兼容而被接受，实际会被忽略。
+预算每次压缩从实时路由重算，所以跟随 `thresholdRatio`、`headroomTokens` 和 per-model override，无需另一个设置。设 `budget.checkpointShare: 0.5` 恢复旧行为。旧 row 可能仍有 `minCompressionRatio`；为升级兼容接受并忽略。
 
-`/snapcompact status` 会打印当前份额和实际规则；精确 token 预算在压缩时按当次源历史计算。
+## 序列化
 
-较小的份额在短历史上可能少一两帧。0.4 默认偏向 recall 路径和长会话；如果主要使用“无 recall 工具的纯视觉路径”，0.5 可以恢复原来的帧数和准确率。评测结果会同时报告两条臂，而不是掩盖这个取舍。
+checkpoint 是面向帧的投影，不是逐字节 transcript：
 
-### Recall
+| Key                    | 默认  | 含义                                                |
+| ---------------------- | ----- | --------------------------------------------------- |
+| `messageTextMaxChars`  | 1500  | 单个 user/assistant 文本块的头尾上限。              |
+| `toolResultMaxChars`   | 1200  | 单个工具结果的头尾上限。                            |
+| `toolArgumentMaxChars` | 500   | 单个工具调用参数值的上限。                          |
+| `toolCallMaxChars`     | 2000  | 单个工具调用参数列表的总上限。                      |
+| `headChars`            | 2000  | 帧外保留的精确头部文本。                            |
+| `tailChars`            | 2000  | 帧外保留的精确尾部文本。                            |
+| `includeReasoning`     | false | 把 assistant reasoning 序列化为 `»think:` section。 |
+| `maxCarriedImages`     | 4     | 带入 checkpoint 的已有图片。                        |
 
-搜索默认返回有界 snippet：
+在 cap 之外，序列化器：
 
-- `detail: "snippet"`（默认）为每条查询返回最多 3 个窗口，命中点两侧各 `snippetChars` 个字符（40–400，默认 120）。即使只返回 3 条，命中行数仍然是完整的。
-- `complete: true` 表示每条查询都命中且没有被裁剪。`missing` / `truncated` 报告查询下标，不回显整批查询字符串，重试成本更低。
-- `detail: "lines"` 返回整行和 `nextOffset` / `nextColumn` 游标，适合需要完整代码行的场景。
-- 一次批量最多 20 条字面量，整个批次上限 20,000 个序列化字符。每个模型轮都会重发 checkpoint 和之前的页面，所以一次批量通常比逐题调用便宜得多。
+- 把工具调用与结果合并到一个 `»call:` section；
+- 丢弃常规 `INFO`/`PASS`/stack frame/文件列表/metric/paragraph 行，并用一个 `routine log lines elided` 标记计数；
+- 把结构相同的长行段折叠为前两行和后两行；
+- 给通用 exact-token 行加 `* ` 前缀；
+- 构建最多 80 行带标签文本的去重 exact-token 索引。
 
-工具本身没有配置键；这些是每次调用的参数。checkpoint 的提示文本要求模型在第一次 recall 调用中批量发送所有独立字面量，并且只重试报告的下标。
+过滤器是通用的：不知道 benchmark 或问题。埋在常规 `INFO` 行里的唯一精确串可能被丢弃；错误和带标签事实保留。
 
-## 图片启用条件
+## 渲染
 
-必须同时满足：模型明确声明 image 输入；适配器有图片计价、精确路由上界或带标签的 DeepSeek 估算；渲染和请求变体不缩小字形到可读阈值以下；帧/字节/像素符合附件预算；完整 checkpoint 能放进下面的触发阈值相对预算。
+| Key              | 默认   | 含义                                                  |
+| ---------------- | ------ | ----------------------------------------------------- |
+| `width`/`height` | 1568   | 帧边缘像素。host 图片策略和 max-edge 可能降低它。     |
+| `maxFrames`      | 40     | 帧数上限；host per-message image cap 仍会 clamp。     |
+| `lineHeight`     | 20     | 位图基线间距。                                        |
+| `letterSpacing`  | 2      | 每个 glyph 的额外水平像素；更宽 tracking 有助于 OCR。 |
+| `minGlyphPx`     | 12     | 请求会把 glyph 降采样到低于此值时跳过视觉路径。       |
+| `maxTotalBytes`  | 16 MiB | 每个 checkpoint 生成的 PNG 字节。                     |
+| `maxSourceBytes` | 64 MiB | 序列化源字节上限。                                    |
+| `timeoutMs`      | 15000  | 渲染 deadline，含排队和冷启动。                       |
 
-若适配器没有价格，插件会对 DeepSeek 模型使用 1024 token/帧的保守估算；其他模型只能在确认实际规则后显式设置上界，例如：
+帧是一比特灰度 PNG。bundled Unifont 覆盖拉丁、CJK、假名、谚文和常见符号。布局是连续流；`¶` 标记一个源换行。中段超出帧预算时，保留时间轴两端，丢弃最旧的密集中心。
+
+## 视觉资格
+
+路由必须显式声明图片输入，并提供图片计价、配置上限或带标签的模型族估算。保存/请求图片必须保持可读位图尺寸；否则跳过视觉方法。帧、字节和像素必须符合 host 策略，完整 checkpoint 必须符合触发相关预算。
+
+adapter 无计价时，已识别模型族使用带标签的保守每帧估算（DeepSeek 1024、Gemini 1120、Claude/GPT/Kimi/GLM 1568）。未知模型 fail closed 到文本链。其他模型可用显式保守路由上限：
 
 ```yaml
 routePolicies:
   - provider: your-provider
     model: exact-model-id
-    visualTokensPerFrame: 4096 # Example only, not a recommended price. Calibrate for the actual model and frame size.
+    visualTokensPerFrame: 4096 # 仅示例，不是推荐价格。按实际模型和帧尺寸校准。
 ```
 
-provider/model 精确匹配，不做模糊别名或跨模型沿用。估算/上界不代表真实 token；价格声明不会绕过 image 输入能力检查。尺寸改变后必须重新校准。
+Provider/model 精确匹配，无 alias、模糊匹配或跨模型复用。上限不是实际 usage，也不能授予缺失的 image modality。改尺寸后重新校准。
 
-## 上限和失败行为
+## 边界与失败
 
-配置允许缩小但不能超过首版安全边界：2048×2048 帧、每次 checkpoint 默认 20 帧且上限 64；宿主对单条消息的图片上限（默认 20 张）仍会钳制实际帧数，要真正用满需同时调高宿主的 `maxImagesPerMessage`。总图片最多16MiB，源与归档各最多64MiB，渲染最多15秒。还会受宿主实际限制以及当前保留图片数量约束。归档保存的是消息/转录 JSON，包含格式开销；源接近64MiB时可能因归档大小超限而拒绝。
+默认 1568×1568 帧、每个 checkpoint 40 帧（最大 64）、16 MiB 生成图片、64 MiB 序列化源、15 秒渲染 deadline。帧数在触发相关 checkpoint 预算下动态选择；host 更小限制和 retained-image 数量也适用。
 
-图片失败、未知价格、无收益会回退；所有候选失败则保留原会话区间并返回原生压缩错误。取消不触发下一方法。阈值与保留尾部低于可压下限时拒绝挂载；源历史低于收益门槛时在创建归档和调用方法之前失败。
+未知计价、视觉失败或节省不足会选择另一个方法。所有候选失败时，原生失败日志保留所选历史。取消绝不落到下一个方法。threshold/retention 低于可压下限会拒绝挂载；源低于收益下限会在任何方法前失败。
 
-Snapcompact 声明 `^0.2.2-rc.1`（0.2.x），并在 `0.2.2-rc.1` 上验证。只有在新宿主上通过安装与激活检查后，才移动下界；上界始终保留：放宽前需验证类型、集成、包内容与真实预设挂载。不要用版本豁免强装。
+Snapcompact 声明 `^0.2.2-rc.1`（0.2.x），在 `0.2.2-rc.1` 验证。只在该 host release 上完成安装和激活检查后再提高下限，并保持有限上限。不要绕过 host 检查。

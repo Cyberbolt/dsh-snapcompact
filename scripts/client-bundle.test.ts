@@ -333,7 +333,6 @@ describe('client bundle', () => {
       'retainTokens',
       'frameSize',
       'maxFrames',
-      'archiveMaxBytes',
       'shakeThresholdChars',
     ]) {
       expect(source).toContain(`"key": "${key}"`);

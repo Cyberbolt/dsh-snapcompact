@@ -1,81 +1,71 @@
-# 架构与阅读顺序
+# 架构与阅读指南
 
-## 先读这条数据流
+[English](architecture.md)
 
-原生引擎选中配对完整的历史区间 → 保存不可变归档 → 方法链计算候选 → 路由能力/计价/完整预算检查 → 返回标准 summary → **原生引擎**提交 compaction 事务。
+## 先看数据流
 
-插件不重写区间事务、不自己拼接 Session event 类型，也不在模型请求中暗中替换会话历史。全局/工作区文件不作为插件的隐藏事实来源。
+原生 balanced-range 选择 → 确定性序列化 → 本地视觉 checkpoint → 能力、计价与完整预算校验 → **原生 compaction 事务**。
 
-建议依次阅读组合根、配置、引擎、方法契约、具体方法，再读归档与渲染实现。每个目录按业务职责组织，避免从一个巨型入口追踪几十项无关功能。
+插件不替换事务引擎、不发明 Session 事件类型、不静默改写路由请求、不使用隐藏的 workspace/profile 文件。它只向 host 提供一个候选 summary；是否提交由 host 决定。
 
-## 模块边界
+## checkpoint 里有什么
 
-| 子系统           | 职责                                   | 不负责的事情                        |
-| ---------------- | -------------------------------------- | ----------------------------------- |
-| plugin           | 装配服务、注册工具与命令、生命周期     | 压缩策略和渲染细节                  |
-| compaction       | 有序尝试候选、保留摘要用量、提交前预算 | 重新实现原生事务/配对选择           |
-| archives         | 版本化格式、完整性验证、存取和有界回查 | 决定任意会话的访问权限              |
-| rendering        | 字体、排版、绘制、PNG、工作线程队列    | 模型路由、价格或任务语义摘要        |
-| budgeting        | 能力与请求尺寸、视觉计价、保守包装开销 | 将估计伪装为 provider usage         |
-| integrations/dsh | 归档索引投影、当前会话权限、人类命令   | 私自修改 profile 或持久化新事件类型 |
-| evaluation       | 固定语料的四组比较及报告               | 自动上传用户历史或后台计费          |
+已提交的 checkpoint 是一条普通 summary 消息。没有归档附件，没有 recall 工具。block 顺序：
 
-## 不变量
+1. 简短 guide：帧顺序、`¶` 换行标记、exact-token 索引，以及“后续问题必须重读 checkpoint”的规则；
+2. 可选的 `FILES` 索引，来自 read/write/edit 调用；
+3. 精确 head 文本（投影的前 `serialization.headChars` 个字符）；
+4. carried images，最旧在前，受 host 图片策略限制；
+5. 中段被裁剪时的 omission marker；
+6. 中段的位图帧，最旧在前；
+7. 精确 tail 文本（投影的后 `serialization.tailChars` 个字符）；
+8. 有界 exact-token 索引：从同一投影复制的、最多 80 行带标签文本；
+9. 重复“不要凭记忆回答”的收尾规则。
 
-1. PNG 从不成为唯一任务信息副本，始终伴随精确头尾文本、归档及原文入口。
-2. 进入 checkpoint 的文件引用对应已持久化的字节，归档 schema、大小、SHA-256、UTF-8 与转录重建必须一致。
-3. 模型原生 replay/signature blob 不复制到便携归档；可恢复的消息内容、原始工具参数和附件身份保留。
-4. 调用取消保持权威，不落入普通方法回退。方法失败时尚未修改会话 surface。
-5. 只有成功关闭的原生 compaction 才进入回查授权索引；索引来自日志，可重建和继承。
-6. 不按引用元数据估算视觉成本；未知能力失败关闭，未知价格仅对 DeepSeek 模型使用带标签的估算。
-7. 缺字和无法整形的字符转为可见占位，不静默丢弃；缩放后不可读或超页数时选择文本回退。
-8. 已有图片在槽位允许时携带进新 checkpoint，不能把附件描述当作原始像素重渲染。重复压缩保留父归档链。
-9. `FILES` 索引是有界的工具观测元数据：read/write/edit 调用加更早的 snapcompact FILES 块，不代表磁盘当前状态；按路径排序后最多 20 条，且不替代精确归档和回查。
+精确 head/tail 和索引是文本；帧承载周围历史。索引存在的原因是 64 字符摘要无法从像素可靠读出。它是确定性的，与帧来自同一序列化历史，不是搜索工具或归档。
 
-## Preset 文件的单一来源
+## 序列化
 
-三个[人工维护的条目列表](../../presets/) 是源：每个受支持的官方模式一份完整列表。[preset-variants.ts](../../scripts/preset-variants.ts) 集中声明每个变体的显示元数据与排序；构建脚本把每份列表缩进为 [bundle patch](../../cordis.patch.yml) 中一条字面 `@deepseek-ai/dsh-agent-preset` 声明。生成文件不手工编辑，不使用依赖运行时 base URL 的相对 include。这样既方便阅读条目，也能让插件管理器直接校验和挂载声明；`build-preset.ts --check` 会在提交的 patch 过期时报错。
+`serializeConversation` 构建面向帧的投影，而不是逐字节 transcript：
 
-## 模式覆盖
+- section 前缀（`»user:`、`»ai:`、`»think:`、`»call:`）替代冗长的 JSON 式头；
+- 工具调用与结果合并为一个 section，命令紧挨输出；
+- 每个字段头尾裁剪（消息文本默认 1,500 字符，工具结果 1,200，单参数 500），带可见的 `…Nch elided…` 标记；
+- 常规 `INFO`/`PASS`/stack frame/metric/paragraph 行被丢弃，并用一个 `routine log lines elided` 标记计数；
+- 结构相同的长行段折叠为前两行、后两行和计数；
+- 匹配通用 exact-token 模式（校验和、命令、路径、端口、超时、锁、flag、owner、target、事故事实）的行加前导 `* ` 标记；
+- exact-token 索引提取这些行的带标签子集，去重并限长。
 
-每个变体完整复制它对应的官方 preset，然后做一处替换和两处省略：
+过滤器刻意保持通用。它们不知道问题、fixture 或 benchmark。带持久标签或值的行保留；常规日志噪声丢弃。代价是明确的：埋在长 `INFO` 行里的唯一精确串可能被丢弃；错误、带标签事实、命令、路径和摘要保留。
 
-- `compaction-basic` 换成 `snapcompact`，保留 `command-compact`，因此 `/compact` 和自动压缩都解析到 Snapcompact 链。
-- 省略破坏性的 `tool-result-pruner`：shake 会先归档大结果再外置，pruner 会删掉归档仍需要引用的内容。
-- 省略处于禁用状态的 `tool-plugin-market`：它不贡献任何能力，保留只会增加对「并非每个宿主都附带」的插件的解析依赖。
+## 渲染
 
-其余内容与官方列表语义一致：工具行及其顺序、`disabled` 标记、`group`/`isolate` 隔离域，以及 `!!js` 表达式。PTC 变体保留 `tool-executor-ptc` 和官方对 workflow / 插件管理器的禁用；Cordis 变体保留 `tool-cordis`，以及从宿主安装中挂载 `@deepseek-ai/dsh-agent-preset` 官方技能目录的 `customSkillDirs` 表达式。
+渲染是本地、零模型调用的路径：
 
-`minimal` 有意不支持。它的组合刻意去掉 read/write/edit 和完整工具面；加入图像帧、FILES 索引与归档回查会违背该 preset 的定位。这是产品边界，不是技术限制。
+- 只使用 bundled GNU Unifont 18.0.01 位图字体；覆盖拉丁、CJK、假名、谚文和常见符号；
+- 布局是连续文本流：满行在帧边缘换行，一个 `¶` 标记每个源换行，保留行首缩进，内部连续空格折叠；
+- `letterSpacing`（默认 2 px）加宽每个 cell；`lineHeight`（默认 20 px）控制行距；两者都用每帧字符数换 OCR 可读性；
+- 帧是一比特灰度 PNG，密集文本压缩好，双色字体没有损失；
+- 帧尺寸、数量和像素投影在提交前按 host 图片限制与模型可读字高下限校验；
+- 中段超出帧预算时，布局保留时间轴两端，丢弃最旧的密集中心（foveation）；精确 head/tail 留在帧外。
 
-[官方快照](../../tests/fixtures/official-presets/) 固定到 [scripts/compat.ts](../../scripts/compat.ts) 中的 `DSH_VERIFIED_VERSION`，它也是发布区间的唯一来源。该下界移动时，从 `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`（桌面端位于 `app.asar` 内）替换三份快照并重跑 `pnpm check`；parity 测试会逐行指出任何非预期漂移。放宽上界属于需要评审的决定：parity 只证明已验证下界的组合，CI 的安装矩阵负责证明新宿主上仍可安装与挂载。
+模型的 image tokenization 与 max-edge 策略通过 host 的 image route 解析。没有声明视觉能力或没有可用价格估计的路由回退到文本链。
 
-## 为什么是独立 preset
+## FILES
 
-DSH 把 Agent 的压缩后端和它的消费者放在同一个 `cordis:group` 隔离域里。profile 平面的插件无法把后端发布进这个域；而用户覆盖内置 preset 时只能整表替换子列表，不能只改其中一个嵌套行。因此，在 `standard` 里替换 `compaction-basic` 就等于复制整份内置组合，并随每个 DSH 版本漂移。独立的 opt-in preset 是受支持的边界；选中后，`/compact` 和自动压缩都会解析到该 preset 挂载的后端。这个边界按模式分别落地：提供三个完整 opt-in preset，而不是一个能切换模式的 preset，因为声明之间不支持继承。
+checkpoint 在帧外携带一个有界 `FILES` 文本块。它由 read/write/edit 工具参数和早先的 snapcompact checkpoint 确定性派生；`bash`、apply-patch 和其他变更路径不在范围内。FILES 是 `(Read)` / `(Write)` / `(RW)` 导航元数据，不是文件系统快照，并计入 checkpoint token 估算。
 
-## 发布流水线
+## 事务与生命周期
 
-`package.json` 里的版本号是唯一的发布开关。[publish.yml](../../.github/workflows/publish.yml) 只在 registry 还没有该版本时发布它，走 npm trusted publishing，仓库里因此没有长期令牌。有三点保证它不会被绕过：registry 地址来自 `publishConfig` 并在整个 job 里固定，别人 `.npmrc` 里的镜像既改不了发布目标也改不了校验目标；plan 步骤在 `pnpm install` 之前运行且用 `fetch` 读 registry，判定不依赖已安装状态；tag 和 GitHub Release 在发布成功后立刻创建，因为它们才是交付物。
+每个 preset 拥有一个带界队列的 renderer 实例。deadline 包含排队等待和冷启动。dispose 永久拒绝新工作、终止 worker，不影响另一个 preset 的队列。
 
-registry 校验放在最后，并且足够有耐心。`npm publish` 返回时公网 packument 还没提供新版本——本仓库实测 0.1.2 滞后 56 秒、0.2.0 滞后 78 秒，所以固定一分钟的窗口只能靠运气。[verify-release.ts](../../scripts/verify-release.ts) 用指数退避轮询最多五分钟，再断言 dist-tag、`dist.integrity` 和 provenance 证明，并打印 registry 实际耗时。重跑 workflow 可以修复缺失的 tag 或 Release：plan 判定 `already-published`，跳过发布，但 Release 步骤照常执行。
+DSH 拥有 maintenance admission 和事务锁；插件不添加竞争的 session lock。失败的候选不会被部分提交。取消会停止压缩，绝不静默选择下一个方法。
 
-## 生命周期与并发
+## 有意的取舍
 
-每个 preset 的 compaction 组各自隔离后端和其消费者。安装只增加 opt-in preset，不取代官方 preset；新选择应在新会话验证。DSH 原生事务拥有会话锁和维护任务准入，插件没有第二套互相竞争的锁。
-
-工作线程的队列受限、超时包括等待和冷启动。拥有者卸载时负责终止其渲染资源，不应影响另一个 preset 的任务。附件存储由宿主拥有，失败产生的未引用对象不由插件擅自删除。
-
-## 有意保守的选择
-
-视觉方法是纯本地渲染，不额外调用模型。图片被卸载、路由没有可用价格估算，或帧预算放不进触发阈值推出的 checkpoint 预算时，仍保留文本链（shake 摘录 → 原生摘要）。精确代码或约束应回查原文。搜索默认返回有界 snippet：每条查询最多 3 个窗口，命中点两侧各 120 个字符，并给出完整命中行数；需要整行代码时仍可用 lines 模式，回传物理行号和分页游标。source message ID 留在归档文档里，不随每页重复发送，但返回的 snippet/页面会留在请求历史中，后续轮次仍要为它付费。
-
-checkpoint 预算不是固定的“一半”，而是触发余量的可配置份额（budget.checkpointShare，默认 0.4）。checkpoint、recall 页面和下一轮回答共享同一个窗口；把 60% 留作余量，才让中等检索率的长会话比重发源历史更便宜。每轮都检索时这还不够，因为每轮多一次请求的成本大约抵消了省下的源历史。
-
-帧投影是连续文本流：写满后在帧边缘折行，每个源换行由一个 `¶` 标记，行首缩进保留。帧是 1-bit 灰度 PNG，因为内置位图字体本身就是两色。标记和编码都不属于归档：精确头尾文本加 sha256 归档才是事实来源，`snapcompact_recall` 返回原始字节。
-
-checkpoint 还会在位图帧之外携带一个有界 `FILES` 文本块。它由 read/write/edit 工具参数和更早的 snapcompact checkpoint 确定性地生成；`bash`、apply-patch 等其他修改路径不在范围内。FILES 的 `(Read)` / `(Write)` / `(RW)` 只是导航元数据，不是文件系统快照，并会计入 checkpoint 的 token 估算。
-
-它没有生成调用，所以首次压缩的模型 token 成本更低；但稳态 checkpoint 比精简摘要大，优势取决于使用轮次以及 cache/图片计价。
-
-价格估算、OCR 准确率和实际货币成本是三件不同的事。缺少真实测量时不启用猜测性的收益宣传；依靠显式对照评测决定是否为某路由配置图片价格上界。
+- **压缩后没有搜索。** 没有归档，没有 recall 工具。精确串可从精确 head/tail 和有界 exact-token 索引恢复；同时被两者裁掉的串不可恢复。这是 0.7.0 的契约。
+- **索引有界。** 最多 80 行带标签文本。它是可读性辅助，不是完整 transcript。
+- **常规日志行会被省略。** 常规 `INFO` 行里的唯一值可能丢失；错误和带标签事实保留。
+- **渲染确定但非无损。** 源投影可能丢字符；精确文本和索引是它们所含字符串的 source of truth。
+- **视觉路径不总是更便宜。** 它避免 summary 调用，峰值 prompt 通常小得多，但图片 token 贵或 horizon 短时可能比原始文本更贵。v5 benchmark 报告逐轮加权成本，不承诺普遍节省。
+- **估算大小、阅读准确率和金钱成本是不同测量。** 显式 benchmark 校准路由；绝不静默改用户配置。

@@ -1,5 +1,5 @@
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
-import type { UsageAudit } from './types.js';
+import type { V5UsageAudit as UsageAudit } from './v5/types.js';
 
 /**
  * Relative cost weights for benchmark diagnostics, not a bill.

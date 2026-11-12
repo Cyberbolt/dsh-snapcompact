@@ -51,12 +51,12 @@ describe('plugin configuration', () => {
     expect(config.rendering).toMatchObject({
       width: 1568,
       height: 1568,
-      maxFrames: 20,
+      maxFrames: 40,
       lineHeight: 20,
       minGlyphPx: 12,
     });
     expect(config.serialization).toMatchObject({
-      toolResultMaxChars: 2_000,
+      toolResultMaxChars: 1_200,
       headChars: 2_000,
       tailChars: 2_000,
       maxCarriedImages: 4,

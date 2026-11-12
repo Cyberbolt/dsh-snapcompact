@@ -1,5 +1,4 @@
-import { Context } from '@deepseek-ai/cordis';
-import { LlmAdapter, LlmRuntime } from '@deepseek-ai/dsh-llm';
+import { LlmAdapter } from '@deepseek-ai/dsh-llm';
 import type {
   ContentBlock,
   Message,
@@ -8,130 +7,21 @@ import type {
   TokenUsage,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm';
-import { Session, SessionId } from '@deepseek-ai/dsh-session';
-import type { Agent } from '@deepseek-ai/dsh-agent';
+import type { Session } from '@deepseek-ai/dsh-session';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import YAML from 'yaml';
 import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment';
-import type { FileStore } from '../dist/archives/repository.js';
-import { ArchiveRepository } from '../dist/archives/repository.js';
-import { ArchiveService } from '../dist/archives/service.js';
-import { resolveConfig } from '../dist/config.js';
-import { SnapcompactEngine } from '../dist/compaction/engine.js';
-import {
-  buildVisualSource,
-  serializeConversation,
-  trimMiddle,
-} from '../dist/compaction/visual-source.js';
-import { summaryBlocks } from '../dist/compaction/methods/snapcompact.js';
-import { buildLongFixture } from '../dist/evaluation/fixture.js';
-import { evaluate } from '../dist/evaluation/runner.js';
-import { renderEvaluationReport, renderSessionReport } from '../dist/evaluation/report.js';
-import { evaluateSession } from '../dist/evaluation/session.js';
-import { createRenderer } from '../dist/rendering/worker-client.js';
-import type { Renderer } from '../dist/rendering/worker-client.js';
 
-const DEFAULT_PROVIDER = 'opencode-go';
-const DEFAULT_MODEL = 'deepseek-v4.1-flash';
-const DEFAULT_API_URL = 'https://opencode.ai/inference/go/v1/chat/completions';
-const DEFAULT_VISUAL_TOKENS = 1_343;
+export const DEFAULT_PROVIDER = 'opencode-go';
+export const DEFAULT_MODEL = 'deepseek-v4.1-flash';
+export const DEFAULT_API_URL = 'https://opencode.ai/inference/go/v1/chat/completions';
+export const DEFAULT_VISUAL_TOKENS = 1_343;
 const SESSION_HEADER = 'snapcompact-v4-' + randomUUID();
-
-type Suite = 'accuracy' | 'session' | 'all';
-
-interface CliOptions {
-  readonly suite: Suite;
-  readonly runs: number;
-  readonly share: number;
-  readonly out: string;
-  readonly preflight: boolean;
-  readonly lines: number;
-  readonly provider: string;
-  readonly model: string;
-  readonly apiUrl: string;
-}
-
-function usage(): string {
-  return [
-    'Usage: node --experimental-strip-types scripts/benchmark-live.ts [options]',
-    '  --suite=accuracy|session|all   default all',
-    '  --runs=N                       repeats; default 1 (1-5)',
-    '  --share=0.4                    checkpoint share (0.25-0.5)',
-    '  --out=.artifacts/v4            output directory',
-    '  --lines=5000                   long-fixture padding lines',
-    '  --preflight                    render the long fixture once; no model call',
-    '  --provider=... --model=...     route override',
-    '  --api-url=...                  OpenAI-compatible chat-completions endpoint',
-  ].join('\n');
-}
-
-function parseNumber(value: string, name: string, min: number, max: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
-    throw new Error(`${name} must be a number from ${min} to ${max}`);
-  }
-  return parsed;
-}
-
-function parseArgs(argv: readonly string[]): CliOptions {
-  let suite: Suite = 'all';
-  let runs = 1;
-  let share = 0.4;
-  let out = '.artifacts/v4';
-  let preflight = false;
-  let lines = 5_000;
-  let provider = process.env.SNAPCOMPACT_BENCH_PROVIDER ?? DEFAULT_PROVIDER;
-  let model = process.env.SNAPCOMPACT_BENCH_MODEL ?? DEFAULT_MODEL;
-  let apiUrl = process.env.SNAPCOMPACT_BENCH_API_URL ?? DEFAULT_API_URL;
-  for (const arg of argv) {
-    if (arg === '--preflight') {
-      preflight = true;
-      continue;
-    }
-    const match = /^--([a-z-]+)=(.*)$/u.exec(arg);
-    if (match === null) throw new Error(`Unknown argument: ${arg}\n${usage()}`);
-    const [, key, value] = match;
-    switch (key) {
-      case 'suite':
-        if (value !== 'accuracy' && value !== 'session' && value !== 'all') {
-          throw new Error('suite must be accuracy, session or all');
-        }
-        suite = value;
-        break;
-      case 'runs':
-        runs = parseNumber(value ?? '', 'runs', 1, 5);
-        if (!Number.isInteger(runs)) throw new Error('runs must be an integer');
-        break;
-      case 'share':
-        share = parseNumber(value ?? '', 'share', 0.25, 0.5);
-        break;
-      case 'out':
-        out = value ?? out;
-        break;
-      case 'lines':
-        lines = parseNumber(value ?? '', 'lines', 100, 20_000);
-        if (!Number.isInteger(lines)) throw new Error('lines must be an integer');
-        break;
-      case 'provider':
-        provider = value ?? provider;
-        break;
-      case 'model':
-        model = value ?? model;
-        break;
-      case 'api-url':
-        apiUrl = value ?? apiUrl;
-        break;
-      default:
-        throw new Error(`Unknown argument: --${key}\n${usage()}`);
-    }
-  }
-  return { suite, runs, share, out, preflight, lines, provider, model, apiUrl };
-}
 
 interface RawUsage {
   prompt_tokens?: number;
@@ -184,7 +74,7 @@ function usageOf(raw: RawUsage | null | undefined): TokenUsage | undefined {
   };
 }
 
-class DiskAttachments implements FileStore {
+export class DiskAttachments {
   readonly imageLimits = {
     maxImageBytes: 16 * 1024 * 1024,
     maxImagesPerMessage: 20,
@@ -273,7 +163,7 @@ interface ToolState {
   name?: string;
 }
 
-class OpenCodeAdapter extends LlmAdapter {
+export class OpenCodeAdapter extends LlmAdapter {
   private readonly attachments: DiskAttachments;
   private readonly apiKey: string;
   private readonly apiUrl: string;
@@ -370,6 +260,12 @@ class OpenCodeAdapter extends LlmAdapter {
       messages,
       stream: true,
       stream_options: { include_usage: true },
+      ...(process.env.SNAPCOMPACT_BENCH_REASONING === undefined
+        ? {}
+        : { reasoning_effort: process.env.SNAPCOMPACT_BENCH_REASONING }),
+      ...(process.env.SNAPCOMPACT_BENCH_THINKING === undefined
+        ? {}
+        : { thinking: { type: process.env.SNAPCOMPACT_BENCH_THINKING } }),
       ...(options.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
       ...(options.tools === undefined
         ? {}
@@ -478,7 +374,7 @@ class OpenCodeAdapter extends LlmAdapter {
   }
 }
 
-function estimateMessage(message: Pick<Message, 'content'>): number {
+export function estimateMessage(message: Pick<Message, 'content'>): number {
   let tokens = 12;
   for (const block of message.content) {
     if (block.type === 'text') tokens += Math.ceil(block.text.length / 4);
@@ -487,7 +383,7 @@ function estimateMessage(message: Pick<Message, 'content'>): number {
   return tokens;
 }
 
-function createMeter() {
+export function createMeter() {
   return {
     estimateMessage,
     measure(session: Session) {
@@ -509,106 +405,8 @@ function createMeter() {
     },
   };
 }
-
-function logLine(lines: string[], text: string): void {
-  console.log(text);
-  lines.push(text);
-}
-
-async function preflight(options: CliOptions): Promise<void> {
-  const settings = resolveConfig({ budget: { checkpointShare: options.share } });
-  const { fixture, messages } = buildLongFixture({ paddingLines: options.lines });
-  const serialized = serializeConversation(messages, settings.serialization);
-  const sourceTokens = messages.reduce((total, message) => total + estimateMessage(message), 0);
-  const source = buildVisualSource(messages, settings.serialization);
-  const guideBlocks = summaryBlocks(source, '', [], [], 0, 0);
-  const baseTokens =
-    guideBlocks.reduce(
-      (total, block) => total + (block.type === 'text' ? 12 + Math.ceil(block.text.length / 4) : 0),
-      0,
-    ) + 256;
-  const budgetTokens = Math.floor(sourceTokens * options.share);
-  const maxFrames = Math.min(settings.rendering.maxFrames, 20);
-  const plannedFrames = Math.max(
-    0,
-    Math.min(maxFrames, Math.floor((budgetTokens - baseTokens) / DEFAULT_VISUAL_TOKENS)),
-  );
-  const rows = Math.floor(
-    (settings.rendering.height - 2 * 16 - 24 - 24) / settings.rendering.lineHeight,
-  );
-  const columns = Math.floor((settings.rendering.width - 2 * 16) / 8);
-  const maxChars = Math.floor(plannedFrames * rows * columns * 0.94);
-  const trimmed = trimMiddle(source, maxChars);
-  const renderer = createRenderer();
-  const started = performance.now();
-  let frames = 0;
-  let error: string | undefined;
-  try {
-    if (plannedFrames < 1) throw new Error('No frame fits the checkpoint budget.');
-    const rendered = await renderer.render(
-      trimmed.middle,
-      {
-        width: settings.rendering.width,
-        height: settings.rendering.height,
-        maxFrames: plannedFrames,
-        maxTotalBytes: settings.rendering.maxTotalBytes,
-        maxSourceBytes: settings.rendering.maxSourceBytes,
-        timeoutMs: settings.rendering.timeoutMs,
-        lineHeight: settings.rendering.lineHeight,
-      },
-      undefined,
-    );
-    frames = rendered.frames.length;
-  } catch (caught) {
-    const code =
-      typeof caught === 'object' && caught !== null && 'code' in caught
-        ? (caught as { code?: unknown }).code
-        : undefined;
-    error = `${code === undefined ? '' : `${String(code)}: `}${caught instanceof Error ? caught.message : String(caught)}`;
-  } finally {
-    await renderer.dispose();
-  }
-  const elapsedMs = performance.now() - started;
-  console.log(
-    JSON.stringify(
-      {
-        lines: fixture.paddingLines,
-        messages: messages.length,
-        sourceChars: serialized.length,
-        sourceTokens,
-        budgetTokens,
-        baseTokens,
-        plannedFrames,
-        renderedFrames: frames,
-        renderedChars: trimmed.middle.length,
-        checkpointTokens: baseTokens + frames * DEFAULT_VISUAL_TOKENS,
-        elapsedMs: Math.round(elapsedMs),
-        ...(error === undefined ? {} : { error }),
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-async function main(): Promise<void> {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
-    console.log(usage());
-    return;
-  }
-  let options: CliOptions;
-  try {
-    options = parseArgs(process.argv.slice(2));
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 2;
-    return;
-  }
-  if (options.preflight) {
-    await preflight(options);
-    return;
-  }
-
+/** Read the benchmark key without printing it. */
+export async function loadApiKey(): Promise<string> {
   const credentialPath = join(homedir(), '.dsh', '.credentials.yaml');
   const credentials = YAML.parse(await readFile(credentialPath, 'utf8')) as {
     refs?: Record<string, unknown>;
@@ -620,131 +418,5 @@ async function main(): Promise<void> {
   if (typeof apiKey !== 'string' || apiKey.length === 0) {
     throw new Error('No OPENCODE_GO_API_KEY / SNAPCOMPACT_BENCH_API_KEY is available.');
   }
-
-  const directory = await mkdtemp(join(tmpdir(), 'snapcompact-v4-'));
-  const attachments = new DiskAttachments(directory);
-  const ctx = new Context();
-  const llm = new LlmRuntime(ctx);
-  llm.registerAdapter([options.provider], new OpenCodeAdapter(attachments, apiKey, options.apiUrl));
-  ctx.reflect.provide('attachments', attachments);
-  ctx.reflect.provide('sessions', { flush: async () => true });
-  ctx.reflect.provide('tokenMeter', createMeter());
-  const session = Session.create(SessionId(`session-live-v4-${Date.now()}`));
-  session.append('request/header', {
-    header: { config: { provider: options.provider, model: options.model } },
-    reason: 'initial',
-  });
-  const agent = {
-    id: session.id,
-    ctx,
-    session,
-    options: { provider: options.provider, model: options.model },
-    runMaintenance: async <T>(task: (signal: AbortSignal) => Promise<T>) =>
-      task(new AbortController().signal),
-  } as Agent;
-  const settings = resolveConfig({ budget: { checkpointShare: options.share } });
-  const archives = new ArchiveService(new ArchiveRepository(attachments));
-  const renderer = createRenderer();
-  const engine = new SnapcompactEngine(
-    ctx,
-    settings,
-    archives,
-    renderer,
-    new AbortController().signal,
-  );
-  const summarize = (
-    input: Parameters<typeof engine.nativeSummaryForEvaluation>[0],
-    owner: Agent,
-    signal?: AbortSignal,
-  ) => engine.nativeSummaryForEvaluation(input, owner, signal);
-  const render = (
-    text: string,
-    renderOptions: Parameters<Renderer['render']>[1],
-    signal: AbortSignal,
-  ) => renderer.render(text, renderOptions, signal);
-
-  const outDir = resolve(options.out);
-  await mkdir(outDir, { recursive: true });
-  const logs: string[] = [];
-  const failures: string[] = [];
-  const started = performance.now();
-  logLine(
-    logs,
-    `provider=${options.provider} model=${options.model} share=${options.share} runs=${options.runs} lines=${options.lines}`,
-  );
-  logLine(logs, `suite=${options.suite} out=${outDir} at=${new Date().toISOString()}`);
-
-  try {
-    if (options.suite === 'accuracy' || options.suite === 'all') {
-      logLine(logs, '\n== accuracy suite ==');
-      const report = await evaluate(
-        ctx,
-        agent,
-        settings,
-        archives,
-        summarize,
-        render,
-        new AbortController().signal,
-        { runs: options.runs },
-      );
-      await writeFile(join(outDir, 'accuracy.json'), JSON.stringify(report, null, 2) + '\n');
-      const markdown = renderEvaluationReport(report);
-      await writeFile(join(outDir, 'accuracy.md'), markdown + '\n');
-      logLine(logs, markdown);
-      if (!report.usageAudit.complete) failures.push('accuracy usage audit is incomplete');
-    }
-    if (options.suite === 'session' || options.suite === 'all') {
-      logLine(logs, '\n== session suite ==');
-      const reports = await evaluateSession(
-        ctx,
-        agent,
-        settings,
-        archives,
-        summarize,
-        render,
-        new AbortController().signal,
-        { runs: options.runs, paddingLines: options.lines },
-      );
-      await writeFile(join(outDir, 'session.json'), JSON.stringify(reports, null, 2) + '\n');
-      const markdown = reports.map(renderSessionReport).join('\n---\n');
-      await writeFile(join(outDir, 'session.md'), markdown + '\n');
-      logLine(logs, markdown);
-      for (const report of reports) {
-        if (!report.usageAudit.complete) {
-          failures.push(`session run ${report.run} usage audit is incomplete`);
-        }
-      }
-    }
-  } finally {
-    await renderer.dispose();
-  }
-
-  const elapsedMs = performance.now() - started;
-  logLine(logs, `\nelapsed=${(elapsedMs / 1000).toFixed(1)}s`);
-  await writeFile(join(outDir, 'run.log'), logs.join('\n') + '\n');
-  await writeFile(
-    join(outDir, 'run.json'),
-    JSON.stringify(
-      {
-        provider: options.provider,
-        model: options.model,
-        share: options.share,
-        runs: options.runs,
-        lines: options.lines,
-        suite: options.suite,
-        outDir,
-        elapsedMs: Math.round(elapsedMs),
-        failures,
-        timestamp: new Date().toISOString(),
-      },
-      null,
-      2,
-    ) + '\n',
-  );
-  if (failures.length > 0) {
-    console.error('\nFAILED: ' + failures.join('; '));
-    process.exitCode = 1;
-  }
+  return apiKey;
 }
-
-await main();

@@ -5,12 +5,8 @@ import type {} from '@deepseek-ai/dsh-tools';
 import type {} from '@deepseek-ai/dsh-session-projection';
 import { resolveConfig } from './config.js';
 import { applyUserSettings, SETTINGS_SERVICE, type UserSettings } from './settings/metadata.js';
-import { ArchiveRepository } from './archives/repository.js';
-import { ArchiveService } from './archives/service.js';
 import { SnapcompactEngine } from './compaction/engine.js';
-import { registerArchiveIndex } from './integrations/dsh/archive-projection.js';
 import { missingHostCapabilities } from './integrations/dsh/host-contract.js';
-import { registerRecallTool } from './integrations/dsh/recall-tool.js';
 import { registerCommands } from './integrations/dsh/commands.js';
 import { createRenderer } from './rendering/worker-client.js';
 
@@ -31,15 +27,7 @@ function userOverrides(ctx: Context): UserSettings | undefined {
   }
 }
 
-export const inject = [
-  'llm',
-  'tokenMeter',
-  'sessions',
-  'attachments',
-  'sessionProjections',
-  'tools',
-  'commands',
-];
+export const inject = ['llm', 'tokenMeter', 'sessions', 'attachments', 'commands'];
 
 /** Composition root: domain modules never reach into the active profile or its YAML. */
 export async function apply(ctx: Context, input: unknown): Promise<void> {
@@ -63,17 +51,12 @@ export async function apply(ctx: Context, input: unknown): Promise<void> {
         `declares compatible, or a newer Snapcompact release.`,
     );
   }
-  const archives = new ArchiveService(
-    new ArchiveRepository(ctx.attachments, settings.archiveMaxBytes),
-  );
-  const index = await registerArchiveIndex(ctx);
   const lifetime = new AbortController();
   const renderer = createRenderer();
   ctx.effect(() => async () => {
     lifetime.abort(new Error('Snapcompact plugin was unloaded.'));
     await renderer.dispose();
   });
-  const engine = new SnapcompactEngine(ctx, settings, archives, renderer, lifetime.signal);
-  registerRecallTool(ctx, archives, index);
-  registerCommands(ctx, engine, archives, index, lifetime.signal);
+  const engine = new SnapcompactEngine(ctx, settings, renderer, lifetime.signal);
+  registerCommands(ctx, engine, lifetime.signal);
 }

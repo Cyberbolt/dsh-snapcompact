@@ -7,6 +7,8 @@ export interface RenderOptions {
   timeoutMs: number;
   /** Pixel distance between bitmap text baselines. */
   lineHeight: number;
+  /** Extra horizontal pixels after each glyph; wider tracking aids OCR. */
+  letterSpacing: number;
 }
 
 export interface RenderedFrame {

@@ -74,20 +74,10 @@ window.__ModuleLoader__.load({
           "key": "maxFrames",
           "kind": "number",
           "group": "rendering",
-          "defaultValue": 20,
+          "defaultValue": 40,
           "min": 1,
           "max": 64,
           "step": 1
-        },
-        {
-          "key": "archiveMaxBytes",
-          "kind": "number",
-          "group": "advanced",
-          "defaultValue": 67108864,
-          "min": 1048576,
-          "max": 67108864,
-          "step": 1048576,
-          "scale": 1048576
         },
         {
           "key": "shakeThresholdChars",
@@ -162,7 +152,7 @@ window.__ModuleLoader__.load({
       'method.shake': 'Shake',
       'method.shakeHint': '把超大工具输出归档，只保留引用。',
       'method.soft': 'Soft',
-      'method.softHint': '回到 DSH 原生摘要；归档与 snapcompact_recall 仍然可用。',
+      'method.softHint': '回到 DSH 原生摘要；不保留视觉 checkpoint，也没有回查工具。',
       effective: '当前生效',
     };
 
@@ -235,7 +225,8 @@ window.__ModuleLoader__.load({
       'method.shake': 'Shake',
       'method.shakeHint': 'Archive oversized tool output and keep a reference.',
       'method.soft': 'Soft',
-      'method.softHint': 'Fall back to the DSH native summary; archives and recall still work.',
+      'method.softHint':
+        'Fall back to the DSH native summary; no visual checkpoint and no search tool.',
       effective: 'Effective',
     };
 
@@ -913,20 +904,6 @@ window.__ModuleLoader__.load({
           },
           h('summary', null, t('advancedTitle')),
           h('p', { className: 'sc-group-hint' }, t('advancedHint')),
-          h(
-            'div',
-            { className: 'sc-field-row' },
-            h(NumberField, {
-              field: fieldOf('archiveMaxBytes'),
-              value: draft.archiveMaxBytes,
-              label: t('archiveMax'),
-              hint: t('archiveMaxHint'),
-              unit: t('unitMiB'),
-              disabled: readOnly || busy,
-              onChange: (value) => edit('archiveMaxBytes', value),
-            }),
-            resetButton('archiveMaxBytes'),
-          ),
           h(
             'div',
             { className: 'sc-field-row' },

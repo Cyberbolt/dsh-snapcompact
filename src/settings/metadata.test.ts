@@ -127,7 +127,6 @@ describe('settings metadata', () => {
       readUserSettings({
         maxFrames: 65,
         frameSize: 'large',
-        archiveMaxBytes: -1,
         methodOrder: [42],
         unknown: 1,
       }),
@@ -209,8 +208,7 @@ describe('settings metadata', () => {
   it('produces a config the strict parser accepts for every default', () => {
     const resolved = resolveConfig(applyUserSettings({}, defaultUserSettings()));
     expect(resolved.methodOrder).toEqual([...DEFAULT_METHOD_ORDER]);
-    expect(resolved.rendering).toMatchObject({ width: 1568, height: 1568, maxFrames: 20 });
-    expect(resolved.archiveMaxBytes).toBe(64 * 1024 * 1024);
+    expect(resolved.rendering).toMatchObject({ width: 1568, height: 1568, maxFrames: 40 });
     expect(resolved.shakeThresholdChars).toBe(8192);
     // Deprecated and no longer projected from the settings card.
     expect(resolved.minCompressionRatio).toBeUndefined();

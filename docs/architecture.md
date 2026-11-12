@@ -4,80 +4,68 @@
 
 ## Follow the data flow first
 
-Native balanced-range selection → immutable exact archive → ordered candidate methods → capability, pricing and complete-budget checks → standard summary blocks → **native compaction transaction**.
+Native balanced-range selection → deterministic serialization → local visual checkpoint → capability, pricing and complete-budget checks → **native compaction transaction**.
 
-The plugin does not replace the transaction engine, invent Session event types, silently rewrite routed requests, or use hidden workspace/profile files as its source of truth.
+The plugin does not replace the transaction engine, invent Session event types, silently rewrite routed requests, or use hidden workspace/profile files. It supplies one candidate summary to the host; the host decides whether to commit it.
 
-Read the composition root, configuration, engine and method contract first. Then inspect individual methods, archives, rendering and DSH adapters. Modules are grouped by responsibility, not a single large plugin entry or one file per trivial function.
+## What a checkpoint contains
 
-## Boundaries
+A committed checkpoint is one ordinary summary message. It has no archive attachment and no recall tool. The blocks are, in order:
 
-| Subsystem        | Owns                                                      | Does not own                                  |
-| ---------------- | --------------------------------------------------------- | --------------------------------------------- |
-| plugin           | Assembly, registrations and resource lifetime             | Rendering or candidate policy                 |
-| compaction       | Ordered methods, usage metadata, precommit budgets        | Native region selection and transaction locks |
-| archives         | Versioned format, integrity, storage and bounded recall   | Access to arbitrary sessions or paths         |
-| rendering        | Font, layout, rasterization, PNG and worker queue         | Model routing, billing or semantic summaries  |
-| budgeting        | Modality, request size and conservative pricing           | Claiming estimates are provider measurements  |
-| integrations/dsh | Incremental index, owning-session authorization, commands | Editing profile state or adding event types   |
-| evaluation       | Fixed-fixture comparisons and reports                     | Background billing or private-history uploads |
+1. a short guide: frame order, the `¶` newline marker, the exact-token index, and the rule that later questions must re-read the checkpoint;
+2. an optional `FILES` index from read/write/edit calls;
+3. the exact head text (the first `serialization.headChars` characters of the projection);
+4. carried images, oldest first, bounded by the host image policy;
+5. an omission marker when the middle was clipped;
+6. bitmap frames of the middle, oldest first;
+7. the exact tail text (the last `serialization.tailChars` characters);
+8. a bounded exact-token index: up to 80 labeled lines copied from the same projection;
+9. a closing rule that repeats the no-memory instruction.
 
-## Invariants
+The exact head/tail and the index are text; the frames carry the surrounding history. The index exists because 64-character digests are not reliably readable from pixels. It is deterministic, generated from the same serialized history as the frames, and is not a search tool or an archive.
 
-1. Images are never the only task-state copy. Exact head/tail text plus the archive and recall reference remain.
-2. Checkpoint references point to persisted bytes; archive schema, size, SHA-256, UTF-8 and reconstructed transcript must agree.
-3. Native replay/signature blobs are not copied to portable archives. Message content, raw tool arguments and attachment identities are retained.
-4. Cancellation remains authoritative and does not enter ordinary method fallback. Candidate failures have not changed the surface.
-5. Only successfully closed native compactions grant recall access. The index derives from the log and survives replay/inheritance.
-6. Image reference metadata is not visual-token pricing. Unknown capabilities fail closed; unknown prices are estimated only for DeepSeek model IDs and labelled as estimates.
-7. Missing glyphs, unsupported shaping, page limits and unreadable resizing cannot silently omit content.
-8. Existing images are carried into the next checkpoint when slots allow; attachment descriptors are not re-rendered as their original pixels. Repeated compaction retains parent archive references.
-9. The `FILES` index is bounded, tool-observed metadata: read/write/edit calls plus earlier snapcompact FILES blocks, never a claim about current disk state. It is capped at 20 sorted paths and never replaces the exact archive or recall.
+## Serialization
 
-## Preset source of truth
+`serializeConversation` builds a frame-oriented projection rather than a byte-for-byte transcript:
 
-The three [human-edited entry lists](../presets/) are the source: one complete list per supported official mode. [preset-variants.ts](../scripts/preset-variants.ts) names each variant, its display metadata and roster order; the build script emits one literal `@deepseek-ai/dsh-agent-preset` declaration per list into the [bundle patch](../cordis.patch.yml). Do not edit generated output. A literal patch avoids a runtime include's ambiguous relative base URL while keeping the source lists readable, and `build-preset.ts --check` fails when the committed patch is stale.
+- section prefixes (`»user:`, `»ai:`, `»think:`, `»call:`) replace verbose JSON-ish headers;
+- tool calls and their results merge into one section, so a command sits next to its output;
+- every field is clipped head-and-tail (default 1,500 characters for message text, 1,200 for tool results, 500 per tool argument), with a visible `…Nch elided…` marker;
+- routine `INFO`/`PASS`/stack-frame/metric/paragraph lines are dropped and counted in one `routine log lines elided` marker;
+- long runs of structurally identical lines collapse to their first two and last two lines plus a count;
+- lines matching a generic exact-token pattern (checksums, commands, paths, ports, timeouts, locks, flags, owners, targets, incident facts) get a leading `* ` marker;
+- the exact-token index extracts the labeled subset of those lines, deduplicated and capped.
 
-## Mode coverage
+The filters are deliberately generic. They do not know the questions, the fixture, or the benchmark. A line that carries a durable label or a value survives; routine log noise does not. The tradeoff is explicit: a unique exact string buried inside a long `INFO` line can be dropped. Errors, labeled facts, commands, paths and digests survive.
 
-Each variant copies the complete official preset it mirrors, then applies one substitution and two omissions:
+## Rendering
 
-- `compaction-basic` becomes `snapcompact`; `command-compact` stays, so `/compact` and automatic compaction resolve to the Snapcompact chain.
-- The destructive `tool-result-pruner` is omitted: shake archives large results before externalizing, so the pruner would destroy content the archive still needs to reference.
-- The disabled `tool-plugin-market` row is omitted: it contributes nothing and would add a resolution dependency on a plugin not every host build ships.
+The renderer is a local, zero-model-call path:
 
-Everything else stays semantically equal to the official list: tool rows and their order, `disabled` flags, `group`/`isolate` realms, and `!!js` expressions. The PTC variant keeps `tool-executor-ptc` and the official workflow/plugin-manager disablement; the Cordis variant keeps `tool-cordis` and the official `customSkillDirs` expression that mounts the shipped `@deepseek-ai/dsh-agent-preset` skills from the host installation.
+- the bundled GNU Unifont 18.0.01 bitmap font is the only font; it covers Latin, CJK, kana, hangul and common symbols;
+- layout is a continuous text flow: a full row wraps at the frame edge, one `¶` marks each source newline, leading indentation is preserved, and internal runs of spaces collapse;
+- `letterSpacing` (default 2 px) widens each cell; `lineHeight` (default 20 px) controls leading; both trade characters per frame for OCR legibility;
+- frames are one-bit grayscale PNGs, so dense text compresses well and the bundled two-tone font loses nothing;
+- frame size, count and pixel projection are checked against the host's image limits and the model's readable-glyph floor before anything is committed;
+- when the middle exceeds the frame budget, the layout keeps both chronological edges and drops the oldest dense center (foveation); the exact head/tail stay outside the frames.
 
-`minimal` is intentionally unsupported. Its composition omits read/write/edit and the full tool surface; adding image frames, a FILES index and archive recall would contradict that preset's purpose. This is a product boundary, not a technical one.
+The model's image tokenization and max-edge policy are resolved through the host's image route. A route with no declared vision support or no usable price estimate falls through to the text chain.
 
-The [vendored official snapshots](../tests/fixtures/official-presets/) are pinned to `DSH_VERIFIED_VERSION` in [scripts/compat.ts](../scripts/compat.ts), the same single source that declares the published range. When that floor moves, replace them from `@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml` (inside `app.asar` on Desktop) and rerun `pnpm check`; the parity test fails row-by-row on any unintended drift. Widening the ceiling is a reviewed decision: parity is proven for the verified floor, while the install-check matrix proves that newer hosts still install and mount.
+## FILES
 
-## Why a separate preset
+The checkpoint carries a bounded `FILES` text block outside the frames. It is derived deterministically from read/write/edit tool arguments and earlier snapcompact checkpoints; `bash`, apply-patch and other mutation paths are outside its scope. FILES is `(Read)` / `(Write)` / `(RW)` metadata for navigation, not a filesystem snapshot, and it is included in the checkpoint's token estimate.
 
-DSH mounts an agent's compaction backend and its consumers in one `cordis:group` isolation realm. A profile-plane plugin cannot publish a backend into that realm, and a user override of a shipped preset replaces its complete child list rather than patching one nested row. Swapping `compaction-basic` inside `standard` would therefore copy the whole built-in composition and drift with every DSH release. The standalone opt-in preset is the supported boundary; once selected, `/compact` and automatic compaction resolve to the backend that preset mounts. The same boundary applies per mode: there are three complete opt-in presets rather than one preset that switches modes, because a declaration cannot extend another preset.
+## Transaction and lifetime
 
-## Release pipeline
+Each preset owns one renderer instance with a bounded queue. Its deadline includes queue wait and cold startup. Disposal permanently rejects new work, terminates the worker and does not affect another preset's queue.
 
-The version in `package.json` is the only release switch. [publish.yml](../.github/workflows/publish.yml) publishes exactly that version when the registry does not have it yet, through npm trusted publishing, so no long-lived token exists in the repository. Three properties keep that honest: the registry address comes from `publishConfig` and is pinned for the whole job, so a mirror in someone's `.npmrc` cannot redirect a publish or a check; the plan step runs before `pnpm install` and reads the registry with `fetch`, so the decision cannot depend on installed state; and the tag and GitHub release are created immediately after a successful publish, because they are the deliverable.
-
-The registry assertion runs last and is patient. `npm publish` returns before the public packument serves the new version — measured on this repository, 0.1.2 became readable 56 s later and 0.2.0 78 s later — so a fixed one-minute window passed or failed by luck. [verify-release.ts](../scripts/verify-release.ts) polls with exponential backoff for up to five minutes, then asserts the dist-tag, `dist.integrity` and the provenance attestation, and reports how long the registry actually took. Re-running the workflow repairs a missing tag or release: the plan reports `already-published`, publishing is skipped, and the release step still runs.
-
-## Lifetime and concurrency
-
-Each preset isolates compaction and its consumers. Installation adds opt-in presets without changing the official presets or active sessions. DSH owns maintenance admission and transaction locks; the plugin adds no competing session lock.
-
-Each plugin/preset owns a renderer instance with a bounded queue. Its deadline includes queue wait and cold startup. Disposal permanently rejects new work, terminates the worker and does not affect another preset's queue. Attachment storage belongs to the host; the plugin does not delete user data or unreachable objects left by failed attempts.
+DSH owns maintenance admission and transaction locks; the plugin adds no competing session lock. A failed candidate is not partially committed. Cancellation stops the compaction and never silently selects the next method.
 
 ## Deliberate tradeoffs
 
-The visual method is a local, zero-model-call renderer. When images are offloaded, the route has no usable price estimate, or the frame budget cannot fit the checkpoint budget implied by the trigger, the text chain (shake excerpts, then the native summary) remains. Exact strings and uncertain facts still require archive recall. Recall search defaults to bounded snippets: up to three windows per query, with 120 characters of context on each side and a complete matching-line count. Full-line pages remain available for code, with physical line numbers and paging cursors. Source message IDs stay in the archive document instead of being re-sent with every page, but the returned snippet or page does stay in the request history, so later turns pay for it again.
-
-The checkpoint budget is a configurable share of the trigger room (budget.checkpointShare, default 0.4), not a fixed half. A checkpoint, its recall pages and the next answer share the same window; leaving 60% of the room as margin is what makes a moderate-recall long session cheaper than re-sending the source. It is not enough at every-turn recall, where the extra request per turn still costs roughly the saved source tokens.
-
-The frame projection is a continuous text flow: rows wrap at the frame edge, one `¶` marks each source newline, and leading indentation is preserved. Frames are one-bit grayscale PNGs because the bundled bitmap font is already two-tone. Neither the marker nor the encoding is part of the archive: exact head/tail text plus the sha256 archive remain the source of truth, and `snapcompact_recall` returns the original bytes.
-
-The checkpoint also carries a bounded `FILES` text block outside the frames. It is derived deterministically from read/write/edit tool arguments and earlier snapcompact checkpoints; `bash`, apply-patch and other mutation paths are outside its scope. FILES is `(Read)` / `(Write)` / `(RW)` metadata for navigation, not a filesystem snapshot, and it is included in the checkpoint's token estimate.
-
-It has no generation call, so the first compaction is cheaper in model tokens; its steady-state checkpoint is larger than a terse summary, so the advantage depends on the turn horizon and on cache/image pricing.
-
-Estimated size, reading accuracy and actual monetary cost are different measurements. An explicit benchmark helps calibrate a route, but never silently changes user configuration or establishes universal savings.
+- **No search after compaction.** There is no archive and no recall tool. Exact strings are recoverable from the exact head/tail and the bounded exact-token index; a string that was clipped from both is not recoverable. This is the 0.7.0 contract.
+- **The index is bounded.** Up to 80 labeled lines. It is a legibility aid, not a complete transcript.
+- **Routine log lines are elided.** A unique value inside a routine `INFO` line may be lost; errors and labeled facts are kept.
+- **Rendering is deterministic but not lossless.** The source projection may drop characters; the exact text and index are the source of truth for the strings they contain.
+- **The visual path is not always cheaper.** It avoids a summary call and usually has a much smaller peak prompt, but a route with expensive image tokens or a short horizon can cost more than raw text. The v5 benchmark reports per-turn weighted cost; it does not promise a universal saving.
+- **Estimated size, reading accuracy and monetary cost are different measurements.** An explicit benchmark calibrates a route; it never silently changes user configuration.

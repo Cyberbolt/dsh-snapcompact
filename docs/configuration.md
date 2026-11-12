@@ -2,7 +2,7 @@
 
 [简体中文](zh/configuration.md)
 
-Configure the **dsh-snapcompact row inside the selected Snapcompact preset's isolated compaction group**, not a second global compaction service. The standard, PTC and Cordis variants all mount the same row id and configuration key, so the same settings apply whichever variant a session selects. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
+Configure the **dsh-snapcompact row inside the selected Snapcompact preset's isolated compaction group**, not a second global compaction service. The standard, PTC and Cordis variants mount the same row id and configuration key, so the same settings apply whichever variant a session selects. The settings card on the plugin page manages the common keys; the preset/config editor and the YAML below cover the rest. Both persist through the active profile's configuration patch; do not rewrite profile files by hand.
 
 Manual compaction is `/compact`; it resolves to whichever backend the preset mounts. `/snapcompact status` is read-only diagnostics, not a compaction entry point.
 
@@ -15,7 +15,6 @@ policy:
   auto: true
   thresholdRatio: 0.8
   retainRatio: 0.16
-  # Smaller windows need less headroom; native capacity validation still applies.
   headroomTokens: 65536
 guard:
   # Refuse to mount when thresholdRatio - retainRatio is below this; 0 disables.
@@ -25,22 +24,22 @@ guard:
 rendering:
   width: 1568
   height: 1568
-  maxFrames: 20
+  maxFrames: 40
   lineHeight: 20
+  letterSpacing: 2
   minGlyphPx: 12
   maxTotalBytes: 16777216
   maxSourceBytes: 67108864
   timeoutMs: 15000
 serialization:
-  toolResultMaxChars: 2000
+  toolResultMaxChars: 1200
   toolArgumentMaxChars: 500
   toolCallMaxChars: 2000
-  messageTextMaxChars: 8000
+  messageTextMaxChars: 1500
   headChars: 2000
   tailChars: 2000
   includeReasoning: false
   maxCarriedImages: 4
-archiveMaxBytes: 67108864
 shakeThresholdChars: 8192
 routePolicies: []
 ```
@@ -49,29 +48,26 @@ routePolicies: []
 
 The **Plugins → Snapcompact** page renders a settings card for the current profile's `snapcompact-settings` row. The row is separate from the preset on purpose: DSH only projects volatile Config fields of profile-plane entries into its settings document, while the compaction plugin must stay inside the opt-in preset. The row publishes the live values as the `snapcompactSettings` service; each session's preset instance reads them while it mounts, so one card configures every Snapcompact variant.
 
-The card stores eight keys, six of which are editable:
-
 | Control                  | Config path                              | Default                                     |
 | ------------------------ | ---------------------------------------- | ------------------------------------------- |
 | Method chain             | `methodOrder`                            | `[snapcompact, shake, soft]`                |
 | Custom trigger threshold | `policy.thresholdRatio`                  | unset (native default 0.8)                  |
 | Retained tail (hidden)   | `policy.retainRatio` (YAML only)         | derived: `thresholdRatio ÷ 5` (0.16 at 0.8) |
 | Frame size               | `rendering.width` and `rendering.height` | 1568                                        |
-| Maximum frames           | `rendering.maxFrames`                    | 20 (max 64)                                 |
-| Archive limit            | `archiveMaxBytes`                        | 64 MiB                                      |
+| Maximum frames           | `rendering.maxFrames`                    | 40 (max 64; host cap wins)                  |
 | Externalize above        | `shakeThresholdChars`                    | 8192                                        |
 
 Persistence and precedence:
 
 - Writes go through DSH's settings service to the profile's configuration patch; they survive restarts and are removed by "Restore default" (per field or for the whole card).
 - A saved card value overrides the same key in preset YAML. `thresholdRatio` is the exception: until the custom threshold is enabled the key is absent, so a preset-level `policy.thresholdRatio` still applies.
-- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`. The card hides it and never writes it. Only a value saved by an older version remains visible, as one read-only “Custom” row with “Restore automatic” to unset it. `retainRatio` and `retainTokens` are still mutually exclusive: the strict parser rejects YAML that sets both, and YAML overrides remain available.
+- The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`. The card hides it and never writes it. Only a value saved by an older version remains visible, as one read-only “Custom” row with “Restore automatic” to unset it. `retainRatio` and `retainTokens` are still mutually exclusive: the strict parser rejects YAML that sets both.
 - The engine is constructed when a session mounts the preset, so changes take effect for **new sessions**; `/snapcompact status` in an existing session keeps reporting its starting configuration.
 - The settings schema cannot express chain ordering, so a stored chain that is empty, repeated, or does not end in `soft` is ignored by the plugin; the strict parser remains the final gate.
 
 The bundle also declares a profile-plane carrier row (`snapcompact-ui`, module `dsh-snapcompact`) whose config is `role: ui`. DSH's browser module scanner only reads `dsh.client` from Loader entries named by a bare package specifier, so this row exists to make the card loadable; it registers no compaction, tools or commands. Keep it enabled: disabling it removes the settings card from the plugin page (the preset keeps working).
 
-Everything outside those nine keys stays YAML-only: the rest of `policy`, `guard`, `serialization`, `routePolicies`, `rendering.maxTotalBytes`, `rendering.maxSourceBytes`, `rendering.timeoutMs`, `rendering.lineHeight` and `rendering.minGlyphPx`.
+Everything outside those keys stays YAML-only: the rest of `policy`, `guard`, `serialization`, `routePolicies`, `rendering.maxTotalBytes`, `rendering.maxSourceBytes`, `rendering.timeoutMs`, `rendering.lineHeight`, `rendering.letterSpacing` and `rendering.minGlyphPx`.
 
 ## Native policy
 
@@ -83,11 +79,11 @@ Do not copy 65,536-token headroom to a small-window model without adjustment. Th
 
 `methodOrder` is the ordered priority list of candidate methods. The engine tries each in turn and stops at the **first successful candidate**; the order is the fallback order, not a pipeline of stages. The chain must be nonempty, unique, and end in `soft`. Any subset with that shape is valid:
 
-| Preset                 | `methodOrder`                | Behavior                                                  |
-| ---------------------- | ---------------------------- | --------------------------------------------------------- |
-| Visual-first (default) | `[snapcompact, shake, soft]` | Local visuals, then excerpts, then the native summary     |
-| Visual + native        | `[snapcompact, soft]`        | Skip shake; native summary when visuals fail              |
-| Native-only            | `[soft]`                     | Back to the DSH native summary; archive and recall remain |
+| Preset                 | `methodOrder`                | Behavior                                              |
+| ---------------------- | ---------------------------- | ----------------------------------------------------- |
+| Visual-first (default) | `[snapcompact, shake, soft]` | Local visuals, then excerpts, then the native summary |
+| Visual + native        | `[snapcompact, soft]`        | Skip shake; native summary when visuals fail          |
+| Native-only            | `[soft]`                     | Back to the DSH native summary; no visual checkpoint  |
 
 Chains saved before the `handoff` method was removed are normalized on read: the name is dropped and the surviving order is kept. A hand-written YAML chain that still names `handoff` is rejected by the strict parser, so delete the name.
 
@@ -95,8 +91,8 @@ Semantics that are easy to miss:
 
 - `shake` succeeds whenever any tool output exceeds `shakeThresholdChars`, so placing it before `snapcompact` preempts the visual path.
 - The checkpoint budget (a configured share of the room under the trigger) only constrains `snapcompact`; every other method only has to produce a checkpoint smaller than the source.
-- The archive is created before the chain runs, so a `[soft]` chain still keeps `snapcompact_recall` available.
 - Cancellation aborts the transaction; it never falls through to the next method.
+- There is no archive and no recall tool in 0.7.0. A `[soft]` chain does not keep a hidden search path.
 
 ## Trigger threshold
 
@@ -112,7 +108,7 @@ retain      = retainTokens ?? floor((W − O) × retainRatio)
 
 The derived tail follows the trigger ratio, not the effective token count: when headroom caps the threshold, `retain` still scales with `thresholdRatio`, so its token share can exceed 1/5. `/snapcompact status` prints the resolved tail for the current route.
 
-`/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens, the compactable space between them, the guard floors and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery. There is no absolute token-count trigger; use `thresholdRatio` and inspect the effective token number with `/snapcompact status`.
+`/snapcompact status` resolves the exact route and prints current tokens, `W`, threshold tokens, retained tokens, the compactable space between them, the guard floors and whether pressure has crossed. That display mirrors the formula above for explanation only; the native engine remains the authority. Thresholds are configuration-time settings (reload required), and they never disable the host's overflow recovery.
 
 ### Retained tail and usefulness guards
 
@@ -122,7 +118,7 @@ The trigger only means something relative to the retained tail:
 compactable = threshold - retain
 ```
 
-Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path always leaves `4/5 × thresholdRatio` compactable (at least 0.4 at the 0.5 card floor), so it cannot trip the 0.1 guard. Explicit retention is where the old trap can still appear: at a 1M-token window `thresholdRatio: 0.2` with `retainRatio: 0.16` leaves only about 4% of the window (roughly 41K tokens). A checkpoint plus the retained text can easily cost more than that, which is why "20% occupied" can round to "19% occupied" after a full compaction. The native backend only rejects `retainRatio >= thresholdRatio`; it cannot know the gap is too small to pay for itself.
+Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path always leaves `4/5 × thresholdRatio` compactable (at least 0.4 at the 0.5 card floor), so it cannot trip the 0.1 guard. Explicit retention is where the old trap can still appear: at a 1M-token window `thresholdRatio: 0.2` with `retainRatio: 0.16` leaves only about 4% of the window. A checkpoint plus the retained text can easily cost more than that.
 
 `guard` adds the missing checks:
 
@@ -131,11 +127,9 @@ Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path al
 | `minCompactableRatio` | `0.1`   | Reject the mount when `thresholdRatio - retainRatio` is below this. `0` disables the check.           |
 | `minSourceRatio`      | `0.01`  | Skip one compaction whose source is below `max(1024, window × ratio)` tokens. `0` disables the check. |
 
-The mount check runs in the engine constructor after native defaults are resolved, so it covers the global policy and every exact `modelPolicies` entry (using the same inheritance rules). The error lists every infeasible scope with the actual fractions and the fix. The absolute `retainTokens` form is window-dependent, so it is not rejected at mount time; `/snapcompact status` prints the real compactable space and warns when it is below `max(1024, window × minCompactableRatio)`.
+The mount check runs in the engine constructor after native defaults are resolved, so it covers the global policy and every exact `modelPolicies` entry. The error lists every infeasible scope with the actual fractions and the fix. The absolute `retainTokens` form is window-dependent, so it is not rejected at mount time; `/snapcompact status` prints the real compactable space and warns when it is below `max(1024, window × minCompactableRatio)`.
 
-The source floor runs after the source history is measured and before the archive or any method: a too-small source fails immediately, without a model call. Manual `/compact` is subject to the same guard; lower `guard.minSourceRatio` to allow a small manual run.
-
-An explicit pair such as `thresholdRatio: 0.2` with `retainRatio: 0.16` therefore still fails at mount. Fix it by raising the threshold (the card floor is `0.5`; the host default is `0.8`), lowering or removing the explicit tail (`retainRatio: 0.03` leaves about 30K at a 1M window), or setting `guard.minCompactableRatio: 0`. Profiles that only saved a custom trigger keep mounting: the derived tail replaces the old default.
+The source floor runs after the source history is measured and before any method: a too-small source fails immediately, without a model call. Manual `/compact` is subject to the same guard; lower `guard.minSourceRatio` to allow a small manual run.
 
 ### Checkpoint budget
 
@@ -149,30 +143,55 @@ budget = floor(min(room, source) × checkpointShare)   # no window: floor(source
 
 `surface` is the whole request pressure before compaction and `source` the history the checkpoint replaces; both come from the token meter the native engine re-measures after committing. Everything a checkpoint cannot replace — system prompt, tool schemas, output reservation, retained tail — stays in `fixed`.
 
-Leaving `1 - share` of the room free means the post-compaction total stays below the threshold with a real margin, which is the condition the native engine re-checks before it accepts a checkpoint. The historical rule was 0.5; 0.4 leaves more room for the checkpoint, the recall pages and the next answer that share the same window. When automatic pressure fires, `room ≈ source`, so the threshold basis equals `source × share`; it only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold. A route without a declared context window, or a failed model lookup, falls back to `source × share`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
+Leaving `1 - share` of the room free means the post-compaction total stays below the threshold with a real margin. The historical rule was 0.5; 0.4 leaves more room for the checkpoint and the next answer that share the same window. When automatic pressure fires, `room ≈ source`, so the threshold basis equals `source × share`; it only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold. A route without a declared context window, or a failed model lookup, falls back to `source × share`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
 
 The budget is recomputed per compaction from the live route, so it follows `thresholdRatio`, `headroomTokens` and per-model overrides without another setting. Set `budget.checkpointShare: 0.5` to restore the old behaviour. Older rows may still carry `minCompressionRatio`; it is accepted for upgrade compatibility and ignored.
 
-`/snapcompact status` prints the configured share and the actual rule; the exact token budget is computed at compaction time from that compaction's source history.
+## Serialization
 
-A smaller share can cost one or two frames on a short history. The 0.4 default favors the recall path and longer sessions; if the visual-only path (no recall tools) is the primary use, 0.5 restores the previous frame count and accuracy. The evaluation results report both arms rather than hiding that tradeoff.
+The checkpoint is a frame-oriented projection, not a byte-for-byte transcript:
 
-### Recall
+| Key                    | Default | Meaning                                              |
+| ---------------------- | ------- | ---------------------------------------------------- |
+| `messageTextMaxChars`  | 1500    | Head-and-tail cap for one user/assistant text block. |
+| `toolResultMaxChars`   | 1200    | Head-and-tail cap for one tool result.               |
+| `toolArgumentMaxChars` | 500     | Cap for one tool-call argument value.                |
+| `toolCallMaxChars`     | 2000    | Cap across one serialized tool-call argument list.   |
+| `headChars`            | 2000    | Exact leading text kept outside the frames.          |
+| `tailChars`            | 2000    | Exact trailing text kept outside the frames.         |
+| `includeReasoning`     | false   | Serialize assistant reasoning as `»think:` sections. |
+| `maxCarriedImages`     | 4       | Existing images carried into the checkpoint.         |
 
-Search defaults to bounded snippets:
+On top of the caps, the serializer:
 
-- `detail: "snippet"` (default) returns up to three windows per query, each with `snippetChars` characters of context on both sides (40–400, default 120). The matching-line count is complete even when only three snippets are returned.
-- `complete: true` means every query matched and nothing was clipped. `missing` and `truncated` report query indexes, not query strings, so a retry does not echo the whole batch.
-- `detail: "lines"` returns full lines with `nextOffset` / `nextColumn` cursors, for code that needs an exact full row.
-- A batch accepts up to 20 literals and is capped at 20,000 serialized characters. Every model round re-sends the checkpoint and the previous pages, so one batched call is usually much cheaper than one call per fact.
+- merges a tool call with its result under one `»call:` section;
+- drops routine `INFO`/`PASS`/stack-frame/file-listing/metric/paragraph lines and counts them in one `routine log lines elided` marker;
+- collapses long runs of structurally identical lines to their first two and last two;
+- prefixes generic exact-token lines with `* `;
+- builds a deduplicated exact-token index of up to 80 labeled lines.
 
-The tool has no configuration keys; these are per-call arguments. The checkpoint's guide text asks the model to batch all independent literals in its first recall turn and to retry only reported indexes.
+The filters are generic: they do not know the benchmark or the questions. A unique exact string inside a routine `INFO` line can be dropped; errors and labeled facts are kept.
+
+## Rendering
+
+| Key              | Default | Meaning                                                                 |
+| ---------------- | ------- | ----------------------------------------------------------------------- |
+| `width`/`height` | 1568    | Frame edge in pixels. The host image policy and max-edge may reduce it. |
+| `maxFrames`      | 40      | Upper bound on frames; the host per-message image cap still clamps.     |
+| `lineHeight`     | 20      | Pixel distance between bitmap baselines.                                |
+| `letterSpacing`  | 2       | Extra horizontal pixels per glyph; wider tracking aids OCR.             |
+| `minGlyphPx`     | 12      | Skip the visual path if the request would downscale glyphs below this.  |
+| `maxTotalBytes`  | 16 MiB  | Generated PNG bytes per checkpoint.                                     |
+| `maxSourceBytes` | 64 MiB  | Serialized source byte cap.                                             |
+| `timeoutMs`      | 15000   | Render deadline, including queue wait and cold startup.                 |
+
+Frames are one-bit grayscale PNGs. The bundled Unifont covers Latin, CJK, kana, hangul and common symbols. The layout is a continuous flow; `¶` marks one source newline. When the middle exceeds the frame budget, both chronological edges are kept and the oldest dense center is dropped.
 
 ## Visual eligibility
 
-A route must explicitly declare image input and supply image pricing, a configured ceiling, or the labelled DeepSeek estimate. Saved/request images must retain readable bitmap dimensions; otherwise the visual method is skipped. Frames, bytes and pixels must fit the host policy, and the complete checkpoint must fit the trigger-relative budget below.
+A route must explicitly declare image input and supply image pricing, a configured ceiling, or a labelled model-family estimate. Saved/request images must retain readable bitmap dimensions; otherwise the visual method is skipped. Frames, bytes and pixels must fit the host policy, and the complete checkpoint must fit the trigger-relative budget below.
 
-When an adapter has no pricing, DeepSeek model IDs use a labelled 1024-token/frame estimate. Other models can use an explicit conservative route ceiling:
+When an adapter has no pricing, recognized model families use a labelled conservative per-frame estimate (DeepSeek 1024, Gemini 1120, Claude/GPT/Kimi/GLM 1568). Unknown lines fail closed to the text chain. Other models can use an explicit conservative route ceiling:
 
 ```yaml
 routePolicies:
@@ -185,8 +204,8 @@ Provider/model matching is exact, with no aliases, fuzzy matching or cross-model
 
 ## Bounds and failure
 
-Defaults use 1568×1568 frames (1568 is omp's standard frame edge) and 20 frames per checkpoint, with a configurable maximum of 64; the host's per-message image cap (20 by default) still clamps the effective count, so raise both to use more. At most 16 MiB of generated images, 64 MiB of source/archive data and a 15-second render deadline. The frame count is chosen dynamically under the trigger-relative checkpoint budget; the host's smaller limits and retained-image count also apply. Archive JSON includes formatting and duplicated transcript data, so a source near its own limit can exceed the archive limit and be rejected.
+Defaults use 1568×1568 frames, 40 frames per checkpoint (max 64), 16 MiB of generated images, 64 MiB of serialized source and a 15-second render deadline. The frame count is chosen dynamically under the trigger-relative checkpoint budget; the host's smaller limits and retained-image count also apply.
 
-Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through. A threshold/retention pair below the compactable floor refuses to mount, and a source below the earnings floor fails before the archive or any method runs.
+Unknown pricing, visual failures or insufficient savings select another method. When every candidate fails, native failure logging preserves the selected history. Cancellation never falls through. A threshold/retention pair below the compactable floor refuses to mount, and a source below the earnings floor fails before any method runs.
 
-Snapcompact declares `^0.2.2-rc.1` (0.2.x) and is verified on `0.2.2-rc.1`. Raise the floor only after an install and activation check on that host release, and keep a finite ceiling: validate types, native integration, package contents and live preset activation before widening it. Do not bypass the host check.
+Snapcompact declares `^0.2.2-rc.1` (0.2.x) and is verified on `0.2.2-rc.1`. Raise the floor only after an install and activation check on that host release, and keep a finite ceiling. Do not bypass the host check.

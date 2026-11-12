@@ -75,7 +75,7 @@
         methodOrder: [snapcompact, shake, soft]
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
-# Deliberately omit the destructive tool-result pruner; shake archives before externalizing.
+# Deliberately omit the destructive tool-result pruner; shake externalizes large outputs.
 - id: delegation
   name: cordis:group
   group: true
