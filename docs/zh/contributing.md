@@ -15,7 +15,7 @@ pnpm install --ignore-scripts
 ## 检查
 
 ```sh
-pnpm run check          # 类型、lint、格式、构建、preset、测试、包资源
+pnpm run check          # 构建、类型、lint、格式、preset、测试、包资源
 pnpm run test           # 只跑单元与原生集成测试
 pnpm run check:install  # 把打包 tarball 装进一次性 DSH profile
 pnpm run release:plan   # 预览当前版本是否会发布

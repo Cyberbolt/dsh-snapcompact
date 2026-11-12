@@ -15,7 +15,7 @@ The package has no install scripts. DSH packages are host-provided peers, so the
 ## Checks
 
 ```sh
-pnpm run check          # types, lint, formatting, build, preset, tests, package resources
+pnpm run check          # build, types, lint, formatting, preset, tests, package resources
 pnpm run test           # unit and native-integration tests only
 pnpm run check:install  # install the packed tarball into a throwaway DSH profile
 pnpm run release:plan   # preview whether the current version would publish
