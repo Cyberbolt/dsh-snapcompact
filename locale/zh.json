@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Snapcompact",
-    "description": "DeepSeek Harness 上下文压缩插件：把 DSH 会话的历史上下文渲染成图片，让模型直接读图，而不是读摘要。"
+    "description": "DeepSeek Harness 上下文压缩插件：将 DSH 的会话历史渲染为图片，用图片代替文本摘要，保留更多信息并减少 token 消耗。"
   }
 }

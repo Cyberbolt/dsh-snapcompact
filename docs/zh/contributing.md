@@ -30,6 +30,6 @@ pnpm pack
 
 ## 发布
 
-`scripts/check-package.ts` 要求两个 README 都提到 `dsh-snapcompact@<当前版本>`；准备稳定版发布时同步改 `README.md` 和 `README.zh.md` 里那一行。DSH 兼容范围的唯一来源是 `scripts/compat.ts`——只在那里改，不要在正文里手改。文档默认用英文写，并保留中文版本（`README.md` / `README.zh.md`，`docs/` / `docs/zh/`）。
+`scripts/check-package.ts` 要求两个 README 都提到 `dsh-snapcompact@<当前版本>`；准备稳定版发布时同步改 `README.md` 和 `README.zh.md` 里那一行。DSH 兼容范围的唯一来源是 `scripts/compat.ts`：两个 README 只写 `DSH_SUPPORT_LINE`，`docs/configuration.md` 写 `DSH_COMPAT_RANGE`，四个被校验的文档里出现 `DSH_BASELINE_VERSION` 的裸版本号就会校验失败，因此 DSH 发布补丁版本时无需改文档。文档默认用英文写，并保留中文版本（`README.md` / `README.zh.md`，`docs/` / `docs/zh/`）。
 
 提交前跑 `pnpm run format`。

@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { parseDocument } from 'yaml';
-import { DSH_COMPAT_RANGE, DSH_VERIFIED_VERSION, compatibilityProblems } from './compat.ts';
+import {
+  DSH_BASELINE_VERSION,
+  DSH_COMPAT_RANGE,
+  compatibilityProblems,
+  documentationProblems,
+} from './compat.ts';
 import { PRESET_VARIANTS } from './preset-variants.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -24,10 +29,10 @@ const manifest = z
 
 // package.json cannot import the claim, so the manifest is checked against the
 // single source instead of both drifting. A passing claim is a bounded caret
-// range whose floor is exactly the newest install-checked host release.
+// range whose floor is exactly the baseline host release.
 const problems = compatibilityProblems({
   range: DSH_COMPAT_RANGE,
-  verified: DSH_VERIFIED_VERSION,
+  baseline: DSH_BASELINE_VERSION,
   enginesDsh: manifest.engines.dsh,
   peerDependencies: manifest.peerDependencies,
   devDependencies: manifest.devDependencies,
@@ -37,15 +42,15 @@ assert(
   `DSH compatibility claim is inconsistent:\n  - ${problems.join('\n  - ')}`,
 );
 
-// Install instructions pin the release version, so a stable release must keep
-// both READMEs in step with package.json. Prereleases are not announced there.
+// The unpacked-install step states no version, so the locally packed tarball is
+// the only install instruction that pins the release. A stable release must
+// keep both READMEs in step with package.json; prereleases are not announced
+// there.
 if (!manifest.version.includes('-')) {
   for (const readme of ['README.md', 'README.zh.md']) {
     const text = await readFile(resolve(root, readme), 'utf8');
-    assert(
-      text.includes(`dsh-snapcompact@${manifest.version}`),
-      `${readme} must reference dsh-snapcompact@${manifest.version}`,
-    );
+    const tarball = `dsh-snapcompact-${manifest.version}.tgz`;
+    assert(text.includes(tarball), `${readme} must reference ${tarball}`);
   }
 }
 
@@ -88,8 +93,10 @@ for (const path of required) {
     `Resource omitted from files: ${path}`,
   );
 }
-// The prose cannot import the claim either, so both languages must repeat the
-// exact range and floor. Changing the floor then fails until the docs agree.
+// The prose cannot import the claim either, so both languages must name the
+// supported line and must not pin the bare baseline. A pinned host version
+// would age with every DSH patch; the line alone lets a 0.2.x release install
+// without a documentation edit.
 for (const path of [
   'README.md',
   'README.zh.md',
@@ -97,14 +104,15 @@ for (const path of [
   'docs/zh/configuration.md',
 ]) {
   const text = await readFile(resolve(root, path), 'utf8');
-  assert(
-    text.includes(DSH_COMPAT_RANGE),
-    `${path} must state the compatibility range ${DSH_COMPAT_RANGE}`,
-  );
-  assert(
-    text.includes(DSH_VERIFIED_VERSION),
-    `${path} must state the verified DSH version ${DSH_VERIFIED_VERSION}`,
-  );
+  const prose = documentationProblems(text);
+  assert(prose.length === 0, `${path}: ${prose.join('; ')}`);
+  if (path.startsWith('README')) {
+    assert(
+      !text.includes(DSH_COMPAT_RANGE),
+      `${path} must name the supported line, not the release range ${DSH_COMPAT_RANGE}; ` +
+        'keep the range in docs/configuration.md and engines.dsh',
+    );
+  }
 }
 const metadata = z.object({
   meta: z.object({ title: z.string().min(1), description: z.string().min(1) }),

@@ -1,5 +1,5 @@
 # Vendored verbatim from @deepseek-ai/dsh-web-app/presets/ptc.patch.yml
-# shipped in DeepSeek Harness 0.2.2-rc.1 (see DSH_VERIFIED_VERSION in scripts/compat.ts).
+# captured from the baseline release in scripts/compat.ts (DSH_BASELINE_VERSION).
 # Refresh this snapshot when the DSH peer version changes;
 # tests/preset-parity.test.ts compares it with the Snapcompact variants.
 # Agent preset ptc: one `@deepseek-ai/dsh-agent-preset` declaration inserted

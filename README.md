@@ -10,72 +10,66 @@
 [![DSH](https://img.shields.io/badge/DSH-0.2.x-1f485c)](https://github.com/Cyberbolt/dsh-snapcompact#install)
 [![stars](https://img.shields.io/github/stars/Cyberbolt/dsh-snapcompact?style=flat&logo=github&label=stars)](https://github.com/Cyberbolt/dsh-snapcompact)
 
-**A DeepSeek Harness context compaction plugin: renders a DSH session's history as images the model reads directly, rather than a summary.**
+**A DeepSeek Harness context compaction plugin: renders DSH session history as images instead of text summaries, keeping more information while using fewer tokens.**
 
-The middle of a long context is rendered as images the model reads directly, while the start and the end stay ordinary text — so a command, path or checksum from many turns ago is still there to copy. Each checkpoint carries a copyable index of exact strings and a `FILES` file map; the render happens locally, so nothing is summarized and no extra API key is needed.
+Concretely: when DSH triggers context compaction, the start and the end of the context stay as ordinary text while the middle is rendered as images (locally, with no model call), and each checkpoint carries a copyable index of exact strings and a `FILES` file map.
 
-Built for long-running sessions that keep needing details from many turns ago — typically coding or debugging sessions. Not for short chats, text-only models, or `minimal` mode.
+The plugin suits long-running sessions that keep coming back to earlier details. It is not meant for compacting short chats.
 
 **Quick start:** Plugins → Add plugin → `dsh-snapcompact` → new session → **Snapcompact (Standard)**.
 
 ## Install
 
-Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`, so there is no build step and no install script.
+Requires DSH `0.2.x` and Node.js 24+.
 
 1. Open **Plugins → Add plugin**.
-2. Install `dsh-snapcompact@0.7.0`.
-3. Restart if prompted, then create a new session and choose a variant.
+2. Install `dsh-snapcompact`.
+3. Restart if prompted, then create a new session and choose the Snapcompact preset for your official mode.
 
-| Official mode | Choose                     | What it is                                                            |
-| ------------- | -------------------------- | --------------------------------------------------------------------- |
-| `standard`    | **Snapcompact (Standard)** | Shell, files, search, subagents, workflows, web, plan mode            |
-| `ptc`         | **Snapcompact (PTC)**      | `run_code` as the only direct tool; everything else through `tools.*` |
-| `cordis`      | **Snapcompact (Cordis)**   | `tool-cordis` and the official Cordis authoring skills                |
+| Official mode | Snapcompact preset         |
+| ------------- | -------------------------- |
+| `standard`    | **Snapcompact (Standard)** |
+| `ptc`         | **Snapcompact (PTC)**      |
+| `cordis`      | **Snapcompact (Cordis)**   |
 
-Installation only adds opt-in presets: official presets and running sessions are untouched, and choosing a variant is the enable action. `minimal` is not supported — it deliberately omits read/write/edit, so frames would defeat its purpose.
+`minimal` is not supported — it deliberately omits `read`/`write`/`edit`, so Snapcompact would defeat its purpose.
 
-To uninstall, remove the plugin from the Plugins page. Its presets disappear; checkpoints already committed stay in their sessions as ordinary summary messages. Upgrading from 0.6.x? 0.7.0 changed how exact strings are kept — read the [migration note](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/migration-0.7.md).
+To uninstall, remove the plugin from the Plugins page. Its presets disappear; checkpoints already committed stay in their sessions as ordinary summary messages.
 
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact
+dsh plugin --profile <your profile name> add dsh-snapcompact
 ```
 
-Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
+On DSH Desktop, prefer the in-app Plugins page.
 
 <details>
 <summary>Other install sources</summary>
 
-A locally packed tarball and a tarball URL work too:
+A locally packed tarball:
 
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.0.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
 ```
+
+A tarball URL:
 
 ```sh
 dsh plugin --profile web add https://example.com/dsh-snapcompact-<version>.tgz
 ```
 
-The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
+The npm package is the prebuilt option; for a local checkout, run `pnpm pack` (or `pnpm run build`) first.
 
 </details>
 
 ## Why images instead of a summary?
 
-The idea of replacing a summary with images comes from the [Oh My Pi](https://github.com/can1357/oh-my-pi) `snapcompact` project; this plugin is an independent DSH implementation of it.
+Replacing a summary with images is an idea from `snapcompact` in [Oh My Pi](https://github.com/can1357/oh-my-pi); this plugin is an independent implementation of `snapcompact` for DSH.
 
-A vision model is billed largely by image area, not by how many characters the image contains. Up to the legibility limit, a dense frame carries more text per token than the same text sent verbatim, so the part of the history you no longer need character for character becomes a few readable images instead of a lossy summary.
-
-|                 | Raw history | Native summary | Snapcompact                         |
-| --------------- | ----------- | -------------- | ----------------------------------- |
-| What survives   | Everything  | A summary      | Exact head/tail, frames, text index |
-| Compaction cost | 0           | One model call | 0 (local render)                    |
-| Exact strings   | Yes         | May be lost    | Verbatim in head/tail, indexed      |
-
-A terse summary can still be smaller per turn on short sessions; [Limits](#limits) explains when the trade-off reverses.
+A vision model is billed mainly by image area, regardless of how many characters an image holds. Within the legibility limit, a dense frame carries more information per token than plain text. Content that would otherwise be condensed into a text summary is rendered as images instead, so more context survives at a lower token cost.
 
 ## How it works
 
@@ -98,45 +92,59 @@ one checkpoint: exact head/tail + frames + text index
 | 2     | `shake`       | none           | Large tool outputs replaced by bounded excerpts                 |
 | 3     | `soft`        | native summary | DSH's native text summary                                       |
 
-The `snapcompact` method (order 1) runs only when both hold: the route (this session's provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
+The `snapcompact` method (order 1) runs only when both conditions hold:
 
-## Use it
+- **The model accepts images and can be priced.** This session's route (provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) must declare image input, and its image pricing must be determinable: the adapter supplies prices, an explicit per-frame cap is configured, or a labelled conservative estimate covers a known model family.
+- **The whole checkpoint fits.** The entire checkpoint must fit in the room left under the trigger threshold (the threshold minus the parts that cannot be replaced: system prompt, tool schemas, output reservation and retained tail).
 
-| Entry point           | What it does                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `/compact`            | Manual compaction; inside a Snapcompact preset it runs the chain                                   |
-| `/snapcompact status` | Current route (provider/model), effective threshold, compactable space and per-method availability |
+If either condition fails, snapcompact is skipped, the chain moves on to the next method, and it ends at the native summary.
+
+## Commands
+
+| Entry point           | What it does                                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/compact`            | Manual compaction; needs to run inside a Snapcompact preset                                                                         |
+| `/snapcompact status` | Current route (provider/model), trigger threshold, retained tail and compactable space, plus whether each compaction method can run |
 
 ## Configure
 
-The **Plugins → Snapcompact** card covers the common keys and writes through DSH's settings service to the profile's config patch. One card configures all three variants, and saved values apply to new sessions. The defaults are the chain `[snapcompact, shake, soft]`, a trigger at 0.8 of the window and at most 40 frames; every other field is YAML-only — see the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md).
+Manage the common keys on the **Plugins → Snapcompact** settings card. Saved values apply only to new sessions; existing sessions keep running with the configuration they were created with. The defaults are the chain `[snapcompact, shake, soft]`, a trigger at 80% of the context window and at most 40 frames per compaction; every other key is YAML-only — see the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md).
 
 ## Limits
 
-- **Not lossless, in two places.** The first is rendering: characters the bitmap font does not cover (emoji, rare scripts, combining marks) become `?`, tabs expand to spaces, inner space runs collapse and ANSI escapes are stripped; and the model reads pixels, not text, so a 64-character digest is not something to expect back from a picture. The second is serialization, before rendering: routine `INFO`/`PASS` lines, stack-call lines, long runs of repeated file listings and metric lines are deterministically elided, long fields keep only their head and tail with the middle removed, and an over-budget projection keeps both ends of the middle and drops the oldest dense center — every omission leaves a marker shaped like `[… elided …]`. Errors, labeled facts, commands and paths are not elided; for character-exact history rely on the exact head/tail text, which is never rendered, and strings like digests go into the text index.
-- **Savings depend on the model in use and the horizon you need.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
-- **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
+- **Not lossless: information can be lost before and during rendering.**
+  - **While rendering to an image:** characters the bitmap font does not cover (emoji, rare scripts, combining marks) show up as `?`; tabs expand to spaces, runs of spaces collapse and ANSI escapes are stripped. The model reads pixels, not text, so a 64-character digest is not something to expect back from a picture.
+  - **Before rendering:** serialization elides by fixed rules, so the same history loses the same spots, in the same numbers, every time.
+    - Boilerplate lines such as routine `INFO`/`PASS` lines and stack-call lines are dropped whole.
+    - Long runs of structurally identical lines (repeated file listings, metric lines) keep only the first two and the last two lines.
+    - Over-long fields keep their head and tail with the middle removed; when the frame's middle text budget runs short, both ends are kept and the middle is dropped.
+    - Every omission leaves a counted marker, e.g. `[…80ch elided…]` or `[…3 routine log lines elided…]`.
+  - **What is never elided:** errors, labeled facts, commands and paths are kept verbatim.
+  - **For character-exact content, take it from the text, not the image:** the exact head/tail text is kept verbatim, and strings that read unreliably from a picture, such as digests, go into the text index.
+
+- **Whether it saves tokens depends on the context length and the model in use.** On short sessions a native summary may use fewer tokens, and expensive image tokens can also cancel the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
+- **No lookup after compaction.** The only character-exact copies are the head/tail text and the text index; a string that made it into neither is not recoverable later.
 
 ## Troubleshooting
 
 <details>
 <summary>The Snapcompact presets are not in the picker</summary>
 
-Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, install through the app's Plugins page, not a CLI profile the app does not use.
+Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**.
 
 </details>
 
 <details>
 <summary>It always falls back to text</summary>
 
-Run `/snapcompact status`. The current route (provider/model) probably declares no image input or no usable image pricing, which is the intended safe behavior. Up to four carried images are forwarded; when no image slot is left, the text chain (shake excerpts, then the native summary) runs.
+Run `/snapcompact status`. The current route (provider/model) probably declares no image input or no usable image pricing, which is the intended safe behavior.
 
 </details>
 
 <details>
 <summary>Compaction fails with "No compaction method produced a safe smaller checkpoint"</summary>
 
-Every candidate was skipped or missed its budget. Check `/snapcompact status`; retry with more history, or switch to a model whose text summarizer works. The error lists each method's reason, and cancellation is reported separately.
+This means every method (snapcompact, shake, soft) was skipped — it either could not shrink the checkpoint enough or went over budget. Run `/snapcompact status` first to see the current route, the compactable space and each method's availability; then retry once the session has more history, or move to a model that works. The error text lists, one by one, why each method was skipped or failed.
 
 </details>
 
