@@ -101,14 +101,14 @@ snapcompact（顺序 1）只在两个条件同时成立时运行：
 
 ## 命令
 
-| 入口                  | 作用                                                         |
-| --------------------- | ------------------------------------------------------------ |
-| `/compact`            | 手动压缩；需要在 Snapcompact 预设内运行                      |
-| `/snapcompact status` | 当前路由（provider/model）、有效阈值、可压空间和逐方法可用性 |
+| 入口                  | 作用                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `/compact`            | 手动压缩；需要在 Snapcompact 预设内运行                                                  |
+| `/snapcompact status` | 显示当前路由（provider/model）、触发阈值、保留尾部与可压缩空间，以及每个压缩方法能否运行 |
 
 ## 配置
 
-**插件 → Snapcompact** 卡片覆盖常用配置项，通过 DSH 的设置服务写入 profile 的配置补丁。一个卡片配置三个变体，保存的值对新会话生效。默认是方法链 `[snapcompact, shake, soft]`、窗口 0.8 的触发阈值、最多 40 帧；其余字段只能写 YAML——见[配置参考](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
+在 **插件 → Snapcompact** 的设置卡中管理常用配置项。保存后只影响新会话，已有会话仍按创建时的配置运行。默认方法链为 [snapcompact, shake, soft]，上下文窗口用到 80% 时触发，每次压缩最多渲染 40 帧；其余配置项需要手写 YAML，详见[配置参考](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/configuration.md)。
 
 ## 限制
 

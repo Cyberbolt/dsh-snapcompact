@@ -101,14 +101,14 @@ If either condition fails, snapcompact is skipped, the chain moves on to the nex
 
 ## Commands
 
-| Entry point           | What it does                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `/compact`            | Manual compaction; needs to run inside a Snapcompact preset                                        |
-| `/snapcompact status` | Current route (provider/model), effective threshold, compactable space and per-method availability |
+| Entry point           | What it does                                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `/compact`            | Manual compaction; needs to run inside a Snapcompact preset                                                                         |
+| `/snapcompact status` | Current route (provider/model), trigger threshold, retained tail and compactable space, plus whether each compaction method can run |
 
 ## Configure
 
-The **Plugins → Snapcompact** card covers the common keys and writes through DSH's settings service to the profile's config patch. One card configures all three variants, and saved values apply to new sessions. The defaults are the chain `[snapcompact, shake, soft]`, a trigger at 0.8 of the window and at most 40 frames; every other field is YAML-only — see the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md).
+Manage the common keys on the **Plugins → Snapcompact** settings card. Saved values apply only to new sessions; existing sessions keep running with the configuration they were created with. The defaults are the chain `[snapcompact, shake, soft]`, a trigger at 80% of the context window and at most 40 frames per compaction; every other key is YAML-only — see the [configuration reference](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/configuration.md).
 
 ## Limits
 
