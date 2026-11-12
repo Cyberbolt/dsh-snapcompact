@@ -52,7 +52,7 @@ DSH Desktop 请优先使用应用内的插件页面。
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.2.tgz"
 ```
 
 tarball URL 请执行：
@@ -89,7 +89,7 @@ snapcompact → shake → soft
 | 顺序 | 方法          | 模型调用 | 输出                                                |
 | ---- | ------------- | -------- | --------------------------------------------------- |
 | 1    | `snapcompact` | 无       | 密集帧、首尾精确文本、`FILES` 索引、精确 token 索引 |
-| 2    | `shake`       | 无       | 超大工具输出替换为有界摘录                          |
+| 2    | `shake`       | 无       | 超大工具输出只留首尾摘录，中间丢弃                  |
 | 3    | `soft`        | 原生摘要 | DSH 原生文本摘要                                    |
 
 snapcompact（顺序 1）只在两个条件同时成立时运行：

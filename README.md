@@ -52,7 +52,7 @@ A locally packed tarball:
 ```sh
 pnpm install --ignore-scripts
 pnpm pack
-dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.1.tgz"
+dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.2.tgz"
 ```
 
 A tarball URL:
@@ -86,11 +86,11 @@ snapcompact → shake → soft
 one checkpoint: exact head/tail + frames + text index
 ```
 
-| Order | Method        | Model call     | Output                                                          |
-| ----- | ------------- | -------------- | --------------------------------------------------------------- |
-| 1     | `snapcompact` | none           | Dense frames, exact head/tail, `FILES` index, exact-token index |
-| 2     | `shake`       | none           | Large tool outputs replaced by bounded excerpts                 |
-| 3     | `soft`        | native summary | DSH's native text summary                                       |
+| Order | Method        | Model call     | Output                                                                     |
+| ----- | ------------- | -------------- | -------------------------------------------------------------------------- |
+| 1     | `snapcompact` | none           | Dense frames, exact head/tail, `FILES` index, exact-token index            |
+| 2     | `shake`       | none           | Oversized tool outputs keep only head/tail excerpts; the middle is dropped |
+| 3     | `soft`        | native summary | DSH's native text summary                                                  |
 
 The `snapcompact` method (order 1) runs only when both conditions hold:
 
