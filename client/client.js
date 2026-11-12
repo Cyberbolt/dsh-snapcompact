@@ -217,7 +217,8 @@ window.__ModuleLoader__.load({
       'method.snapcompactHint':
         'Render the middle of the history as pixel-font frames a vision model reads directly.',
       'method.shake': 'Shake',
-      'method.shakeHint': 'Oversized tool output keeps only head/tail excerpts; the middle is dropped.',
+      'method.shakeHint':
+        'Oversized tool output keeps only head/tail excerpts; the middle is dropped.',
       'method.soft': 'Soft',
       'method.softHint':
         'Fall back to the DSH native summary; no visual checkpoint and no search tool.',
