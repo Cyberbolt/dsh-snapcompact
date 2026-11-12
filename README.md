@@ -24,7 +24,7 @@ Requires DSH `0.2.x` and Node.js 24+.
 
 1. Open **Plugins → Add plugin**.
 2. Install `dsh-snapcompact`.
-3. Restart if prompted, then create a new session and choose a variant.
+3. Restart if prompted, then create a new session and choose the Snapcompact preset for your official mode.
 
 | Official mode | Snapcompact preset         |
 | ------------- | -------------------------- |
@@ -39,15 +39,15 @@ To uninstall, remove the plugin from the Plugins page. Its presets disappear; ch
 From the CLI:
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact
+dsh plugin --profile <your profile name> add dsh-snapcompact
 ```
 
-Use your profile name. On DSH Desktop, prefer the in-app Plugins page: the CLI may write to a profile the desktop app does not use.
+On DSH Desktop, prefer the in-app Plugins page.
 
 <details>
 <summary>Other install sources</summary>
 
-A locally packed tarball and a tarball URL work too:
+A locally packed tarball:
 
 ```sh
 pnpm install --ignore-scripts
@@ -55,11 +55,13 @@ pnpm pack
 dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.0.tgz"
 ```
 
+A tarball URL:
+
 ```sh
 dsh plugin --profile web add https://example.com/dsh-snapcompact-<version>.tgz
 ```
 
-The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `pnpm run build`) first.
+The npm package is the prebuilt option; for a local checkout, run `pnpm pack` (or `pnpm run build`) first.
 
 </details>
 
@@ -68,14 +70,6 @@ The npm package is the prebuilt option; a local checkout needs `pnpm pack` (or `
 Replacing a summary with images is an idea from `snapcompact` in [Oh My Pi](https://github.com/can1357/oh-my-pi); this plugin is an independent implementation of `snapcompact` for DSH.
 
 A vision model is billed mainly by image area, regardless of how many characters an image holds. Within the legibility limit, a dense frame carries more information per token than plain text. Content that would otherwise be condensed into a text summary is rendered as images instead, so more context survives at a lower token cost.
-
-|                 | Raw history | Native summary | Snapcompact                         |
-| --------------- | ----------- | -------------- | ----------------------------------- |
-| What survives   | Everything  | A summary      | Exact head/tail, frames, text index |
-| Compaction cost | 0           | One model call | 0 (local render)                    |
-| Exact strings   | Yes         | May be lost    | Verbatim in head/tail, indexed      |
-
-A native summary can fit short sessions better; see [Limits](#limits).
 
 ## How it works
 
@@ -100,7 +94,7 @@ one checkpoint: exact head/tail + frames + text index
 
 The `snapcompact` method (order 1) runs only when both hold: the route (this session's provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
 
-## Use it
+## Commands
 
 | Entry point           | What it does                                                                                       |
 | --------------------- | -------------------------------------------------------------------------------------------------- |
@@ -114,7 +108,7 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 ## Limits
 
 - **Not lossless, in two places.** The first is rendering: characters the bitmap font does not cover (emoji, rare scripts, combining marks) become `?`, tabs expand to spaces, inner space runs collapse and ANSI escapes are stripped; and the model reads pixels, not text, so a 64-character digest is not something to expect back from a picture. The second is serialization, before rendering: routine `INFO`/`PASS` lines, stack-call lines, long runs of repeated file listings and metric lines are deterministically elided, long fields keep only their head and tail with the middle removed, and an over-budget projection keeps both ends of the middle and drops the oldest dense center — every omission leaves a marker shaped like `[… elided …]`. Errors, labeled facts, commands and paths are not elided; for character-exact history rely on the exact head/tail text, which is never rendered, and strings like digests go into the text index.
-- **Savings depend on the model in use and the context length.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
+- **Whether it saves tokens depends on the context length and the model in use.** On short sessions a native summary may use fewer tokens, and expensive image tokens can also cancel the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
 - **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
 
 ## Troubleshooting
@@ -122,7 +116,7 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 <details>
 <summary>The Snapcompact presets are not in the picker</summary>
 
-Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**. Existing sessions keep the preset they started with. On DSH Desktop, install through the app's Plugins page.
+Confirm the plugin is installed, restart DSH if the page asks, then create a **new** session and look for **Snapcompact (Standard)**, **Snapcompact (PTC)** and **Snapcompact (Cordis)**.
 
 </details>
 

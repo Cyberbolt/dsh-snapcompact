@@ -24,7 +24,7 @@
 
 1. 打开 **插件 → 添加插件**。
 2. 安装 `dsh-snapcompact`。
-3. 如提示则重启，然后新建会话并选择变体。
+3. 如提示则重启，然后新建会话，选择官方模式对应的 Snapcompact 预设。
 
 | 官方模式 | 对应的 Snapcompact 预设    |
 | -------- | -------------------------- |
@@ -39,15 +39,15 @@
 命令行：
 
 ```sh
-dsh plugin --profile web add dsh-snapcompact
+dsh plugin --profile <你的 profile 名> add dsh-snapcompact
 ```
 
-把 `web` 换成你的 profile 名。DSH Desktop 请优先用应用内的插件页面：CLI 可能写到桌面应用不用的 profile。
+DSH Desktop 请优先使用应用内的插件页面。
 
 <details>
 <summary>其他安装来源</summary>
 
-本地打包的 tarball 和 tarball URL 也可以：
+本地打包的 tarball 请执行：
 
 ```sh
 pnpm install --ignore-scripts
@@ -55,11 +55,13 @@ pnpm pack
 dsh plugin --profile web add "file:$PWD/dsh-snapcompact-0.7.0.tgz"
 ```
 
+tarball URL 请执行：
+
 ```sh
 dsh plugin --profile web add https://example.com/dsh-snapcompact-<version>.tgz
 ```
 
-npm 包是预构建选项；本地 clone 需要先 `pnpm pack`（或 `pnpm run build`）。
+npm 包是预构建选项；如果是本地 clone，需要先执行 `pnpm pack`（或 `pnpm run build`）。
 
 </details>
 
@@ -67,15 +69,7 @@ npm 包是预构建选项；本地 clone 需要先 `pnpm pack`（或 `pnpm run b
 
 用图片代替摘要的思路来自 [Oh My Pi](https://github.com/can1357/oh-my-pi) 的 `snapcompact`；本插件是 `snapcompact` 在 DSH 上的独立实现。
 
-视觉模型主要按图像面积计费，而不管图中有多少个字符。在可读性上限内，密集帧每 token 能承载的信息量高于纯文本。我们将原本会压缩为文本摘要的内容渲染为图片，由此做到保留更多上下文的同时降低 tokens 消耗。
-
-|          | 原始历史 | 原生摘要     | Snapcompact                |
-| -------- | -------- | ------------ | -------------------------- |
-| 保留什么 | 全部     | 一份摘要     | 首尾精确文本、帧、文本索引 |
-| 压缩成本 | 0        | 一次模型调用 | 0（本地渲染）              |
-| 精确串   | 有       | 可能丢失     | 逐字留在首尾，并进索引     |
-
-短会话中原生摘要可能更适用，见[限制](#限制)。
+视觉模型主要按图像面积计费，而不管图中有多少个字符。在可读上限内，密集帧每 token 能承载的信息量高于纯文本。我们将原本会压缩为文本摘要的内容渲染为图片，由此做到保留更多上下文的同时降低 tokens 消耗。
 
 ## 工作方式
 
@@ -100,7 +94,7 @@ snapcompact → shake → soft
 
 `snapcompact` 方法（顺序 1）只在两个条件都成立时运行：路由（route：本会话所用的 provider/model，例如 `opencode-go/deepseek-v4.1-flash`）声明了图片输入和计价（或带标签的估算），且压缩结果放得进触发阈值下的余量。否则方法链回退到文本。取消会停止压缩，绝不会静默改选下一个方法。区域选择、事务锁、恢复和容量检查仍由宿主负责。
 
-## 用法
+## 命令
 
 | 入口                  | 作用                                                         |
 | --------------------- | ------------------------------------------------------------ |
@@ -114,7 +108,7 @@ snapcompact → shake → soft
 ## 限制
 
 - **不是无损压缩，丢失来自两处。** 一是渲染成图这一步：位图字体覆盖不到的字符（emoji、生僻文字、组合符号）会显示成 `?`，制表符展开为空格、连续空格折叠、ANSI 转义被剥掉；而模型读的是像素不是文本，64 位 digest 这类串本来就不该指望从图里逐字读出。二是渲染之前这一步：常规 `INFO`/`PASS` 行、堆栈调用行、成片重复的文件清单和指标行会被确定性省略，超长字段只留头尾、删去中段，帧预算不够时，帧内文本保留时间轴两端、丢弃最旧的密集中段——每处省略都留下形状如 `[… elided …]` 的标记。错误、带标签事实、命令和路径不会被省略；需要逐字精确的内容以首尾精确文本为准（它不经过渲染，逐字保留），digest 等读图不可靠的串则收进文本索引。
-- **是否更省取决于所用模型和上下文长度。** 短会话中一份简短摘要每轮可能更小；图片 token 贵或需要覆盖的历史短会抵消优势。实测数据见[评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)。
+- **是否更省 token 取决于上下文长度和所选模型。** 短会话中原生摘要可能消耗更少的 token；视觉模型的图片 token 贵也可能会抵消优势。实测数据见[评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)。
 - **不提供跨压缩检索。** 首尾文本和文本索引就是全部保证；被两者同时裁掉的唯一字符串，事后找不回来。
 
 ## 排障
@@ -122,7 +116,7 @@ snapcompact → shake → soft
 <details>
 <summary>选择器里没有 Snapcompact 预设</summary>
 
-确认插件已安装，按页面提示重启 DSH，然后新建**会话**，查找 **Snapcompact (Standard)**、**Snapcompact (PTC)** 和 **Snapcompact (Cordis)**。已有会话保留启动时的预设。DSH Desktop 请通过应用内的插件页面安装。
+确认插件已安装，按页面提示重启 DSH，然后新建**会话**，查找 **Snapcompact (Standard)**、**Snapcompact (PTC)** 和 **Snapcompact (Cordis)**。
 
 </details>
 
