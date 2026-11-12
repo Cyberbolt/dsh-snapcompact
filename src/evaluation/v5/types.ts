@@ -7,7 +7,7 @@ export type V5ArmName =
   | 'native-text'
   | 'pure-visual'
   | 'gold-text'
-  | 'degraded-visual'
+  | 'degraded-visual';
 
 /** Primary question class; cross-cutting tags are reported separately. */
 export type V5QuestionKind =

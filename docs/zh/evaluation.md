@@ -32,13 +32,13 @@ v5 设计与阈值在调优前冻结于 [evaluation-v5-prereg.md](zh/evaluation-
 
 ## 臂
 
-| 臂                | 输入                                                                 | 工具 | 目的                                    |
-| ----------------- | -------------------------------------------------------------------- | ---- | --------------------------------------- |
-| `original`        | 完整 fixture 历史                                                    | 无   | 对照；不压缩                            |
-| `native-text`     | 生成一次的 native summary                                            | 无   | Host 基线                               |
-| `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标                                    |
-| `gold-text`       | 与 pure visual 相同的 head/middle/tail 选择，文本形式                | 无   | 理解上限                                |
-| `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 负控                                    |
+| 臂                | 输入                                                                 | 工具 | 目的         |
+| ----------------- | -------------------------------------------------------------------- | ---- | ------------ |
+| `original`        | 完整 fixture 历史                                                    | 无   | 对照；不压缩 |
+| `native-text`     | 生成一次的 native summary                                            | 无   | Host 基线    |
+| `pure-visual`     | 生产 checkpoint：精确 head/tail + 位图帧 + 有界 exact-token 文本索引 | 无   | 目标         |
+| `gold-text`       | 与 pure visual 相同的 head/middle/tail 选择，文本形式                | 无   | 理解上限     |
+| `degraded-visual` | 帧降采样 50%、隔帧保留、去掉索引                                     | 无   | 负控         |
 
 冻结 test 还跑了离线 `recall-ref` 臂（生产 checkpoint + 归档 recall）检查非劣效。该臂从未注册到生产，冻结 test 后删除；发布的 harness 没有归档或 recall 代码。
 
@@ -93,20 +93,20 @@ SNAPCOMPACT_BENCH_REASONING=low node --experimental-strip-types scripts/benchmar
 
 预注册门槛：
 
-| 门槛                      | 阈值                            |
-| ------------------------- | ------------------------------- |
-| Pure visual overall       | 3 次 test 运行 mean ≥ 38/40     |
-| 精确串子集                | ≥ 15/16                         |
-| 跨区域                    | ≥ 5/6                           |
-| 时序/因果                 | ≥ 5/6                           |
-| 否定/约束                 | ≥ 4/5                           |
-| CJK                       | ≥ 3/4                           |
-| 数值                      | ≥ 2/3                           |
-| Head / tail / middle 区域 | ≥ 6/7 / 5/6 / 25/27             |
-| 单请求峰值 prompt         | ≤ 0.40× original                |
-| 总加权成本                | ≤ 0.78× original                |
+| 门槛                      | 阈值                        |
+| ------------------------- | --------------------------- |
+| Pure visual overall       | 3 次 test 运行 mean ≥ 38/40 |
+| 精确串子集                | ≥ 15/16                     |
+| 跨区域                    | ≥ 5/6                       |
+| 时序/因果                 | ≥ 5/6                       |
+| 否定/约束                 | ≥ 4/5                       |
+| CJK                       | ≥ 3/4                       |
+| 数值                      | ≥ 2/3                       |
+| Head / tail / middle 区域 | ≥ 6/7 / 5/6 / 25/27         |
+| 单请求峰值 prompt         | ≤ 0.40× original            |
+| 总加权成本                | ≤ 0.78× original            |
 
-测量工具验收（gold 上限 ≥38、degraded ≤32 且至少差 4 题、排序、无泄漏、可复现、test 未参与调参）必须先通过，产品门槛才作数。
+测量工具验收（gold 上限 ≥38 且 ≥ pure visual − 1、degraded ≤32 且至少差 4 题、排序、无泄漏、可复现、test 未参与调参）必须先通过，产品门槛才作数。
 
 ## 解释边界
 

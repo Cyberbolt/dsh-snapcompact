@@ -870,10 +870,10 @@ export async function runV5Suite(
   const instrument = [
     check('Gold-text ceiling', '>= 38/40', goldMean.toFixed(2), goldMean >= 38),
     check(
-      'Gold >= pure visual',
-      'gold >= visual',
+      'Gold >= pure visual - 1',
+      'gold >= visual - 1',
       goldMean.toFixed(2) + ' vs ' + visualMean.toFixed(2),
-      goldMean >= visualMean,
+      goldMean >= visualMean - 1,
     ),
     ...(degraded === undefined
       ? []

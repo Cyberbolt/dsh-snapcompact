@@ -32,13 +32,13 @@ No model judges an answer. The prompt contains only the question text and JSON k
 
 ## Arms
 
-| Arm               | Input                                                                                   | Tools   | Purpose                                                                        |
-| ----------------- | --------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------ |
-| `original`        | Full fixture history                                                                    | None    | Control; no compaction                                                         |
-| `native-text`     | Native summary generated once                                                           | None    | Host baseline                                                                  |
-| `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None    | Target                                                                         |
-| `gold-text`       | Same head/middle/tail selection as text                                                 | None    | Comprehension ceiling                                                          |
-| `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None    | Negative control                                                               |
+| Arm               | Input                                                                                   | Tools | Purpose                |
+| ----------------- | --------------------------------------------------------------------------------------- | ----- | ---------------------- |
+| `original`        | Full fixture history                                                                    | None  | Control; no compaction |
+| `native-text`     | Native summary generated once                                                           | None  | Host baseline          |
+| `pure-visual`     | Production checkpoint: exact head/tail + bitmap frames + bounded exact-token text index | None  | Target                 |
+| `gold-text`       | Same head/middle/tail selection as text                                                 | None  | Comprehension ceiling  |
+| `degraded-visual` | Frames downscaled 50%, every other frame, index omitted                                 | None  | Negative control       |
 
 The frozen test also ran an offline `recall-ref` arm (production checkpoint + archive recall) to check non-inferiority. That arm was never registered in production and was removed after the frozen test; the shipped harness has no archive or recall code.
 
@@ -93,20 +93,20 @@ The report includes fixture id/seed/hash, the fixed schedule, per-arm/per-run/pe
 
 The pre-registered gates are:
 
-| Gate                          | Threshold                             |
-| ----------------------------- | ------------------------------------- |
-| Pure visual overall           | ≥ 38/40 mean over 3 test runs         |
-| Exact-string subset           | ≥ 15/16                               |
-| Cross-region                  | ≥ 5/6                                 |
-| Temporal / causal             | ≥ 5/6                                 |
-| Negation / constraint         | ≥ 4/5                                 |
-| CJK                           | ≥ 3/4                                 |
-| Numeric                       | ≥ 2/3                                 |
-| Head / tail / middle region   | ≥ 6/7 / 5/6 / 25/27                   |
-| Peak single-request prompt    | ≤ 0.40× original                      |
-| Total weighted cost           | ≤ 0.78× original                      |
+| Gate                        | Threshold                     |
+| --------------------------- | ----------------------------- |
+| Pure visual overall         | ≥ 38/40 mean over 3 test runs |
+| Exact-string subset         | ≥ 15/16                       |
+| Cross-region                | ≥ 5/6                         |
+| Temporal / causal           | ≥ 5/6                         |
+| Negation / constraint       | ≥ 4/5                         |
+| CJK                         | ≥ 3/4                         |
+| Numeric                     | ≥ 2/3                         |
+| Head / tail / middle region | ≥ 6/7 / 5/6 / 25/27           |
+| Peak single-request prompt  | ≤ 0.40× original              |
+| Total weighted cost         | ≤ 0.78× original              |
 
-Instrument acceptance (gold ceiling ≥38, degraded ≤32 and ≥4 worse, ordering, no leakage, reproducibility, no test tuning) must pass before the product gates decide anything.
+Instrument acceptance (gold ceiling ≥38 and ≥ pure visual − 1, degraded ≤32 and ≥4 worse, ordering, no leakage, reproducibility, no test tuning) must pass before the product gates decide anything.
 
 ## Interpretation limits
 
