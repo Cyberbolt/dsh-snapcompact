@@ -30,6 +30,6 @@ The suite is `scripts/benchmark-v5.ts`. Dev fixtures are generated from a commit
 
 ## Releasing
 
-`scripts/check-package.ts` asserts that both READMEs mention `dsh-snapcompact@<current version>`; bump that one line in `README.md` and `README.zh.md` when preparing a stable release. The DSH compatibility range has a single source, `scripts/compat.ts` — change it there, never in prose. Documentation is written in English with a Chinese version kept beside it (`README.md` / `README.zh.md`, `docs/` / `docs/zh/`).
+`scripts/check-package.ts` asserts that both READMEs mention `dsh-snapcompact@<current version>`; bump that one line in `README.md` and `README.zh.md` when preparing a stable release. The DSH compatibility range has a single source, `scripts/compat.ts`: the READMEs name `DSH_SUPPORT_LINE`, `docs/configuration.md` carries `DSH_COMPAT_RANGE`, and a bare copy of `DSH_BASELINE_VERSION` in any of the four asserted documents fails the check, so a DSH patch release never requires a documentation edit. Documentation is written in English with a Chinese version kept beside it (`README.md` / `README.zh.md`, `docs/` / `docs/zh/`).
 
 Run `pnpm run format` before sending a change.

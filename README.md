@@ -20,7 +20,7 @@ Built for long-running sessions that keep needing details from many turns ago â€
 
 ## Install
 
-Requires DSH `^0.2.2-rc.1` (verified on `0.2.2-rc.1`) and Node.js 24+. The npm package ships compiled `dist/`, so there is no build step and no install script.
+Requires DSH `0.2.x` and Node.js 24+.
 
 1. Open **Plugins â†’ Add plugin**.
 2. Install `dsh-snapcompact@0.7.0`.

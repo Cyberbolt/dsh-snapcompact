@@ -208,4 +208,4 @@ Provider/model 精确匹配，无 alias、模糊匹配或跨模型复用。上�
 
 未知计价、视觉失败或节省不足会选择另一个方法。所有候选失败时，原生失败日志保留所选历史。取消绝不落到下一个方法。threshold/retention 低于可压下限会拒绝挂载；源低于收益下限会在任何方法前失败。
 
-Snapcompact 声明 `^0.2.2-rc.1`（0.2.x），在 `0.2.2-rc.1` 验证。只在该 host release 上完成安装和激活检查后再提高下限，并保持有限上限。不要绕过 host 检查。
+Snapcompact 声明 `^0.2.2-rc.1`：从该下限起、不含 `0.3.0` 的任意 0.2.x 主机都可安装；0.3 主机在完成验证并有意放宽范围前会被拒绝。CI 会验证该下限版本和最新发布的 0.2.x 主机；由于 host 用 `includePrerelease` 判定范围，0.2.x 预发布主机可安装，即使 npm 自身的 peer 解析不认为它匹配。README 只写支持线，本文写范围；确切下限、peer 与 dev 固定版本都来自 `scripts/compat.ts` 的 `DSH_BASELINE_VERSION`，出现裸版本号会被 `scripts/check-package.ts` 拒绝。提高下限会丢弃所有更低的 host，所以只有确实要放弃支持时才提高，并保持有限上限。不要绕过 host 检查。

@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { PRESET_VARIANTS } from '../scripts/preset-variants.ts';
 
-// The vendored snapshots are the pinned official compositions for the verified
-// DSH floor in scripts/compat.ts.
+// The vendored snapshots are the pinned official compositions for the baseline
+// DSH host in scripts/compat.ts.
 // This test fails row-by-row when a manual copy drifts, and it also documents
 // the only differences a Snapcompact variant may introduce.
 const customTags = [
