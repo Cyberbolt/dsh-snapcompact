@@ -113,10 +113,9 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 
 ## Limits
 
-- **Not lossless.** Frames can drop characters; routine `INFO`/`PASS`/stack-frame/file-listing lines are elided and long fields are clipped head-and-tail. Errors, labeled facts, commands, paths and digests are kept.
+- **Not lossless, in two places.** The first is rendering: characters the bitmap font does not cover (emoji, rare scripts, combining marks) become `?`, tabs expand to spaces, inner space runs collapse and ANSI escapes are stripped; and the model reads pixels, not text, so a 64-character digest is not something to expect back from a picture. The second is serialization, before rendering: routine `INFO`/`PASS` lines, stack-call lines, long runs of repeated file listings and metric lines are deterministically elided, long fields keep only their head and tail with the middle removed, and an over-budget projection keeps both ends of the middle and drops the oldest dense center — every omission leaves a marker shaped like `[… elided …]`. Errors, labeled facts, commands and paths are not elided; for character-exact history rely on the exact head/tail text, which is never rendered, and strings like digests go into the text index.
 - **Savings depend on the model in use and the horizon you need.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
 - **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
-- **No telemetry.** Conversation data stays in the profile's attachment storage; nothing is uploaded elsewhere.
 
 ## Troubleshooting
 
