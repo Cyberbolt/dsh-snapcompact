@@ -16,7 +16,7 @@
 
 Snapcompact 是 [Oh My Pi](https://github.com/can1357/oh-my-pi) 的 `snapcompact` 思路在 DSH 上的独立实现。
 
-适合长代码或调试会话，你仍然需要很多轮之前的命令、路径、校验和或标识符。不适用于短聊天、纯文本路由或极简模式。
+适合长代码或调试会话，你仍然需要很多轮之前的命令、路径、校验和或标识符。不适用于短聊天、只支持文本的模型或极简模式。
 
 **快速开始：** 插件 → 添加插件 → `dsh-snapcompact` → 新建会话 → **Snapcompact (Standard)**。
 
@@ -106,14 +106,14 @@ snapcompact → shake → soft
 | 2    | `shake`       | 无       | 超大工具输出替换为有界摘录                          |
 | 3    | `soft`        | 原生摘要 | DSH 原生文本摘要                                    |
 
-视觉方法只在路由（会话背后的模型和供应商）声明了图片输入和计价、或给出带标签的估算，且压缩结果放得进触发阈值下的余量时运行；否则方法链回退到文本。取消会停止压缩，绝不会静默改选下一个方法。区域选择、事务锁、恢复和容量检查仍由宿主负责。
+视觉方法只在两个条件都成立时运行：路由（route：本会话所用的 provider/model，例如 `opencode-go/deepseek-v4.1-flash`）声明了图片输入和计价（或带标签的估算），且压缩结果放得进触发阈值下的余量。否则方法链回退到文本。取消会停止压缩，绝不会静默改选下一个方法。区域选择、事务锁、恢复和容量检查仍由宿主负责。
 
 ## 用法
 
-| 入口                  | 作用                                      |
-| --------------------- | ----------------------------------------- |
-| `/compact`            | 手动压缩；在 Snapcompact 预设内运行方法链 |
-| `/snapcompact status` | 路由、有效阈值、可压空间和逐方法可用性    |
+| 入口                  | 作用                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| `/compact`            | 手动压缩；在 Snapcompact 预设内运行方法链                    |
+| `/snapcompact status` | 当前路由（provider/model）、有效阈值、可压空间和逐方法可用性 |
 
 ## 配置
 
@@ -122,7 +122,7 @@ snapcompact → shake → soft
 ## 限制
 
 - **非无损。** 帧可能丢字符；常规的 `INFO`/`PASS`、堆栈帧、文件清单和指标行会被省略，长字段按头尾裁剪。错误、带标签事实、命令、路径和摘要会保留。
-- **是否更省取决于路由和使用跨度。** 短会话里一份简短摘要每轮可能更小；图片 token 贵或使用跨度短会抵消优势。实测数据见[评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)。
+- **是否更省取决于所用模型和需要覆盖的历史跨度。** 短会话里一份简短摘要每轮可能更小；图片 token 贵或需要覆盖的历史短会抵消优势。实测数据见[评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)。
 - **不提供跨压缩检索。** 首尾文本和文本索引就是全部保证；被两者同时裁掉的唯一字符串，事后找不回来。
 - **无遥测。** 会话数据留在 profile 的附件存储中，不会上传到别处。
 
@@ -138,14 +138,14 @@ snapcompact → shake → soft
 <details>
 <summary>总是回退到文本</summary>
 
-运行 `/snapcompact status`。路由可能没有声明图片输入，或没有可用的图片价格，这是预期的安全行为。已有的图片最多携带四张；没有图片槽位时走文本链（先 shake 摘录，再原生摘要）。
+运行 `/snapcompact status`。当前路由（provider/model）可能没有声明图片输入，或没有可用的图片计价，这是预期的安全行为。已有的图片最多携带四张；没有图片槽位时走文本链（先 shake 摘录，再原生摘要）。
 
 </details>
 
 <details>
 <summary>压缩失败："No compaction method produced a safe smaller checkpoint"</summary>
 
-每个候选都被跳过或超预算。检查 `/snapcompact status`；用更多历史重试，或换一个有可用文本摘要的路由。错误会列出每个方法的原因，取消会单独报告。
+每个候选都被跳过或超预算。检查 `/snapcompact status`；用更多历史重试，或切换到文本摘要可用的模型。错误会列出每个方法的原因，取消会单独报告。
 
 </details>
 

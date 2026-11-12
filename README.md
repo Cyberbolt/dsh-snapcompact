@@ -16,7 +16,7 @@ When a session gets long, Snapcompact stops sending the middle of it verbatim an
 
 It is an independent DSH implementation of the [Oh My Pi](https://github.com/can1357/oh-my-pi) `snapcompact` idea.
 
-Built for long coding or debugging sessions where you still need a command, path, checksum or identifier from many turns ago. Not for short chats, text-only routes, or `minimal` mode.
+Built for long coding or debugging sessions where you still need a command, path, checksum or identifier from many turns ago. Not for short chats, text-only models, or `minimal` mode.
 
 **Quick start:** Plugins → Add plugin → `dsh-snapcompact` → new session → **Snapcompact (Standard)**.
 
@@ -106,14 +106,14 @@ one checkpoint: exact head/tail + frames + text index
 | 2     | `shake`       | none           | Large tool outputs replaced by bounded excerpts                 |
 | 3     | `soft`        | native summary | DSH's native text summary                                       |
 
-The visual method runs only when the route (the model and provider behind the session) declares image input and pricing, or a labelled estimate, and the checkpoint fits the room left under the trigger; otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
+The visual method runs only when both hold: the route (the provider/model this session runs on, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
 
 ## Use it
 
-| Entry point           | What it does                                                              |
-| --------------------- | ------------------------------------------------------------------------- |
-| `/compact`            | Manual compaction; inside a Snapcompact preset it runs the chain          |
-| `/snapcompact status` | Route, effective threshold, compactable space and per-method availability |
+| Entry point           | What it does                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `/compact`            | Manual compaction; inside a Snapcompact preset it runs the chain                                   |
+| `/snapcompact status` | Current route (provider/model), effective threshold, compactable space and per-method availability |
 
 ## Configure
 
@@ -122,7 +122,7 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 ## Limits
 
 - **Not lossless.** Frames can drop characters; routine `INFO`/`PASS`/stack-frame/file-listing lines are elided and long fields are clipped head-and-tail. Errors, labeled facts, commands, paths and digests are kept.
-- **Savings depend on the route and the horizon.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
+- **Savings depend on the model in use and the horizon you need.** A terse summary can be smaller per turn on short sessions; expensive image tokens or a short horizon can erase the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
 - **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
 - **No telemetry.** Conversation data stays in the profile's attachment storage; nothing is uploaded elsewhere.
 
@@ -138,14 +138,14 @@ Confirm the plugin is installed, restart DSH if the page asks, then create a **n
 <details>
 <summary>It always falls back to text</summary>
 
-Run `/snapcompact status`. The route probably declares no image input or no usable image price, which is the intended safe behavior. Up to four carried images are forwarded; when no image slot is left, the text chain (shake excerpts, then the native summary) runs.
+Run `/snapcompact status`. The current route (provider/model) probably declares no image input or no usable image pricing, which is the intended safe behavior. Up to four carried images are forwarded; when no image slot is left, the text chain (shake excerpts, then the native summary) runs.
 
 </details>
 
 <details>
 <summary>Compaction fails with "No compaction method produced a safe smaller checkpoint"</summary>
 
-Every candidate was skipped or missed its budget. Check `/snapcompact status`; retry with more history, or use a route with a working text summarizer. The error lists each method's reason, and cancellation is reported separately.
+Every candidate was skipped or missed its budget. Check `/snapcompact status`; retry with more history, or switch to a model whose text summarizer works. The error lists each method's reason, and cancellation is reported separately.
 
 </details>
 
