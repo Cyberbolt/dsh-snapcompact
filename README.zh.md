@@ -61,7 +61,7 @@ tarball URL 请执行：
 dsh plugin --profile web add https://example.com/dsh-snapcompact-<version>.tgz
 ```
 
-npm 包是预构建选项；如果是本地 clone，需要先执行 `pnpm pack`（或 `pnpm run build`）。
+npm 包是预构建选项，如果是本地 clone，需要先执行 `pnpm pack`（或 `pnpm run build`）。
 
 </details>
 
@@ -92,7 +92,12 @@ snapcompact → shake → soft
 | 2    | `shake`       | 无       | 超大工具输出替换为有界摘录                          |
 | 3    | `soft`        | 原生摘要 | DSH 原生文本摘要                                    |
 
-`snapcompact` 方法（顺序 1）只在两个条件都成立时运行：路由（route：本会话所用的 provider/model，例如 `opencode-go/deepseek-v4.1-flash`）声明了图片输入和计价（或带标签的估算），且压缩结果放得进触发阈值下的余量。否则方法链回退到文本。取消会停止压缩，绝不会静默改选下一个方法。区域选择、事务锁、恢复和容量检查仍由宿主负责。
+snapcompact（顺序 1）只在两个条件同时成立时运行：
+
+- **模型支持图片输入与计价**。 此会话的路由（provider/model，例如 opencode-go/deepseek-v4.1-flash）要声明图片输入，并能确定图片计价：适配器提供价格、配置了显式的每帧上限，或对已知模型族使用带标签的保守估算。
+- **完整 checkpoint 放得下**。 整个 checkpoint 必须落在触发阈值以下的剩余空间内（阈值减去 system prompt、工具 schema、输出预留和保留尾部等不可替换部分）。
+
+任一条件不成立，就会跳过 snapcompact，由方法链继续尝试下一个方法，最终落到原生摘要。
 
 ## 命令
 
@@ -107,9 +112,18 @@ snapcompact → shake → soft
 
 ## 限制
 
-- **不是无损压缩，丢失来自两处。** 一是渲染成图这一步：位图字体覆盖不到的字符（emoji、生僻文字、组合符号）会显示成 `?`，制表符展开为空格、连续空格折叠、ANSI 转义被剥掉；而模型读的是像素不是文本，64 位 digest 这类串本来就不该指望从图里逐字读出。二是渲染之前这一步：常规 `INFO`/`PASS` 行、堆栈调用行、成片重复的文件清单和指标行会被确定性省略，超长字段只留头尾、删去中段，帧预算不够时，帧内文本保留时间轴两端、丢弃最旧的密集中段——每处省略都留下形状如 `[… elided …]` 的标记。错误、带标签事实、命令和路径不会被省略；需要逐字精确的内容以首尾精确文本为准（它不经过渲染，逐字保留），digest 等读图不可靠的串则收进文本索引。
+- **不是无损压缩：渲染前后两个阶段都可能丢信息。**
+  - **渲染成图时**：位图字体覆盖不到的字符（emoji、生僻文字、组合符号）会显示成 `?`；制表符展开为空格、连续空格折叠、ANSI 转义被剥掉。模型读的是像素而不是文本，64 位 digest 这类串不能指望从图里逐字读出。
+  - **渲染之前**：序列化按固定规则省略，同一份历史每次省略的位置和数量都相同。
+    - 常规 `INFO`/`PASS` 行、堆栈调用行这类样板行，整行删除。
+    - 连续成片、结构相同的行（重复的文件清单、指标行）只留首尾各两行。
+    - 超长字段只留头尾、删去中段；帧中段文本预算不够时，保两端、舍中间。
+    - 每处省略都留下带计数的标记，如 `[…80ch elided…]`、`[…3 routine log lines elided…]`。
+  - **不会丢的**：错误、带标签事实、命令和路径将原样保留。
+  - **要逐字精确的内容，从文本取，不从图上取**：首尾精确文本逐字保留；digest 这类读图不可靠的串收进文本索引。
+
 - **是否更省 token 取决于上下文长度和所选模型。** 短会话中原生摘要可能消耗更少的 token；视觉模型的图片 token 贵也可能会抵消优势。实测数据见[评测结果](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/zh/evaluation-results.md)。
-- **不提供跨压缩检索。** 首尾文本和文本索引就是全部保证；被两者同时裁掉的唯一字符串，事后找不回来。
+- **压缩后不能回查。** 逐字可取的只有首尾文本和文本索引；两处都没收录的字符串，事后找不回来。
 
 ## 排障
 
@@ -123,14 +137,14 @@ snapcompact → shake → soft
 <details>
 <summary>总是回退到文本</summary>
 
-运行 `/snapcompact status`。当前路由（provider/model）可能没有声明图片输入，或没有可用的图片计价，这是预期的安全行为。已有的图片最多携带四张；没有图片槽位时走文本链（先 shake 摘录，再原生摘要）。
+运行 `/snapcompact status`。当前路由（provider/model）可能没有声明图片输入，或没有可用的图片计价，这是预期的安全行为。
 
 </details>
 
 <details>
 <summary>压缩失败："No compaction method produced a safe smaller checkpoint"</summary>
 
-每个候选都被跳过或超预算。检查 `/snapcompact status`；用更多历史重试，或切换到文本摘要可用的模型。错误会列出每个方法的原因，取消会单独报告。
+这表示每个方法（snapcompact、shake、soft）都被跳过，原因可能是缩得不够小或超出了预算。先运行 /snapcompact status，查看当前路由、可压空间和每个方法是否可用；然后等会话历史更多时重试，或换一个能正常运行的模型。错误信息会逐条列出各方法被跳过或失败的原因。
 
 </details>
 

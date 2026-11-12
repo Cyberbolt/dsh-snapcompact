@@ -92,7 +92,12 @@ one checkpoint: exact head/tail + frames + text index
 | 2     | `shake`       | none           | Large tool outputs replaced by bounded excerpts                 |
 | 3     | `soft`        | native summary | DSH's native text summary                                       |
 
-The `snapcompact` method (order 1) runs only when both hold: the route (this session's provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) declares image input and pricing — or a labelled estimate — and the checkpoint fits the room left under the trigger. Otherwise the chain falls through to text. Cancellation stops the compaction and never silently selects the next method. Region selection, transaction locks, recovery and capacity checks stay in the host.
+The `snapcompact` method (order 1) runs only when both conditions hold:
+
+- **The model accepts images and can be priced.** This session's route (provider/model, e.g. `opencode-go/deepseek-v4.1-flash`) must declare image input, and its image pricing must be determinable: the adapter supplies prices, an explicit per-frame cap is configured, or a labelled conservative estimate covers a known model family.
+- **The whole checkpoint fits.** The entire checkpoint must fit in the room left under the trigger threshold (the threshold minus the parts that cannot be replaced: system prompt, tool schemas, output reservation and retained tail).
+
+If either condition fails, snapcompact is skipped, the chain moves on to the next method, and it ends at the native summary.
 
 ## Commands
 
@@ -107,9 +112,18 @@ The **Plugins → Snapcompact** card covers the common keys and writes through D
 
 ## Limits
 
-- **Not lossless, in two places.** The first is rendering: characters the bitmap font does not cover (emoji, rare scripts, combining marks) become `?`, tabs expand to spaces, inner space runs collapse and ANSI escapes are stripped; and the model reads pixels, not text, so a 64-character digest is not something to expect back from a picture. The second is serialization, before rendering: routine `INFO`/`PASS` lines, stack-call lines, long runs of repeated file listings and metric lines are deterministically elided, long fields keep only their head and tail with the middle removed, and an over-budget projection keeps both ends of the middle and drops the oldest dense center — every omission leaves a marker shaped like `[… elided …]`. Errors, labeled facts, commands and paths are not elided; for character-exact history rely on the exact head/tail text, which is never rendered, and strings like digests go into the text index.
+- **Not lossless: information can be lost before and during rendering.**
+  - **While rendering to an image:** characters the bitmap font does not cover (emoji, rare scripts, combining marks) show up as `?`; tabs expand to spaces, runs of spaces collapse and ANSI escapes are stripped. The model reads pixels, not text, so a 64-character digest is not something to expect back from a picture.
+  - **Before rendering:** serialization elides by fixed rules, so the same history loses the same spots, in the same numbers, every time.
+    - Boilerplate lines such as routine `INFO`/`PASS` lines and stack-call lines are dropped whole.
+    - Long runs of structurally identical lines (repeated file listings, metric lines) keep only the first two and the last two lines.
+    - Over-long fields keep their head and tail with the middle removed; when the frame's middle text budget runs short, both ends are kept and the middle is dropped.
+    - Every omission leaves a counted marker, e.g. `[…80ch elided…]` or `[…3 routine log lines elided…]`.
+  - **What is never elided:** errors, labeled facts, commands and paths are kept verbatim.
+  - **For character-exact content, take it from the text, not the image:** the exact head/tail text is kept verbatim, and strings that read unreliably from a picture, such as digests, go into the text index.
+
 - **Whether it saves tokens depends on the context length and the model in use.** On short sessions a native summary may use fewer tokens, and expensive image tokens can also cancel the gain. Measurements are in [Evaluation results](https://github.com/Cyberbolt/dsh-snapcompact/blob/main/docs/evaluation-results.md).
-- **No search across compactions.** The head/tail text and the text index are the whole guarantee; a unique string clipped from both is not recoverable later.
+- **No lookup after compaction.** The only character-exact copies are the head/tail text and the text index; a string that made it into neither is not recoverable later.
 
 ## Troubleshooting
 
@@ -123,14 +137,14 @@ Confirm the plugin is installed, restart DSH if the page asks, then create a **n
 <details>
 <summary>It always falls back to text</summary>
 
-Run `/snapcompact status`. The current route (provider/model) probably declares no image input or no usable image pricing, which is the intended safe behavior. Up to four carried images are forwarded; when no image slot is left, the text chain (shake excerpts, then the native summary) runs.
+Run `/snapcompact status`. The current route (provider/model) probably declares no image input or no usable image pricing, which is the intended safe behavior.
 
 </details>
 
 <details>
 <summary>Compaction fails with "No compaction method produced a safe smaller checkpoint"</summary>
 
-Every candidate was skipped or missed its budget. Check `/snapcompact status`; retry with more history, or switch to a model whose text summarizer works. The error lists each method's reason, and cancellation is reported separately.
+This means every method (snapcompact, shake, soft) was skipped — it either could not shrink the checkpoint enough or went over budget. Run `/snapcompact status` first to see the current route, the compactable space and each method's availability; then retry once the session has more history, or move to a model that works. The error text lists, one by one, why each method was skipped or failed.
 
 </details>
 
