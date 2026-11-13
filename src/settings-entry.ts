@@ -46,9 +46,9 @@ export const Config = schema.object({
     .default([...DEFAULT_USER_CHAIN])
     .description(descriptionOf('methodOrder'))
     .volatile(),
-  // Accepts the old 0.2 card minimum so a profile that already saved it still
-  // loads and can be repaired. `readUserSettings` drops sub-0.5 values and the
-  // card never writes one, so the effective minimum is the card's 0.5.
+  // Same 0.2 floor as the card and `readUserSettings`: a profile that saved the
+  // old card minimum is now applied instead of dropped; anything below 0.2 is
+  // still rejected here and by the strict parser.
   thresholdRatio: schema
     .number()
     .step(0.01)

@@ -56,6 +56,9 @@ export class SnapcompactEngine extends BasicCompactionEngine {
     }
   }
 
+  /** Route whose infeasible trigger already produced a warning; re-armed on a route change. */
+  private warnedUnreachableRoute: string | undefined;
+
   /** Benchmark-only entry; computes a native summary without changing the session surface. */
   nativeSummaryForEvaluation(
     input: CompactionInput,
@@ -208,6 +211,21 @@ export class SnapcompactEngine extends BasicCompactionEngine {
       share: this.settings.budget.checkpointShare,
       ...(pressure?.kind === 'ok' ? { thresholdTokens: pressure.thresholdTokens } : {}),
     });
+    const route = `${provider}/${model}`;
+    if (
+      budget.kind === 'unreachable' &&
+      pressure?.kind === 'ok' &&
+      this.settings.methodOrder.includes('snapcompact') &&
+      this.warnedUnreachableRoute !== route
+    ) {
+      this.warnedUnreachableRoute = route;
+      this.ctx.logger.warn(
+        `snapcompact: ${route} triggers at ${pressure.thresholdTokens} tokens, which is at or ` +
+          `below the ${Math.max(0, surfaceTokens - sourceTokens)} tokens this route cannot ` +
+          'reclaim (system prompt, tool schemas, output reservation, retained tail); the visual ' +
+          'checkpoint is skipped. Raise thresholdRatio or use a larger-window model.',
+      );
+    }
     return { budget, contextWindow };
   }
 

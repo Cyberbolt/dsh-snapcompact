@@ -77,11 +77,11 @@ export const SETTINGS_FIELDS: readonly SettingsField[] = [
     paths: [['policy', 'thresholdRatio']],
     kind: 'number',
     group: 'trigger',
-    min: 0.5,
+    min: 0.2,
     max: 0.95,
     step: 0.01,
     description:
-      'Share of the context window that triggers compaction; the card floor is 0.5. Leave unset to inherit the host policy default (0.8).',
+      'Share of the context window that triggers compaction; the card floor is 0.2, which only large-window models can afford. Leave unset to inherit the host policy default (0.8); /snapcompact status shows the resolved threshold for the current route.',
   },
   {
     key: 'retainRatio',

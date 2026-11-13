@@ -62,9 +62,8 @@ describe('settings entry', () => {
     expect(resolve({ retainTokens: 32768 }).retainTokens).toBe(32768);
   });
 
-  it('still parses a legacy 0.2 threshold so an old row can be repaired', () => {
-    // The carrier stays permissive on purpose; `readUserSettings` drops the
-    // value and the card floor is 0.5.
+  it('parses the 0.2 card floor', () => {
+    // The carrier and the card share the 0.2 floor; 0.19 is rejected below.
     expect(resolve({ thresholdRatio: 0.2 }).thresholdRatio).toBe(0.2);
   });
 

@@ -64,14 +64,14 @@ describe('settings metadata', () => {
     expect(resolveConfig(overridden).policy.thresholdRatio).toBe(0.55);
   });
 
-  it('drops a legacy sub-0.5 trigger so the preset value can take over', () => {
-    expect(readUserSettings({ thresholdRatio: 0.49 })).toEqual({});
-    expect(readUserSettings({ thresholdRatio: 0.5 })).toEqual({ thresholdRatio: 0.5 });
+  it('applies the 0.2 card floor and drops anything below it', () => {
+    expect(readUserSettings({ thresholdRatio: 0.19 })).toEqual({});
+    expect(readUserSettings({ thresholdRatio: 0.2 })).toEqual({ thresholdRatio: 0.2 });
     expect(
       resolveConfig(
         applyUserSettings(
           { policy: { thresholdRatio: 0.7 } },
-          readUserSettings({ thresholdRatio: 0.2 }),
+          readUserSettings({ thresholdRatio: 0.19 }),
         ),
       ).policy.thresholdRatio,
     ).toBe(0.7);

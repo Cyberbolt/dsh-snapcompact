@@ -61,6 +61,7 @@ Persistence and precedence:
 
 - Writes go through DSH's settings service to the profile's configuration patch; they survive restarts and are removed by "Restore default" (per field or for the whole card).
 - A saved card value overrides the same key in preset YAML. `thresholdRatio` is the exception: until the custom threshold is enabled the key is absent, so a preset-level `policy.thresholdRatio` still applies.
+- The trigger slider's floor is 0.2, which only very large windows can afford. A profile that saved the old 0.2 minimum is now applied on mount instead of being dropped.
 - The retained tail is automatic: `retainRatio = thresholdRatio ÷ 5`. The card hides it and never writes it. Only a value saved by an older version remains visible, as one read-only “Custom” row with “Restore automatic” to unset it. `retainRatio` and `retainTokens` are still mutually exclusive: the strict parser rejects YAML that sets both.
 - The engine is constructed when a session mounts the preset, so changes take effect for **new sessions**; `/snapcompact status` in an existing session keeps reporting its starting configuration.
 - The settings schema cannot express chain ordering, so a stored chain that is empty, repeated, or does not end in `soft` is ignored by the plugin; the strict parser remains the final gate.
@@ -118,7 +119,9 @@ The trigger only means something relative to the retained tail:
 compactable = threshold - retain
 ```
 
-Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path always leaves `4/5 × thresholdRatio` compactable (at least 0.4 at the 0.5 card floor), so it cannot trip the 0.1 guard. Explicit retention is where the old trap can still appear: at a 1M-token window `thresholdRatio: 0.2` with `retainRatio: 0.16` leaves only about 4% of the window. A checkpoint plus the retained text can easily cost more than that.
+Because the tail is derived as `thresholdRatio ÷ 5`, the automatic card path always leaves `4/5 × thresholdRatio` compactable (at least 0.16 at the 0.2 card floor), so it cannot trip the 0.1 guard. Explicit retention is where the old trap can still appear: at a 1M-token window `thresholdRatio: 0.2` with `retainRatio: 0.16` leaves only about 4% of the window. A checkpoint plus the retained text can easily cost more than that.
+
+A ratio cannot prove a route has room. The fixed cost — system prompt, tool schemas, output reservation and the retained tail — is absolute, so 0.2 only works on very large windows (about 200k of a 1M window). On a smaller route the trigger can sit at or below that cost, and the visual path is skipped for every compaction.
 
 `guard` adds the missing checks:
 
@@ -143,7 +146,7 @@ budget = floor(min(room, source) × checkpointShare)   # no window: floor(source
 
 `surface` is the whole request pressure before compaction and `source` the history the checkpoint replaces; both come from the token meter the native engine re-measures after committing. Everything a checkpoint cannot replace — system prompt, tool schemas, output reservation, retained tail — stays in `fixed`.
 
-Leaving `1 - share` of the room free means the post-compaction total stays below the threshold with a real margin. The historical rule was 0.5; 0.4 leaves more room for the checkpoint and the next answer that share the same window. When automatic pressure fires, `room ≈ source`, so the threshold basis equals `source × share`; it only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold. A route without a declared context window, or a failed model lookup, falls back to `source × share`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold.
+Leaving `1 - share` of the room free means the post-compaction total stays below the threshold with a real margin. The historical rule was 0.5; 0.4 leaves more room for the checkpoint and the next answer that share the same window. When automatic pressure fires, `room ≈ source`, so the threshold basis equals `source × share`; it only tightens by the amount the session overshot its trigger. It also stays correct for a manual `/compact` below the threshold. A route without a declared context window, or a failed model lookup, falls back to `source × share`; `room ≤ 0` skips the visual path because no frame can bring the session back under the threshold; the engine logs one warning per route when that happens.
 
 The budget is recomputed per compaction from the live route, so it follows `thresholdRatio`, `headroomTokens` and per-model overrides without another setting. Set `budget.checkpointShare: 0.5` to restore the old behaviour. Older rows may still carry `minCompressionRatio`; it is accepted for upgrade compatibility and ignored.
 

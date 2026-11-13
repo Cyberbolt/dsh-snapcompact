@@ -731,9 +731,9 @@ window.__ModuleLoader__.load({
                     h('input', {
                       type: 'range',
                       // Bounds come from the generated field table; the card
-                      // floor is 0.5 so an early-trigger dead zone cannot be
-                      // saved from here.
-                      min: fieldOf('thresholdRatio')?.min ?? 0.5,
+                      // floor is 0.2 so 1M-token windows can trigger at 200k.
+                      // A route without room is reported by the engine warning.
+                      min: fieldOf('thresholdRatio')?.min ?? 0.2,
                       max: fieldOf('thresholdRatio')?.max ?? 0.95,
                       step: fieldOf('thresholdRatio')?.step ?? 0.01,
                       value: draft.thresholdRatio,
