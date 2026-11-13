@@ -61,6 +61,7 @@ routePolicies: []
 
 - 写入通过 DSH settings service 到 profile 的 configuration patch；重启后保留，"Restore default" 可逐字段或整卡移除。
 - 保存的卡片值覆盖 preset YAML 的同名键。`thresholdRatio` 例外：自定义阈值启用前该键不存在，所以 preset 级 `policy.thresholdRatio` 仍生效。
+- 触发滑块的卡片下限是 0.2，只有超大窗口负担得起。旧版本保存的 0.2 现在会在挂载时生效，而不再被丢弃。
 - 保留尾部自动：`retainRatio = thresholdRatio ÷ 5`。卡片隐藏它，也从不写入。只有旧版本保存的值会显示为只读 "Custom" 行，可用 "Restore automatic" 取消。`retainRatio` 和 `retainTokens` 仍互斥：strict parser 拒绝同时设置的 YAML。
 - 引擎在会话挂载 preset 时构造，所以改动对**新会话**生效；已有会话的 `/snapcompact status` 继续报告启动时配置。
 - settings schema 无法表达链顺序，所以空、重复或不以 `soft` 结尾的已存链会被插件忽略；strict parser 是最终门槛。
@@ -118,7 +119,9 @@ retain      = retainTokens ?? floor((W − O) × retainRatio)
 compactable = threshold - retain
 ```
 
-因为尾部派生为 `thresholdRatio ÷ 5`，自动卡片路径总留下 `4/5 × thresholdRatio` 可压（0.5 卡片下限时至少 0.4），所以不会触发 0.1 guard。显式保留才可能踩旧陷阱：1M 窗口、`thresholdRatio: 0.2`、`retainRatio: 0.16` 只留下约 4% 窗口；checkpoint 加保留文本很容易超过。
+因为尾部派生为 `thresholdRatio ÷ 5`，自动卡片路径总留下 `4/5 × thresholdRatio` 可压（0.2 卡片下限时至少 0.16），所以不会触发 0.1 guard。显式保留才可能踩旧陷阱：1M 窗口、`thresholdRatio: 0.2`、`retainRatio: 0.16` 只留下约 4% 窗口；checkpoint 加保留文本很容易超过。
+
+比例无法证明某个路由有余量。固定开销——system prompt、工具 schema、输出预留和保留尾部——是绝对量，所以 0.2 只适合超大窗口（1M 窗口约 200k）。在更小的路由上，触发阈值可能低于或等于该开销，视觉路径每次压缩都会被跳过。
 
 `guard` 补充检查：
 
@@ -143,7 +146,7 @@ budget = floor(min(room, source) × checkpointShare)   # 无窗口：floor(sourc
 
 `surface` 是压缩前整个请求压力，`source` 是 checkpoint 替换的历史；两者来自原生引擎提交后重新测量的 token meter。checkpoint 无法替换的一切——system prompt、tool schema、输出预留、保留尾部——留在 `fixed`。
 
-留下 `1 - share` 的余量意味着压缩后总量以真实 margin 低于 threshold。历史规则是 0.5；0.4 给 checkpoint 和下一个回答留更多空间。自动压力触发时 `room ≈ source`，所以阈值基准等于 `source × share`；只会因会话超过触发点而收紧。手动 `/compact` 低于阈值时也正确。无声明窗口或模型查找失败时回退 `source × share`；`room ≤ 0` 跳过视觉路径。
+留下 `1 - share` 的余量意味着压缩后总量以真实 margin 低于 threshold。历史规则是 0.5；0.4 给 checkpoint 和下一个回答留更多空间。自动压力触发时 `room ≈ source`，所以阈值基准等于 `source × share`；只会因会话超过触发点而收紧。手动 `/compact` 低于阈值时也正确。无声明窗口或模型查找失败时回退 `source × share`；`room ≤ 0` 跳过视觉路径；出现这种情况时，引擎每个路由记一条警告。
 
 预算每次压缩从实时路由重算，所以跟随 `thresholdRatio`、`headroomTokens` 和 per-model override，无需另一个设置。设 `budget.checkpointShare: 0.5` 恢复旧行为。旧 row 可能仍有 `minCompressionRatio`；为升级兼容接受并忽略。
 

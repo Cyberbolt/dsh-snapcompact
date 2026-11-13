@@ -209,7 +209,7 @@ describe('client bundle', () => {
       (element) =>
         element.props.type === 'range' && element.props['aria-label'] === 't:thresholdCustom',
     );
-    expect(slider?.props).toMatchObject({ min: 0.5, max: 0.95, value: 0.6 });
+    expect(slider?.props).toMatchObject({ min: 0.2, max: 0.95, value: 0.6 });
   });
 
   it('keeps the derived tail hidden for a custom trigger threshold', async () => {

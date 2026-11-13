@@ -144,6 +144,7 @@ describe('native region transaction with plugin candidates', () => {
       { width: 512, height: 512, maxFrames: 6, minGlyphPx: 8 },
       { headroomTokens: 199_000 },
     );
+    const warn = vi.spyOn(test.ctx.logger, 'warn');
     test.appendText(longSource);
     const source = test.appendText(longSource);
     test.session.append('turn/start', { turn: 1 });
@@ -156,6 +157,11 @@ describe('native region transaction with plugin candidates', () => {
       text: expect.stringContaining('## Goal'),
     });
     expect(test.adapter.calls).toHaveLength(1);
+    const warnings = warn.mock.calls
+      .map(([format]) => String(format))
+      .filter((message) => message.includes('visual checkpoint is skipped'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('test/vision');
   });
 
   it('adds a cumulative FILES index to the visual checkpoint', async () => {
